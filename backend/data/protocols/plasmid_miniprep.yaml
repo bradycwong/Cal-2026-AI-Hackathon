@@ -1,0 +1,29 @@
+protocol:
+  id: plasmid_miniprep
+  name: Plasmid Miniprep
+  version: "1.0"
+  aliases: ["plasmid miniprep protocol", "plasmid miniprep", "miniprep", "plasmid prep"]
+  steps:
+    - id: 1
+      text: "Pellet 1-5 mL overnight culture by centrifugation at 13,000 g for 1 minute."
+      duration_s: 60
+      timer_label: pellet spin
+      parameters: { speed_g: 13000 }
+    - id: 2
+      text: "Resuspend the pellet in 250 µL resuspension buffer until no clumps remain."
+      duration_s: null            # null = manual advance
+      parameters: { volume_ul: 250, reagent: "resuspension buffer" }
+    - id: 3
+      text: "Add 250 µL lysis buffer and invert gently 4-6 times; do not exceed 5 minutes."
+      duration_s: 300
+      timer_label: lysis
+      parameters: { volume_ul: 250, reagent: "lysis buffer" }
+    - id: 4
+      text: "Add 350 µL neutralization buffer, invert, and centrifuge at 13,000 g for 10 minutes."
+      duration_s: 600
+      timer_label: neutralization spin
+      parameters: { volume_ul: 350, reagent: "neutralization buffer", speed_g: 13000 }
+    - id: 5
+      text: "Bind to column, wash, and elute plasmid DNA in 50 µL elution buffer."
+      duration_s: null
+      parameters: { volume_ul: 50, reagent: "elution buffer" }

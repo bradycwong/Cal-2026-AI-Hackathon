@@ -1,0 +1,27 @@
+protocol:
+  id: pcr_setup
+  name: PCR Setup
+  version: "1.0"
+  aliases: ["pcr setup protocol", "pcr setup", "pcr", "pcr protocol", "polymerase chain reaction"]
+  steps:
+    - id: 1
+      text: "Thaw reagents on ice and prepare a clean PCR workspace."
+      duration_s: null            # null = manual advance
+      parameters: {}
+    - id: 2
+      text: "Prepare master mix: 25 µL 2X master mix, 2 µL forward primer, 2 µL reverse primer per reaction."
+      duration_s: null
+      parameters: { volume_ul: 25, reagent: "2X master mix" }
+    - id: 3
+      text: "Add 1 µL template DNA and bring each reaction to 50 µL with nuclease-free water."
+      duration_s: null
+      parameters: { volume_ul: 1, reagent: "template DNA" }
+    - id: 4
+      text: "Spin down tubes and load the thermocycler."
+      duration_s: 60
+      timer_label: spin down
+      parameters: { speed_g: 2000 }
+    - id: 5
+      text: "Run 30 cycles: 95 °C denature, 55 °C anneal, 72 °C extend."
+      duration_s: null            # thermocycler-driven; auto-timer is a deferred organ
+      parameters: { temp_c: 95, cycles: 30 }
