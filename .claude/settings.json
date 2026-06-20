@@ -8,6 +8,7 @@
     "pr-review-toolkit@claude-plugins-official": true,
     "explanatory-output-style@claude-plugins-official": true,
     "remember@claude-plugins-official": true,
-    "claude-api@anthropic-agent-skills": true
+    "claude-api@anthropic-agent-skills": true,
+    "arize-skills@arize-skills": true
   }
 }
