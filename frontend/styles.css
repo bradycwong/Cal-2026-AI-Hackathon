@@ -44,6 +44,30 @@ body {
 .chip-err { color: var(--err); border-color: var(--err); }
 .chip-idle { color: var(--muted); }
 
+.wake-set {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+.wake-input {
+  width: 84px;
+  background: #0c1116;
+  border: 1px solid #243042;
+  border-radius: 999px;
+  color: var(--fg);
+  font-size: 12px;
+  padding: 5px 10px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.wake-input:focus {
+  outline: none;
+  border-color: var(--ok);
+}
 .mic-btn {
   background: var(--ok);
   color: #06120c;

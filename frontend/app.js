@@ -20,6 +20,8 @@ const els = {
   input: $("composer-input"),
   micBtn: $("mic-btn"),
   mic: $("chip-mic"),
+  wakeInput: $("wake-input"),
+  transcriptHint: document.querySelector(".panel-hint"),
 };
 
 const timers = new Map(); // timer_id -> element
@@ -263,6 +265,45 @@ els.micBtn.addEventListener("click", () => {
   if (micStream) stopMic();
   else startMic();
 });
+
+// --- runtime-settable wake word --------------------------------------------
+function applyWake(word) {
+  const w = (word || "otto").trim();
+  if (els.wakeInput && document.activeElement !== els.wakeInput) els.wakeInput.value = w;
+  if (els.transcriptHint) els.transcriptHint.textContent = `say "Hey ${w}, …"`;
+}
+
+async function loadWake() {
+  try {
+    const r = await fetch("/api/config");
+    const d = await r.json();
+    applyWake(d.wake && d.wake.word);
+  } catch (_) { /* defaults stay */ }
+}
+
+async function saveWake() {
+  const word = (els.wakeInput.value || "").trim();
+  if (!word) return loadWake();
+  try {
+    const r = await fetch("/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ word }),
+    });
+    const d = await r.json();
+    applyWake(d.wake && d.wake.word);
+  } catch (err) {
+    onError({ message: "Could not update wake word: " + err });
+  }
+}
+
+if (els.wakeInput) {
+  els.wakeInput.addEventListener("change", saveWake);
+  els.wakeInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); els.wakeInput.blur(); }
+  });
+}
+loadWake();
 
 let audioCtx;
 function chime() {

@@ -32,7 +32,7 @@ from .schema import (
 )
 from .handlers import handle_command
 from .state import SessionState
-from .wake import WAKE_REQUIRED, WAKE_WORD, WakeGate
+from .wake import WakeGate, config as wake_config
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
@@ -148,9 +148,29 @@ async def health() -> dict[str, Any]:
         "router_mode": ROUTER_MODE,
         "protocols": list(state.protocols.keys()),
         "inventory_count": len(state.inventory),
-        "wake_required": WAKE_REQUIRED,
-        "wake_word": WAKE_WORD,
+        "wake": wake_config.as_dict(),
     }
+
+
+class WakeConfigIn(BaseModel):
+    word: str | None = None
+    aliases: list[str] | None = None
+    required: bool | None = None
+    window_s: float | None = None
+
+
+@app.get("/api/config")
+async def get_config() -> dict[str, Any]:
+    return {"wake": wake_config.as_dict()}
+
+
+@app.post("/api/config")
+async def set_config(body: WakeConfigIn) -> dict[str, Any]:
+    """Runtime-settable wake word (UI). Takes effect on the next utterance."""
+    wake_config.update(
+        word=body.word, aliases=body.aliases, required=body.required, window_s=body.window_s
+    )
+    return {"ok": True, "wake": wake_config.as_dict()}
 
 
 @app.websocket("/ws/events")

@@ -1,6 +1,6 @@
 """Wake-gate checks — wake word + follow-up window behaviour."""
 
-from backend.wake import WakeGate
+from backend.wake import WakeConfig, WakeGate
 
 
 def test_wake_plus_command_routes():
@@ -61,3 +61,22 @@ def test_bare_otto_prefix():
     d = g.process("Otto load DNA extraction protocol", now=1.0)
     assert d.should_route
     assert d.command_text == "load DNA extraction protocol"
+
+
+def test_runtime_word_change_drops_old_word():
+    cfg = WakeConfig()  # defaults to "otto"
+    cfg.update(word="jarvis")
+    g = WakeGate(cfg)
+    # old word (and its homophones) no longer wakes once the word changed.
+    # use far-apart timestamps so no follow-up window is open.
+    assert not g.process("Otto, what's next?", now=100.0).should_route
+    assert not g.process("auto, what's next?", now=200.0).should_route
+    # new word still works
+    assert g.process("Hey Jarvis, what's next?", now=300.0).should_route
+
+
+def test_custom_word_keeps_its_homophones():
+    cfg = WakeConfig()
+    cfg.update(word="jarvis")
+    g = WakeGate(cfg)
+    assert g.process("Hey jervis, start a 10 minute timer", now=1.0).should_route
