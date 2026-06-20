@@ -76,7 +76,7 @@ backend/
   handlers.py    handle_command(): deterministic dispatch; missing param -> clarify
   state.py       SessionState; YAML/CSV loaders; timers; log (DB-backed via db.py)
   db.py          SQLite NoteStore: persists the log so it survives refresh/restart
-  data/protocols/dna_extraction.yaml, data/inventory.csv  (otto.db created at runtime)
+  data/protocols/*.yaml (DNA Extraction, PCR Setup, Bacterial Transformation, Plasmid Miniprep), data/inventory.csv  (otto.db created at runtime)
 frontend/
   index.html     panels + typed command box (permanent fallback)
   app.js         WS client; dispatch on the 4 event types
