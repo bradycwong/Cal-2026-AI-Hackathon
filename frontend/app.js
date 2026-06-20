@@ -305,6 +305,19 @@ if (els.wakeInput) {
 }
 loadWake();
 
+// --- hydrate from persisted/in-memory state on (re)load --------------------
+async function hydrate() {
+  try {
+    const r = await fetch("/api/state");
+    const s = await r.json();
+    (s.log || []).forEach((row) => onLogEntry(row)); // ascending id -> newest on top
+    if (s.step) onStepChange(s.step);
+    (s.timers || []).forEach((t) => onTimerUpdate(t));
+    setState("idle", "");
+  } catch (_) { /* fresh start */ }
+}
+hydrate();
+
 let audioCtx;
 function chime() {
   try {

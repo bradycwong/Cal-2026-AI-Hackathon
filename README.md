@@ -68,20 +68,26 @@ pytest -q          # router harness + handler shape checks
 
 ```
 backend/
-  main.py        FastAPI: /api/ingest, WS /ws/events + /ws/audio, static, timer loop, ingest() spine
+  main.py        FastAPI: /api/ingest, /api/state, WS /ws/events + /ws/audio, static, timer loop, ingest() spine
   deepgram_stt.py server-side Deepgram live STT proxy (key never reaches browser)
   wake.py        "Hey Otto" wake gate: which spoken utterances become commands
   schema.py      Command (flat-5 + unknown) + locked event-envelope builders
   router.py      route(transcript)->Command: LLM primary + deterministic fallback; ASCII normalize
   handlers.py    handle_command(): deterministic dispatch; missing param -> clarify
-  state.py       SessionState; YAML/CSV loaders; in-memory log + timers
-  data/protocols/dna_extraction.yaml, data/inventory.csv
+  state.py       SessionState; YAML/CSV loaders; timers; log (DB-backed via db.py)
+  db.py          SQLite NoteStore: persists the log so it survives refresh/restart
+  data/protocols/dna_extraction.yaml, data/inventory.csv  (otto.db created at runtime)
 frontend/
   index.html     panels + typed command box (permanent fallback)
   app.js         WS client; dispatch on the 4 event types
   styles.css
-tests/           test_router.py, test_handlers.py, test_wake.py
+tests/           test_router.py, test_handlers.py, test_wake.py, test_persistence.py
 ```
 
-Deferred swappable organs (NOT yet): VAD-gated streaming (cost), SQLite
-persistence, 2nd protocol, auto-timers, TTS, open-ended Q&A, upload/library pages.
+Log persistence: the log feed is written to SQLite (`backend/data/otto.db`, set
+`OTTO_DB_PATH` to override or `:memory:` to disable) and rehydrated by the UI from
+`GET /api/state` on load, so it survives a page refresh or a server restart.
+Protocols + inventory stay file-driven; the rest of session state is in-memory.
+
+Deferred swappable organs (NOT yet): VAD-gated streaming (cost), 2nd protocol,
+auto-timers, TTS, open-ended Q&A, upload/library pages.

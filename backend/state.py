@@ -1,9 +1,9 @@
 """state.py — in-memory SessionState + file loaders.
 
 Holds everything deterministic handlers mutate: the active protocol + cursor, the
-in-memory log, and active timers. SQLite is a deferred swappable organ — the log
-already uses the persisted field names (id, text, timestamp, sample_id, step_ref)
-so a DB is a drop-in later.
+log, and active timers. The log is the one persisted organ: pass ``db_path`` and
+appends are written to SQLite (``backend/db.py``) and reloaded on startup so the
+feed survives refresh/restart. With ``db_path=None`` (tests) it's pure in-memory.
 """
 
 from __future__ import annotations
@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 import yaml
+
+from .db import NoteStore
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -102,7 +104,7 @@ def load_inventory_file(path: Path) -> list[InventoryItem]:
 class SessionState:
     """Singleton-per-session state. One protocol loaded at a time (v1)."""
 
-    def __init__(self, data_dir: Path = DATA_DIR) -> None:
+    def __init__(self, data_dir: Path = DATA_DIR, db_path: Optional[str] = None) -> None:
         self.data_dir = data_dir
         self.protocols: dict[str, Protocol] = {}
         self.inventory: list[InventoryItem] = []
@@ -112,6 +114,7 @@ class SessionState:
         self.timers: list[Timer] = []
         self._log_seq = 0
         self._timer_seq = 0
+        self.notes = NoteStore(db_path) if db_path else None
 
     def load_files(self) -> None:
         proto_dir = self.data_dir / "protocols"
@@ -121,6 +124,9 @@ class SessionState:
         inv_path = self.data_dir / "inventory.csv"
         if inv_path.exists():
             self.inventory = load_inventory_file(inv_path)
+        if self.notes is not None:
+            self.log = self.notes.all_notes()
+            self._log_seq = self.log[-1]["id"] if self.log else 0
 
     # --- protocol cursor ---------------------------------------------------
     def find_protocol(self, name: str) -> Optional[Protocol]:
@@ -152,15 +158,21 @@ class SessionState:
 
     # --- log ---------------------------------------------------------------
     def append_log(self, text: str, sample_id: Optional[str]) -> dict[str, Any]:
-        self._log_seq += 1
         step = self.current_step()
-        entry = {
-            "id": self._log_seq,
-            "text": text,
-            "timestamp": utc_now_iso(),
-            "sample_id": sample_id,
-            "step_ref": step.id if step else None,
-        }
+        timestamp = utc_now_iso()
+        step_ref = step.id if step else None
+        if self.notes is not None:
+            entry = self.notes.add_note(text, timestamp, sample_id, step_ref)
+            self._log_seq = entry["id"]
+        else:
+            self._log_seq += 1
+            entry = {
+                "id": self._log_seq,
+                "text": text,
+                "timestamp": timestamp,
+                "sample_id": sample_id,
+                "step_ref": step_ref,
+            }
         self.log.append(entry)
         return entry
 

@@ -36,7 +36,11 @@ from .wake import WakeGate, config as wake_config
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
-state = SessionState()
+# Log persistence (the one stateful organ). Override with OTTO_DB_PATH; set to
+# ":memory:" to disable on-disk persistence.
+DB_PATH = os.getenv("OTTO_DB_PATH", str(Path(__file__).parent / "data" / "otto.db"))
+
+state = SessionState(db_path=DB_PATH)
 
 
 class ConnectionManager:
@@ -139,6 +143,34 @@ async def api_ingest(body: IngestIn) -> dict[str, Any]:
         ev = error_event("ingest_failed", str(exc), "ingest")
         await manager.broadcast([ev])
         return {"ok": False, "events": [ev]}
+
+
+@app.get("/api/state")
+async def get_state() -> dict[str, Any]:
+    """Snapshot for the UI to hydrate on (re)load. The log is DB-backed, so it
+    survives a refresh or a server restart; step/timers are in-memory."""
+    idx = state.current_step_index
+    cur = state.current_step()
+    return {
+        "log": state.log,
+        "step": {
+            "prev_step": (s.as_event() if (s := state.step_at(idx - 1)) else None),
+            "current_step": (cur.as_event() if cur else None),
+            "next_step": (s.as_event() if (s := state.step_at(idx + 1)) else None),
+        }
+        if cur
+        else None,
+        "timers": [
+            {
+                "timer_id": t.timer_id,
+                "label": t.label,
+                "remaining_s": t.remaining_s(),
+                "expired": t.expired,
+            }
+            for t in state.timers
+            if not t.expired
+        ],
+    }
 
 
 @app.get("/api/health")
