@@ -81,6 +81,12 @@ body {
   letter-spacing: 1px;
   color: var(--muted);
 }
+.panel-hint {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  opacity: 0.6;
+}
 
 .step-current {
   font-size: clamp(28px, 4vw, 52px);

@@ -24,9 +24,15 @@ from pydantic import BaseModel
 
 from .deepgram_stt import run_deepgram_session
 from .router import ROUTER_MODE, route
-from .schema import error_event, timer_update_event, transcript_update_event
+from .schema import (
+    clarify_event,
+    error_event,
+    timer_update_event,
+    transcript_update_event,
+)
 from .handlers import handle_command
 from .state import SessionState
+from .wake import WAKE_REQUIRED, WAKE_WORD, WakeGate
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
@@ -60,16 +66,23 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-async def ingest(transcript: str, *, echo_transcript: bool = True) -> list[dict[str, Any]]:
-    """The single spine. transcript in -> events broadcast + returned."""
+async def ingest(
+    transcript: str, *, echo_transcript: bool = True, do_route: bool = True
+) -> list[dict[str, Any]]:
+    """The single spine. transcript in -> events broadcast + returned.
+
+    ``do_route=False`` only echoes the transcript (used when a voice utterance is
+    not addressed to the assistant — see the wake gate).
+    """
     events: list[dict[str, Any]] = []
     text = (transcript or "").strip()
     if not text:
         return events
     if echo_transcript:
         events.append(transcript_update_event(text, is_final=True))
-    cmd = route(text)
-    events.extend(handle_command(cmd, state))
+    if do_route:
+        cmd = route(text)
+        events.extend(handle_command(cmd, state))
     await manager.broadcast(events)
     return events
 
@@ -135,6 +148,8 @@ async def health() -> dict[str, Any]:
         "router_mode": ROUTER_MODE,
         "protocols": list(state.protocols.keys()),
         "inventory_count": len(state.inventory),
+        "wake_required": WAKE_REQUIRED,
+        "wake_word": WAKE_WORD,
     }
 
 
@@ -159,12 +174,19 @@ async def ws_audio(ws: WebSocket) -> None:
     typed line. Voice is just another way to fill the transcript.
     """
     await ws.accept()
+    gate = WakeGate()
 
     async def on_interim(text: str) -> None:
         await manager.broadcast([transcript_update_event(text, is_final=False)])
 
     async def on_final(text: str) -> None:
-        await ingest(text)  # echoes the final transcript + routes + broadcasts
+        # Always show what was heard; only ACT when addressed to the assistant.
+        decision = gate.process(text)
+        await manager.broadcast([transcript_update_event(text, is_final=True)])
+        if decision.just_woke:
+            await manager.broadcast([clarify_event("Listening - what would you like to do?")])
+        elif decision.should_route:
+            await ingest(decision.command_text, echo_transcript=False)
 
     try:
         await run_deepgram_session(ws, on_interim=on_interim, on_final=on_final)

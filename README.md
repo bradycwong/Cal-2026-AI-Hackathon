@@ -21,10 +21,15 @@ Input channels are swappable; the spine is not. The typed box POSTs to
 
 ## Voice
 
-Click **Start session** (top-right), allow the mic, and speak the demo lines.
-Mic audio streams as webm/opus to `/ws/audio`; the server proxies it to Deepgram
-nova-2 (key stays server-side), shows interim words live, and routes each finished
-utterance exactly like a typed line. Requires `DEEPGRAM_API_KEY` in `.env`.
+Click **Start session** (top-right), allow the mic, and speak. Mic audio streams
+as webm/opus to `/ws/audio`; the server proxies it to Deepgram nova-2 (key stays
+server-side), shows interim words live, and routes finished utterances through the
+same spine. Requires `DEEPGRAM_API_KEY` in `.env`.
+
+**Wake word.** Voice is gated by "Hey Otto" so background talk doesn't fire
+commands: say `"Hey Otto, what's next?"`, or just `"Hey Otto"` then your command
+within ~8 s. The typed box never needs a wake word. Disable with
+`OTTO_WAKE_REQUIRED=false`.
 
 ## Run
 
@@ -65,6 +70,7 @@ pytest -q          # router harness + handler shape checks
 backend/
   main.py        FastAPI: /api/ingest, WS /ws/events + /ws/audio, static, timer loop, ingest() spine
   deepgram_stt.py server-side Deepgram live STT proxy (key never reaches browser)
+  wake.py        "Hey Otto" wake gate: which spoken utterances become commands
   schema.py      Command (flat-5 + unknown) + locked event-envelope builders
   router.py      route(transcript)->Command: LLM primary + deterministic fallback; ASCII normalize
   handlers.py    handle_command(): deterministic dispatch; missing param -> clarify
@@ -74,8 +80,8 @@ frontend/
   index.html     panels + typed command box (permanent fallback)
   app.js         WS client; dispatch on the 4 event types
   styles.css
-tests/           test_router.py, test_handlers.py
+tests/           test_router.py, test_handlers.py, test_wake.py
 ```
 
-Deferred swappable organs (NOT yet): VAD-gated streaming / wake word, SQLite
+Deferred swappable organs (NOT yet): VAD-gated streaming (cost), SQLite
 persistence, 2nd protocol, auto-timers, TTS, open-ended Q&A, upload/library pages.
