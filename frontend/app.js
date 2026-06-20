@@ -22,6 +22,8 @@ const els = {
   mic: $("chip-mic"),
   wakeInput: $("wake-input"),
   transcriptHint: document.querySelector(".panel-hint"),
+  srStatus: $("sr-status"),
+  alertBanner: $("alert-banner"),
 };
 
 const timers = new Map(); // timer_id -> element
@@ -29,6 +31,19 @@ const timers = new Map(); // timer_id -> element
 function setState(label, cls) {
   els.state.textContent = label;
   els.state.className = "chip " + (cls || "");
+}
+
+// Announce a concise message to screen readers via the polite live region.
+function announce(msg) {
+  if (!els.srStatus || !msg) return;
+  els.srStatus.textContent = "";        // re-trigger even if text repeats
+  window.requestAnimationFrame(() => { els.srStatus.textContent = msg; });
+}
+
+function fmtClock(s) {
+  const mm = String(Math.floor(s / 60)).padStart(2, "0");
+  const ss = String(s % 60).padStart(2, "0");
+  return `${mm}:${ss}`;
 }
 
 // --- WS wiring --------------------------------------------------------------
@@ -115,9 +130,11 @@ function onStepChange(p) {
   // the server cleared its timers, so drop stale timer cards to match.
   if (!p.prev_step) clearTimerCards();
   els.stepPrev.textContent = fmtStep(p.prev_step);
-  els.stepCurrent.textContent = p.current_step ? fmtStep(p.current_step) : "Protocol complete.";
+  const cur = p.current_step ? fmtStep(p.current_step) : "Protocol complete.";
+  els.stepCurrent.textContent = cur;
   els.stepNext.textContent = fmtStep(p.next_step);
   clearClarify();
+  announce(cur);
   setState("done", "chip-ok");
 }
 
@@ -141,6 +158,7 @@ function onLogEntry(p) {
     `<span class="log-meta">${escapeHtml(sample + step)}</span>`;
   els.log.prepend(li);
   clearClarify();
+  announce(`Logged: ${p.text}`);
   setState("done", "chip-ok");
 }
 
@@ -150,6 +168,7 @@ function onInventory(p) {
     `<div class="inv-loc">${escapeHtml(p.location)}</div>` +
     `<div class="inv-qty">${escapeHtml(p.quantity_approx)}</div>`;
   clearClarify();
+  announce(`${p.name}: ${p.location}, ${p.quantity_approx}`);
   setState("done", "chip-ok");
 }
 
@@ -174,14 +193,25 @@ function onTimerUpdate(p) {
     els.timers.appendChild(el);
     timers.set(p.timer_id, el);
   }
+  const wasExpired = el.classList.contains("expired");
   el.classList.toggle("expired", !!p.expired);
-  const mm = String(Math.floor(p.remaining_s / 60)).padStart(2, "0");
-  const ss = String(p.remaining_s % 60).padStart(2, "0");
   el.innerHTML =
     `<div class="timer-label">${escapeHtml(p.label)}</div>` +
-    `<div class="timer-clock">${p.expired ? "DONE" : `${mm}:${ss}`}</div>`;
-  if (p.expired) chime();
+    `<div class="timer-clock">${p.expired ? "DONE" : fmtClock(p.remaining_s)}</div>`;
+  if (p.expired && !wasExpired) {
+    chime();
+    showTimerAlert(p.label); // visible + role="alert" announces it
+  }
   setState("done", "chip-ok");
+}
+
+let alertTimeout = null;
+function showTimerAlert(label) {
+  if (!els.alertBanner) return;
+  els.alertBanner.textContent = `Timer finished: ${label}`;
+  els.alertBanner.hidden = false;
+  if (alertTimeout) clearTimeout(alertTimeout);
+  alertTimeout = setTimeout(() => { els.alertBanner.hidden = true; }, 10000);
 }
 
 function onError(p) {
@@ -250,6 +280,7 @@ async function startMic() {
     els.mic.className = "chip chip-ok";
     els.micBtn.textContent = "Stop session";
     els.micBtn.classList.add("active");
+    els.micBtn.setAttribute("aria-pressed", "true");
     setState("listening", "chip-warn");
   };
   audioWS.onclose = () => stopMic();
@@ -272,6 +303,7 @@ function stopMic() {
   els.mic.className = "chip chip-idle";
   els.micBtn.textContent = "Start session";
   els.micBtn.classList.remove("active");
+  els.micBtn.setAttribute("aria-pressed", "false");
   setState("idle", "");
 }
 

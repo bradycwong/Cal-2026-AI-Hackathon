@@ -7,61 +7,72 @@
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
+  <a class="skip-link" href="#composer-input">Skip to command box</a>
+
   <header class="topbar">
     <h1>Otto</h1>
     <div class="chips">
-      <label class="wake-set" title="Wake word the assistant listens for">
+      <label class="wake-set" for="wake-input" title="Wake word the assistant listens for">
         wake:
-        <input id="wake-input" class="wake-input" type="text" spellcheck="false" />
+        <input id="wake-input" class="wake-input" type="text" spellcheck="false"
+               aria-label="Wake word the assistant listens for" />
       </label>
-      <button id="mic-btn" class="mic-btn">Start session</button>
-      <span id="chip-mic" class="chip chip-idle">mic off</span>
-      <span id="chip-conn" class="chip chip-idle">disconnected</span>
-      <span id="chip-state" class="chip">idle</span>
+      <button id="mic-btn" class="mic-btn" type="button" aria-pressed="false">Start session</button>
+      <span id="chip-mic" class="chip chip-idle" role="status" aria-live="polite">mic off</span>
+      <span id="chip-conn" class="chip chip-idle" role="status" aria-live="polite">disconnected</span>
+      <span id="chip-state" class="chip" role="status" aria-live="polite">idle</span>
     </div>
   </header>
 
+  <!-- Visible + announced timer-expiry alert (beyond the chime) -->
+  <div id="alert-banner" class="alert-banner" role="alert" hidden></div>
+
   <main class="grid">
     <!-- BIG current step: the single biggest thing on screen -->
-    <section class="panel step-panel" aria-live="polite">
-      <h2 class="panel-title">Current step</h2>
+    <section class="panel step-panel" role="region" aria-labelledby="title-step">
+      <h2 class="panel-title" id="title-step">Current step</h2>
       <div class="step-prev" id="step-prev"></div>
       <div class="step-current" id="step-current">No protocol loaded.</div>
       <div class="step-next" id="step-next"></div>
     </section>
 
-    <section class="panel">
-      <h2 class="panel-title">Transcript <span class="panel-hint">say "Hey Otto, …"</span></h2>
+    <section class="panel" role="region" aria-labelledby="title-transcript">
+      <h2 class="panel-title" id="title-transcript">Transcript <span class="panel-hint">say "Hey Otto, …"</span></h2>
       <div class="transcript" id="transcript"></div>
     </section>
 
-    <section class="panel">
-      <h2 class="panel-title">Timers</h2>
+    <section class="panel" role="region" aria-labelledby="title-timers">
+      <h2 class="panel-title" id="title-timers">Timers</h2>
       <div class="timers" id="timers"><div class="muted">No active timers.</div></div>
     </section>
 
-    <section class="panel">
-      <h2 class="panel-title">Log</h2>
+    <section class="panel" role="region" aria-labelledby="title-log">
+      <h2 class="panel-title" id="title-log">Log</h2>
       <ul class="log" id="log"></ul>
     </section>
 
-    <section class="panel">
-      <h2 class="panel-title">Inventory</h2>
+    <section class="panel" role="region" aria-labelledby="title-inventory">
+      <h2 class="panel-title" id="title-inventory">Inventory</h2>
       <div class="inventory" id="inventory"><div class="muted">No lookups yet.</div></div>
     </section>
 
     <!-- never-fail-silently: clarification area -->
-    <section class="panel clarify-panel" id="clarify-panel" aria-live="assertive">
-      <h2 class="panel-title">Clarification</h2>
+    <section class="panel clarify-panel" id="clarify-panel" role="region"
+             aria-labelledby="title-clarify" aria-live="assertive">
+      <h2 class="panel-title" id="title-clarify">Clarification</h2>
       <div class="clarify" id="clarify"><div class="muted">—</div></div>
     </section>
   </main>
 
   <!-- Typed command box: skeleton input AND permanent live fallback -->
   <form class="composer" id="composer" autocomplete="off">
+    <label class="sr-only" for="composer-input">Type a command</label>
     <input id="composer-input" type="text" placeholder="Type a command — e.g. 'Load DNA extraction protocol'" />
     <button type="submit">Send</button>
   </form>
+
+  <!-- Screen-reader-only polite announcer for command outcomes -->
+  <div id="sr-status" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
   <datalist id="demo-lines"></datalist>
   <script src="/static/app.js"></script>
