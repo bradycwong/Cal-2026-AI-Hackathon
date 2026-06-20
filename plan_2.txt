@@ -1,0 +1,370 @@
+# Plan: Electronic Lab Notebook ("Otto") — Hands-Free AI Lab Assistant
+
+> **Two docs, one product.** `real haq doc.pdf` is the **north-star spec** (vision, full
+> requirements, data models, NFRs). **This file is the 23-hour build plan** — what we actually
+> ship and in what order. Where they disagree, the build plan wins for *what to build now*; the
+> PDF wins for *where this is going*.
+
+## Context
+
+UC Berkeley AI Hackathon, **Ddoski's Lab Track**, ~23 hours left.
+
+**Product vision (north star):** an Electronic Lab Notebook (ELN) — a voice-driven assistant that
+lets a researcher keep their hands on the experiment and their eyes off the keyboard. They speak
+naturally — load a protocol, log an observation, start a timer, find a reagent, ask what's next —
+and the system transcribes, parses intent, acts, and **updates the screen** in real time. It's a
+**generalized** lab tool: any protocol/inventory loaded from data files works, not just DNA
+extraction.
+
+**The non-negotiable demo constraint:** the 30-second pitch is **voice-only — hands never touch
+the machine.** Input is voice; output is the screen. (No synthesized speech — see below.)
+
+**Decisions locked with the user:**
+- **Stack:** Python / FastAPI backend + lightweight web frontend (vanilla JS, no build step).
+- **Voice model:** *Arm once, then hands-free.* Press **Start** before the lab begins (no
+  streaming until then); after that the session listens continuously (VAD-gated) and a **wake word**
+  ("Hey Otto") gates commands. Satisfies "no manual reactivation between utterances" **and**
+  protects Deepgram cost — never stream silence for hours.
+  - **MVP wake-word contract:** *every* command starts with **"Hey Otto …"** — one utterance, one
+    command. The prefix is required, not optional. **Do not build a multi-turn wake window** (open
+    mic for N seconds after wake, follow-up commands without re-waking) unless the 5 beats are done
+    and there's reserve time. One-shot wake is simpler, more demo-robust, and cheaper.
+- **Output = screen only, no TTS.** The assistant does **not talk**; every response is a panel
+  update (current step, log row, timer card, inventory card). Removing Aura cuts a round-trip from
+  the response path and lowers cost.
+  - **Compensate for the lost "magic" of a talking assistant** (no TTS = less obviously alive on
+    stage), spend the saved time on *visible* feedback: (a) a **huge current-step panel** — the
+    single biggest thing on screen, readable across a demo room; (b) explicit, always-visible
+    **state chips** — `listening` / `heard "…"` / `thinking` / `done` — so the audience sees the
+    loop work even in silence; (c) a short non-speech **chime** on timer expiry (an alert tone, not
+    the assistant talking) so it lands when no one's looking at the screen. These three are how a
+    silent assistant still reads as responsive — treat them as Must, not polish.
+- **Scope:** **MVP-first, file-driven.** Seed protocols + inventory from data files; the data model
+  does the generalizing. No authoring UI in v1.
+
+---
+
+## Where we're going — build tiers (reconciled with the PDF)
+
+The PDF tiers `find`/inventory as *nice-to-have*, but **demo beat 4 needs it** — so the demo set is
+indivisible. The tiering below applies to everything *beyond* the five beats.
+
+| Tier | Contents | Gate |
+|---|---|---|
+| **Must — the 5 demo beats** | `load_protocol`, `next_step` (deterministic), `log_entry`, `start_timer`, `find_inventory`; live STT; the 5 UI panels. **All five beats, including inventory.** | Ship first; the 30-s pitch works at this tier alone |
+| **Fast-follow — "feels real," cheap** | SQLite **log persistence** (survives refresh); Deepgram **custom vocabulary** for lab terms; **auto-timers** on steps with a duration; accessibility (ARIA live + visible alerts); a 2nd protocol for generality | Start only once all 5 beats are stable + demo-clean |
+| **Stretch — only if ahead** | Reproducibility flags (logged vol vs protocol vol); methods export (DOCX/PDF); OCR protocol import; open-ended Q&A as a single Claude call over the loaded protocol (**no RAG/vector DB**) | Fast-follow complete |
+| **Reserve — never sacrificed** | Polish + **≥5 full demo rehearsals** + recorded **backup video** | Always last |
+
+**Explicitly deferred until the 5 beats work** (PDF distractions for a hackathon): TTS, REST API
+surface, RAG/embeddings, OCR, exports, reproducibility flags, multi-user, auth. In-memory state
+ships first; SQLite is added *only* for the log, as the first fast-follow.
+
+---
+
+## Architecture
+
+```
+Browser (mic + VAD + UI)
+  │  webm/opus chunks (MediaRecorder, 250 ms) — forwarded ONLY while VAD says "speech"
+  ▼
+FastAPI  ── WS /stream ──┐
+  ├─ Deepgram live STT (interim shown; speech_final ends an utterance; KeepAlive in silence)
+  ├─ Wake-phrase gate  ("hey otto …" → command; else ignore)
+  ├─ Intent router  → ONE structured-output call → validated Pydantic object   ← the "brain"
+  │     intent ∈ {load_protocol, next_step, log_entry, start_timer, find_inventory, unknown}
+  │     (unknown = clear-but-incomplete or unrecognized → drives the Clarification panel)
+  ├─ Deterministic handlers mutate session state (NO RAG; NO spoken output)
+  └─ pushes {ui_update} back over the same WS  (incl. clarification prompts)
+  ▲
+Browser renders: Live transcript · Current step (prev/next dimmed) · Timers · Log feed · Inventory
+                 · Clarification area (large-font; shown only when a command is ambiguous)
+```
+
+**Core principle — the LLM has exactly ONE job.** It converts *messy human language → a validated
+`Command` object*. Nothing else goes near the LLM: handlers, UI updates, timers, inventory lookup,
+and step advancement are all plain deterministic code. This keeps latency, cost, and failure modes
+tiny and predictable, and it means the LLM is never on the path of *executing* anything — only of
+*interpreting* what was said.
+
+**Every command — typed or spoken — is the same 4-step pipeline:**
+
+1. **Transcript in** — a string. In Slice 1 it comes from a **fake transcript text box**; later it
+   comes from Deepgram `is_final`. Downstream is byte-identical either way.
+2. **LLM router** — `route(transcript) -> Command` (the **only** LLM call in the whole system).
+   Messy natural language → structured JSON, validated by Pydantic.
+3. **Handler runs the command** — deterministic Python, no LLM: advance cursor / insert log row /
+   start timer / fuzzy-match inventory. Mutates session state.
+4. **UI updates** — deterministic payload pushed over the WS; the browser re-renders the panels.
+
+`next_step` advances a cursor over the loaded protocol — **no retrieval, no RAG.** The only place
+the LLM's reasoning is load-bearing is *within step 2* for `log_entry`, where the `Command` payload
+**is** the structured parse (text / sample_id / step_ref). **No TTS** — output is the screen.
+
+---
+
+## The "brain": bulletproof structured intent routing
+
+Do **not** parse free text or markdown JSON. **Pick ONE router style and commit:** force a single
+typed `Command` object via **native structured outputs (`messages.parse`)**, then `dispatch` on
+`intent` in plain Python. *Do not* use Claude tool-use (returning one tool call) for this — both
+work, but structured-output JSON is one call with no tool-result round-trip, less wiring, and a
+straight `if intent == …` dispatch. (Strict tool use is a *complementary* feature, not needed here.)
+Use a strict `Literal` enum — the 5 beats **plus an `unknown` fallback**:
+
+```python
+from typing import Literal, Optional
+from pydantic import BaseModel
+
+class Command(BaseModel):
+    intent: Literal[
+        "load_protocol", "next_step", "log_entry", "start_timer", "find_inventory",
+        "unknown",                           # safe fallback — never a hallucinated payload
+    ]
+    protocol_name:  Optional[str] = None     # load_protocol
+    log_text:       Optional[str] = None     # log_entry
+    sample_id:      Optional[str] = None     # log_entry
+    duration_s:     Optional[int] = None     # start_timer
+    timer_label:    Optional[str] = None     # start_timer
+    reagent_name:   Optional[str] = None     # find_inventory
+    clarify_prompt: Optional[str] = None     # unknown → what to show the user, e.g.
+                                             # "Which protocol? (Available: DNA Extraction)"
+```
+
+**Graceful degradation on partial commands.** A strict schema is a double-edged sword: if a user
+says something clear-but-incomplete ("Hey Otto, load a protocol" with no name), the model may
+hallucinate a payload to satisfy required fields. Defuse it two ways:
+- **In the system prompt:** *"If the intent is clear but a required parameter is missing or
+  ambiguous, do NOT guess. Return `intent` with the relevant field left null, or `intent="unknown"`,
+  and put a one-line question in `clarify_prompt`."* All payload fields are already `Optional`, so a
+  missing param is a valid `Command`, not a validation crash.
+- **In `handlers.py`:** if the required field for an intent is null/empty, **don't act** — push a
+  `ui_update` that renders a large-font **Clarification panel** ("Which protocol would you like to
+  load? (Available: DNA Extraction)"). This is the concrete mechanism behind "never fail silently"
+  (PDF FR-23) and keeps the hands-free loop interactive — the user just re-states with the detail.
+
+- **Anthropic call shape (GA — verify in Slice 0).** Use `client.messages.parse(model=OTTO_MODEL,
+  output_format=Command, ...)` → `resp.parsed_output` is a validated `Command`. The SDK's
+  `output_format=` kwarg is the high-level helper; it maps to `output_config.format` on the wire —
+  same feature, one layer down. Structured outputs are **GA** now (no `structured-outputs-2025-11-13`
+  beta header on a current SDK; older SDKs may still need `client.beta.messages.parse` + the header).
+  **Pin the `anthropic` SDK version** in `requirements.txt` and confirm the exact signature against
+  live docs during pre-flight — this is the one call the whole product hinges on. Supported on
+  **`claude-haiku-4-5`** (and Sonnet 4.6 / Opus 4.8 / Fable 5). Prompt-cache the system prompt.
+- **Router is provider-abstracted** behind `route(transcript) -> Command`. Default
+  **`claude-haiku-4-5`** (low latency/cost). NOTE: `claude-3-5-haiku` is **retired** — use
+  `claude-haiku-4-5`. Swappable to GPT-4o-mini / Gemini Flash (both have native structured outputs)
+  **if that's what the hackathon credits cover** — same `Command` schema, one file changes.
+
+---
+
+## Audio stack (de-risked: MediaRecorder first, PCM only if needed)
+
+**Default path — fast to working, no raw-PCM buffering:** one `getUserMedia` `MediaStream`, tapped
+twice:
+- **`AnalyserNode`** (Web Audio) computes short-window RMS → the **VAD decision** (speech vs silence).
+  Cheap, no encoding — this is what gates cost.
+- **`MediaRecorder(stream, {mimeType:'audio/webm;codecs=opus'})`** with **`start(250)`** → emits
+  ~250 ms encoded blobs via `ondataavailable`. Deepgram's live endpoint accepts containerized
+  `audio/webm;codecs=opus` and resamples server-side — no client downsampling. Forward blobs over the
+  WS **only while VAD = speech**; KeepAlive holds the socket between utterances.
+
+  > **⚠ Container-header gotcha — this is the #1 way the webm path silently breaks.** The **first**
+  > blob a `MediaRecorder` emits carries the webm **initialization headers** (the magic bytes that
+  > define the container + audio track); every blob after that is just a raw cluster frame with **no
+  > header**. So when VAD flips silence→speech you must **instantiate a brand-new `MediaRecorder` for
+  > that utterance** — never `pause()`/`resume()` or reuse the old instance. A fresh instance
+  > guarantees the first blob down the socket for each utterance has a fresh header, so Deepgram's
+  > decoder never hits a "no init segment / unknown sample rate" structure fault. Pattern:
+  > `onSpeechStart → new MediaRecorder(...).start(250)`; `onSpeechEnd → recorder.stop()` (the final
+  > `ondataavailable` flushes the tail), then drop the reference.
+
+**Optimization (only if latency demands it):** `AudioWorklet` → 16 kHz linear16 PCM. Do **not** start
+here — it can burn 2–3 hours on buffer config. Fall back to MediaRecorder the moment it fights you.
+
+---
+
+## Cost-aware voice pipeline
+
+1. **Arm on keypress.** Nothing streams until **Start session**. Stop/idle-timeout closes the socket.
+2. **Client VAD gates audio** (AnalyserNode RMS). Recorder only forwards during speech.
+3. **KeepAlive holds the socket cheaply** during silence — warm socket, **no billable audio**.
+4. **Endpointing closes utterances fast** via `speech_final: true`.
+5. **Wake-phrase gate** ("hey otto …") drops side-chatter in a loud hall. **MVP = one-shot wake:**
+   every command carries the prefix; no open follow-up window (see Decisions). MVP uses
+   transcript-prefix spotting (no extra dep). *Optional upgrade:* local wake word (Picovoice
+   Porcupine) so STT isn't engaged at all until wake.
+6. **No TTS spend at all.** Output is the screen.
+
+Net: streamed seconds ≈ seconds of speech. Nova streaming ~$0.006–0.008/min billed per second; a full
+demo costs cents.
+
+---
+
+## Data model (file-driven; PDF's richer schema)
+
+`data/protocols/dna_extraction.yaml` — steps carry `parameters` + optional `duration_s` (auto-timer):
+```yaml
+protocol:
+  id: dna_extraction
+  name: DNA Extraction
+  aliases: ["dna extraction protocol", "dna extraction"]
+  steps:
+    - id: 1
+      text: "Add 200 µL lysis buffer to sample tube."
+      duration_s: null            # null = manual advance
+      parameters: { volume_ul: 200, reagent: "lysis buffer" }
+    - id: 2
+      text: "Incubate at 65 °C for 10 minutes."
+      duration_s: 600             # auto-starts a 10-min timer when activated
+      parameters: { temp_c: 65 }
+```
+
+`data/inventory.csv` — `name, location, quantity_approx, notes` (fuzzy-matched on `find_inventory`):
+```
+Proteinase K,Freezer 2 shelf B,~4 doses,10 mg/mL aliquots
+Lysis buffer,Fridge 1 shelf A,~200 mL,
+```
+
+**Units — use ASCII `uL`, not `µL`, everywhere the machine reads it.** The micro sign `µ` (and its
+Greek-mu lookalike `μ`) is brittle: Deepgram won't transcribe the *symbol* from speech, it survives
+encoding/log round-trips inconsistently, and it makes string asserts flaky. **Display** YAML/UI text
+may keep the pretty `µL`/`°C`, but **system prompts, canned-transcript fixtures, router-harness
+assertions, and any equality check** use plain `uL` (and spell out `degrees C`). Normalize transcripts
+to ASCII before comparison so "200 microliters" / "200 uL" / "200 µL" all collapse to one form.
+
+**State:** in-memory `active_protocol`, `current_step_index`, `timers[]`; **log** in-memory *and*
+written to **SQLite `notes`** (fast-follow) so it survives refresh (PDF FR-13). Protocols/inventory
+load from files at startup.
+
+---
+
+## Intents / handlers (5 demo beats) — responses are screen updates
+
+| Beat | Utterance | `Command` | Handler → UI update (no speech) |
+|---|---|---|---|
+| 1 | "Load DNA extraction protocol." | `load_protocol{protocol_name}` | set active → **current-step panel shows "Step 1: add 200 µL lysis buffer."** |
+| 5 | "What's next?" | `next_step` | advance cursor → step panel advances (**no RAG**) |
+| 2 | "Log: added 200 µL lysis buffer to sample A." | `log_entry{log_text, sample_id}` | structured row in log feed (+ SQLite, fast-follow) |
+| 3 | "Start a 10-minute incubation timer." | `start_timer{duration_s, timer_label}` | countdown card; expiry → visible flash (+ optional chime) |
+| 4 | "Where's the proteinase K?" | `find_inventory{reagent_name}` | fuzzy match → inventory card "Freezer 2, shelf B, ~4 doses left." |
+| — | "Load a protocol." (no name) / garbled | `unknown{clarify_prompt}` *or* intent with null param | **Clarification panel** (large font): "Which protocol? (Available: DNA Extraction)" — never acts on a guess |
+
+Open-ended `ask` is **stretch** (single Claude call over the loaded protocol JSON — no embeddings).
+Unrecognized/ambiguous → the **Clarification panel**, never a silent failure and never a hallucinated
+action (PDF FR-23). This is a control path, not a 6th demo beat — but it's what makes the live demo
+recover gracefully when the room is loud and a word drops.
+
+---
+
+## Critical files
+
+```
+backend/
+  main.py            # FastAPI, static serving, WS /stream, session wiring
+  deepgram_stt.py    # live STT: connect on arm, KeepAlive, interim/speech_final, custom vocab
+  router.py          # provider-abstracted route(transcript)->Command (Pydantic structured output); ASCII-uL normalize
+  handlers.py        # deterministic load/next/log/timer/find; null/empty param → clarification ui_update; return UI payloads
+  state.py           # SessionState; YAML/CSV loaders; timer manager; SQLite log (fast-follow)
+  data/protocols/*.yaml, data/inventory.csv
+frontend/
+  index.html         # panels: transcript · BIG current step · timers · log · inventory · state chips · clarification area
+  app.js             # WS; MediaStream → AnalyserNode (VAD) + NEW MediaRecorder(250ms) per utterance; wake state
+  styles.css
+.env.example         # DEEPGRAM_API_KEY, LLM key(s), OTTO_MODEL=claude-haiku-4-5
+requirements.txt, README.md (run + demo script)
+```
+
+(No `deepgram_tts.py`, no `worklet.js` in the default path.)
+
+---
+
+## Build order — prove the brain by typing *before* live mic
+
+- **Slice 0 (pre-flight, H0–1).** Confirm credits + reachable models (Deepgram STT; the fast LLM —
+  `claude-haiku-4-5` / GPT-4o-mini / Gemini Flash, whatever credits cover). Verify the **exact
+  `messages.parse` / `output_format` signature** against live docs and pin the SDK version. Scaffold
+  FastAPI + static page + `.env`.
+  - **🔬 WebM spike (do this in the first hour, before building around it).** The MediaRecorder→
+    Deepgram path is the single riskiest integration. Prove it in isolation: `getUserMedia` →
+    `new MediaRecorder('audio/webm;codecs=opus').start(250)` → pipe blobs over a bare WS to Deepgram
+    live → **print one correct transcript** of a sentence you speak. Only once that prints do you
+    build the VAD/wake/router machinery on top. If it fights you here, you've lost minutes, not hours.
+- **Slice 1 — TYPED end-to-end (H1–4).** A text box → `route()` → handlers → state → all 5 UI panels
+  update. **All five beats work by typing, no audio.** Proves the whole product minus the mic and
+  de-risks the demo logic first. This is also the live-fallback input channel.
+- **Slice 2 — live STT (H4–7).** `MediaStream` → AnalyserNode VAD + MediaRecorder(250ms) webm/opus →
+  WS → Deepgram → interim + final → feed `is_final` into the *same proven* `route()`. Add custom
+  vocabulary (microliters, proteinase K, lysis buffer, PCR…).
+- **Slice 3 — cost controls + wake (H7–9).** Arm-once + VAD gating + KeepAlive + wake-phrase gate;
+  mic-status UI (idle / listening / thinking). No TTS to build.
+- **Slice 4 — "feels real" (H9–13).** SQLite log persistence; auto-timers; accessibility (ARIA live +
+  visible alerts); 2nd protocol; harden the exact 5 utterances + prompts.
+- **Slice 5 — polish + fallbacks (H13–17).** UI pass (frontend-design); keep the **typed box +
+  push-to-talk** as live fallbacks; WS reconnect + connection-state indicator.
+- **Reserve (H17–23).** **≥5 full rehearsals** in a noisy room; tune VAD/wake thresholds + latency;
+  record a **backup demo video**; buffer.
+
+(Dropping TTS frees ~1–2 hours vs. the prior order — folded into more Reserve.)
+
+---
+
+## Pre-flight checklist (do first)
+
+- [ ] Deepgram key works; pick the STT model the account has (nova-2 or nova-3).
+- [ ] LLM credits confirmed; set `OTTO_MODEL` (default `claude-haiku-4-5`; **not** retired
+      `claude-3-5-haiku`). Confirm the chosen model supports **structured outputs / JSON mode**.
+- [ ] **Pin the `anthropic` SDK version** and confirm the live `messages.parse(output_format=…)`
+      signature returns `.parsed_output` — this one call is load-bearing.
+- [ ] **WebM spike passed:** MediaRecorder(250ms, audio/webm;codecs=opus) → Deepgram live →
+      one correct transcript printed (see Slice 0). Do this before building the audio machinery.
+- [ ] Target browser = **Chrome/Edge** (Firefox/Safari excluded per PDF NFR — MediaStream/Audio).
+- [ ] API keys server-side in `.env` only — never shipped to the browser (PDF security NFR).
+
+---
+
+## Risks & fallbacks
+
+- **AudioWorklet/PCM rabbit hole** → default to **MediaRecorder(250ms) webm/opus** (Deepgram resamples
+  server-side); only attempt PCM if latency demands it.
+- **Deepgram "no init segment / unknown sample rate" faults** → caused by reusing one MediaRecorder
+  across utterances (only the first blob has webm headers). Fix: **a fresh `MediaRecorder` per
+  utterance** (see Audio stack). Proven by the Slice-0 webm spike.
+- **Mic/VAD flaky in a loud hall** → the **typed box** (Slice 1) + **push-to-talk toggle** are the
+  live fallbacks (same `route()` path) — built first, free insurance.
+- **Loose/invalid JSON from the router** → native structured outputs + Pydantic `Literal` enum make
+  malformed payloads impossible to act on; validation error → visible clarification.
+- **Clear-but-incomplete command → hallucinated payload** (strict-schema backfire) → system prompt
+  says "don't guess: null the field or return `unknown` + `clarify_prompt`"; handler renders the
+  Clarification panel instead of acting. Never a silent or wrong action.
+- **`µ`/`°` mangled in speech, logs, or asserts** → ASCII-normalize to `uL`/`degrees C` for all
+  machine-read text (prompts, fixtures, equality checks); keep pretty symbols only in display.
+- **Transcription mangles lab terms** → Deepgram custom vocabulary / keyterm prompting.
+- **Deepgram WS drops** → auto-reconnect + visible connection state.
+- **Latency >2 s** → `claude-haiku-4-5`, trimmed/cached system prompt (no TTS hop to begin with).
+- **Live demo fails** → pre-recorded backup video (Reserve).
+
+---
+
+## Verification
+
+- **Router harness (fast, no audio):** feed the canned transcripts into `route()`; assert each
+  returns the right `Command` (e.g. log → `intent="log_entry", log_text="added 200 uL lysis buffer",
+  sample_id="A"`; "what's next" → `intent="next_step"`). **Include negative cases:** "load a protocol"
+  (no name) → `protocol_name` null or `intent="unknown"` with a non-empty `clarify_prompt`, **never** a
+  guessed name. Assert on ASCII `uL` (normalize first). Run on every prompt tweak. This *is* Slice 1's
+  acceptance test.
+- **End-to-end:** `uvicorn backend.main:app` → Start → speak the 5 lines → each panel updates within
+  ~2 s (PDF FR-08), including the timer-expiry alert.
+- **Cost check:** Deepgram dashboard shows **streamed seconds ≈ speech seconds**, not wall-clock
+  (proves VAD gating + KeepAlive).
+- **Persistence (fast-follow):** refresh the page → the log feed reloads from SQLite.
+
+---
+
+## Sources
+- Deepgram: live STT https://developers.deepgram.com/docs/live-streaming-audio ·
+  KeepAlive https://developers.deepgram.com/docs/audio-keep-alive ·
+  end-of-speech https://developers.deepgram.com/docs/understanding-end-of-speech-detection
+- Pricing: https://deepgram.com/learn/speech-to-text-api-pricing-breakdown-2025
+- Product north star: `real haq doc.pdf` (Electronic Lab Notebook requirements, v0.1)

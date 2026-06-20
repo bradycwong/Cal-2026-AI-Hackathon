@@ -1,0 +1,178 @@
+# Plan 3: Lock the Otto skeleton (typed-first), keep organs swappable
+
+## Context
+
+This is a greenfield hackathon build ("Otto" — a voice-driven Electronic Lab Notebook). The repo
+currently has **no application code** — only `plan_1.txt`, `plan_2.txt`, `improved_requirements_doc.pdf`,
+and a stub `README.md`.
+
+The user's directive: most of this product can be iterated later (Claude vs OpenAI, YAML vs JSON,
+in-memory vs SQLite, MediaRecorder vs AudioWorklet, TTS, custom vocab, styling, persistence, Q&A).
+What is **painful to change midway** is the **data-flow boundaries**. So we lock the skeleton now —
+while it's cheap — and keep every vendor/feature behind it swappable.
+
+The skeleton, stated once:
+
+```
+transcript (string)
+  -> route(transcript)            returns ONE validated Command
+  -> handle_command(Command)      deterministic; mutates SessionState
+  -> emit UI events               over WS /ws/events
+```
+
+This plan builds that skeleton **typed-first**: a text box fills `transcript`. Voice, SQLite, and
+everything else hang off this spine later without touching it. Scope = a working **typed** demo of
+all 5 beats + the clarification path. **No audio, no SQLite, no second protocol in this pass** —
+those are explicitly the swappable organs.
+
+Two spec conflicts were reconciled before planning (see resolutions in the locked invariants below):
+the **Command schema** (flat-5 per the user's message, vs the PDF's nested-4) and the **WS event
+shape** (user picked **Hybrid: coarse-4 outer types + PDF field names inside**). The audio-codec
+conflict (PDF mandates PCM/16k/100ms; plan_2 prefers MediaRecorder/webm/250ms) is **not** a locked
+boundary — it lives downstream of `transcript` and is swappable.
+
+---
+
+## The 5 locked invariants (do not violate; everything else is swappable)
+
+1. **One Command schema.** Every transcript becomes exactly one validated `Command` object. Intents:
+   `load_protocol`, `next_step`, `log_entry`, `start_timer`, `find_inventory`, plus an `unknown`
+   safe-fallback. *(Maps onto the PDF's `log`/`guide`/`find`/`ask`: `guide.action` is split into
+   `load_protocol`/`next_step`/`start_timer`; `prev`/`repeat`/open-ended `ask` are deferred.)*
+2. **Typed-first pipeline.** Build `text box -> route -> handle -> UI` first. Voice is later "just
+   another way to fill the transcript" — it calls the **same** `ingest(transcript)` entrypoint.
+3. **Deterministic handlers own state.** The LLM never mutates state. `handle_command` is plain
+   Python: advance cursor / append log / start timer / fuzzy-match inventory. It also does the
+   field-name translation between the `Command` and persistence (e.g. `Command.log_text -> note.text`).
+4. **Server-side keys only.** Browser never sees `DEEPGRAM_API_KEY` / `ANTHROPIC_API_KEY`. All vendor
+   calls are backend-proxied. (PDF NFR-Security.)
+5. **Event-based UI contract (Hybrid — locked).** Backend pushes a single typed envelope; the
+   frontend dispatches on **4 outer types**, with **PDF field names inside** the payloads:
+
+   ```
+   { type, payload, ts }
+   type ∈ { transcript_update, command_result, timer_update, error }
+
+   transcript_update.payload = { text, is_final }
+   command_result.payload    = { kind, ... }   where kind ∈
+       step_change       -> { prev_step, current_step, next_step }
+       log_entry         -> { id, text, timestamp, sample_id, step_ref }
+       inventory_result  -> { name, location, quantity_approx }
+       clarify           -> { message }        # never-fail-silently
+   timer_update.payload      = { timer_id, label, remaining_s, expired }
+   error.payload             = { code, message, source }
+   ```
+   Adding a new command kind adds a `kind` value — **never** a new event type or a frontend dispatch
+   change. This is the loose-coupling guarantee.
+
+---
+
+## Files to create
+
+```
+backend/
+  main.py        # FastAPI; static serving; WS /ws/events (output); POST /api/ingest (typed input);
+                 # session wiring; reads keys from env ONLY
+  schema.py      # Pydantic Command (flat-5 + unknown); event-envelope builders (make_event, command_result kinds)
+  router.py      # route(transcript)->Command via Anthropic messages.parse(output_format=Command);
+                 # ASCII-uL normalize; provider-abstracted (one file to swap vendors)
+  handlers.py    # handle_command(cmd, state)->list[event]; deterministic; missing/empty param -> clarify event
+  state.py       # SessionState (active_protocol, current_step_index, timers, in-memory log); YAML/CSV loaders
+  data/protocols/dna_extraction.yaml
+  data/inventory.csv
+frontend/
+  index.html     # panels: transcript · BIG current step · timers · log feed · inventory ·
+                 # clarification area · state chips; + a typed command box (skeleton input + permanent fallback)
+  app.js         # WS client; renders on the 4 event types; submits typed transcript
+  styles.css
+.env.example     # DEEPGRAM_API_KEY, ANTHROPIC_API_KEY, OTTO_MODEL=claude-haiku-4-5
+requirements.txt # fastapi, uvicorn[standard], pydantic, anthropic (PINNED), pyyaml
+README.md        # run command + the 5 typed demo lines
+```
+
+(No `deepgram_stt.py`, no SQLite, no audio in this pass — those are the swappable organs added next.)
+
+---
+
+## Key contracts (the boundaries, written out)
+
+**`schema.py` — the Command (locked shape):**
+```python
+from typing import Literal, Optional
+from pydantic import BaseModel
+
+class Command(BaseModel):
+    intent: Literal["load_protocol","next_step","log_entry","start_timer","find_inventory","unknown"]
+    protocol_name:  Optional[str] = None
+    log_text:       Optional[str] = None
+    sample_id:      Optional[str] = None
+    duration_s:     Optional[int] = None
+    timer_label:    Optional[str] = None
+    reagent_name:   Optional[str] = None
+    clarify_prompt: Optional[str] = None   # unknown / missing-param -> shown in clarification area
+```
+
+**The single ingestion spine (input channel swappable, spine locked):**
+```python
+async def ingest(transcript: str) -> None:
+    cmd = route(transcript)                 # router.py — the ONLY LLM call
+    events = handle_command(cmd, state)     # handlers.py — deterministic
+    await broadcast(events)                 # over WS /ws/events
+```
+- Typed box -> `POST /api/ingest {transcript}` -> `ingest()` (also the curl-able test entry).
+- Later, Deepgram `is_final` -> the **same** `ingest()`. Nothing else changes.
+
+**`router.py` — Anthropic call (verified current, GA):**
+`client.messages.parse(model=OTTO_MODEL, output_format=Command, ...)` -> `resp.parsed_output`.
+`output_format=` is the SDK helper for `output_config.format` on the wire; structured outputs are GA
+(no beta header on a current SDK); `claude-haiku-4-5` is supported. **Pin the `anthropic` version.**
+System prompt rule: *if intent is clear but a required param is missing/ambiguous, do NOT guess —
+leave the field null or return `intent="unknown"` and put a one-line question in `clarify_prompt`.*
+Normalize transcripts to ASCII (`uL`, `degrees C`) before/within routing.
+
+**`handlers.py` — deterministic dispatch (per intent):**
+`load_protocol` -> set active, cursor=0, emit `step_change`. `next_step` -> advance cursor, emit
+`step_change`. `log_entry` -> append to in-memory log, emit `command_result/log_entry` (field names
+`id,text,timestamp,sample_id,step_ref`; `Command.log_text -> text`). `start_timer` -> create timer,
+emit `timer_update`. `find_inventory` -> fuzzy match CSV (`difflib.get_close_matches`), emit
+`inventory_result` or a `clarify` ("I don't have a record for X"). `unknown` / null required param ->
+`command_result/clarify`. **Never** mutate state from the LLM; **never** fail silently.
+
+---
+
+## Build order (this pass only)
+
+1. **Scaffold + keys (Slice 0).** Create files above; FastAPI serves `frontend/` static + WS
+   `/ws/events` + `POST /api/ingest`; `.env` loaded server-side. Confirm `anthropic` SDK signature
+   live and pin it. Record the 5 locked invariants as a new **"Locked invariants"** section at the
+   top of `plan_2.txt` (the living build doc).
+2. **Command + router.** `schema.py` then `router.py`; prove `route()` in isolation against canned
+   transcripts (the router harness below) before any UI.
+3. **State + handlers.** `state.py` (load `dna_extraction.yaml` + `inventory.csv`) then `handlers.py`
+   returning the locked event shapes. Unit-test `handle_command` with hand-built `Command`s.
+4. **Wire the spine.** `ingest()` -> `POST /api/ingest`; broadcast over WS.
+5. **Frontend.** `index.html` panels + typed box; `app.js` connects WS, dispatches on the 4 event
+   types, renders BIG current-step + state chips + clarification area; submits transcript.
+6. **Demo-clean the 5 typed lines** end to end.
+
+---
+
+## Verification
+
+- **Router harness (fast, no UI):** feed canned transcripts to `route()`; assert each `Command`
+  (e.g. `"log: added 200 uL lysis buffer to sample A"` -> `intent="log_entry", log_text~="added 200
+  uL lysis buffer", sample_id="A"`; `"what's next"` -> `next_step`). **Negative cases:** `"load a
+  protocol"` (no name) -> `protocol_name` null **or** `intent="unknown"` with non-empty
+  `clarify_prompt` — never a guessed name. Assert on ASCII `uL` (normalize first).
+- **Handler unit tests:** hand-built `Command`s -> assert the exact locked event shapes/field names.
+- **End-to-end typed:** `uvicorn backend.main:app` -> open page -> type the 5 lines -> each panel
+  updates; the missing-param case renders the clarification area, not a crash or silent drop.
+- **Key-safety check:** grep `frontend/` for any API key / vendor secret -> must be **zero**; verify
+  the browser network tab never carries a key.
+- **Swap smoke test (proves the boundary holds):** changing the typed box to a second input widget,
+  or stubbing `route()` to return a fixed `Command`, drives the full UI with no other edits.
+
+## Explicitly deferred (swappable organs — NOT in this pass)
+Live Deepgram STT + VAD + wake word; MediaRecorder/PCM choice; SQLite persistence (in-memory log for
+now, DB field names already matched so it's a drop-in); custom vocabulary; 2nd protocol; auto-timers
+on step duration; TTS; open-ended `ask`; styling polish; protocol upload/library pages.
