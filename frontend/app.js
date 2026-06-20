@@ -249,13 +249,40 @@ function escapeHtml(s) {
 let micStream = null;
 let recorder = null;
 let audioWS = null;
+let manualStop = false;        // distinguish a user Stop from an unexpected drop
+let reconnects = 0;
+const MAX_RECONNECTS = 3;
 
 function pickMime() {
   const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"];
   return candidates.find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
 }
 
+function setMicUI(active) {
+  els.mic.textContent = active ? "listening" : "mic off";
+  els.mic.className = "chip " + (active ? "chip-ok" : "chip-idle");
+  els.micBtn.textContent = active ? "Stop session" : "Start session";
+  els.micBtn.classList.toggle("active", active);
+  els.micBtn.setAttribute("aria-pressed", active ? "true" : "false");
+}
+
 async function startMic() {
+  manualStop = false;
+  reconnects = 0;
+  // Feature detection -> a clear, actionable error instead of a silent no-op.
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    onError({ message: "Microphone needs a secure context — open this over https or http://localhost." });
+    return;
+  }
+  if (!window.MediaRecorder) {
+    onError({ message: "This browser doesn't support MediaRecorder; try Chrome or Firefox." });
+    return;
+  }
+  const mimeType = pickMime();
+  if (!mimeType) {
+    onError({ message: "No supported audio codec (webm/opus) in this browser." });
+    return;
+  }
   try {
     micStream = await navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
@@ -264,46 +291,66 @@ async function startMic() {
     onError({ message: "Microphone permission denied: " + err });
     return;
   }
+  openAudioSocket(mimeType);
+}
+
+// Each socket gets its OWN MediaRecorder so the webm header is sent fresh on
+// (re)connect — a header-mid-stream would make the new Deepgram session deaf.
+function openAudioSocket(mimeType) {
   const proto = location.protocol === "https:" ? "wss" : "ws";
   audioWS = new WebSocket(`${proto}://${location.host}/ws/audio`);
   audioWS.binaryType = "arraybuffer";
   audioWS.onopen = () => {
-    const mimeType = pickMime();
+    reconnects = 0;
     recorder = new MediaRecorder(micStream, mimeType ? { mimeType } : undefined);
     recorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0 && audioWS && audioWS.readyState === WebSocket.OPEN) {
-        e.data.arrayBuffer().then((buf) => audioWS.send(buf));
+        e.data.arrayBuffer().then((buf) => audioWS.send(buf)).catch(() => {});
       }
     };
-    recorder.start(250); // one MediaRecorder for the session => header-safe stream
-    els.mic.textContent = "listening";
-    els.mic.className = "chip chip-ok";
-    els.micBtn.textContent = "Stop session";
-    els.micBtn.classList.add("active");
-    els.micBtn.setAttribute("aria-pressed", "true");
+    recorder.onerror = () => onError({ message: "Recorder error — restarting may help." });
+    recorder.start(250);
+    setMicUI(true);
     setState("listening", "chip-warn");
   };
-  audioWS.onclose = () => stopMic();
-  audioWS.onerror = () => onError({ message: "Audio socket error" });
+  audioWS.onclose = () => {
+    // The recorder is bound to a dead socket; stop it so a reconnect starts clean.
+    try { if (recorder && recorder.state !== "inactive") recorder.stop(); } catch (_) {}
+    recorder = null;
+    if (manualStop) { finalizeStop(); return; }
+    if (micStream && reconnects < MAX_RECONNECTS) {
+      reconnects += 1;
+      els.mic.textContent = "reconnecting";
+      els.mic.className = "chip chip-warn";
+      setState("reconnecting", "chip-warn");
+      setTimeout(() => { if (!manualStop && micStream) openAudioSocket(mimeType); }, 500 * reconnects);
+    } else {
+      onError({ message: "Voice connection lost. Click Start session to retry." });
+      finalizeStop();
+    }
+  };
+  audioWS.onerror = () => { /* onclose fires next and handles recovery */ };
 }
 
 function stopMic() {
+  manualStop = true;
   try { if (recorder && recorder.state !== "inactive") recorder.stop(); } catch (_) {}
-  try { if (micStream) micStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
   try {
     if (audioWS && audioWS.readyState === WebSocket.OPEN) {
       audioWS.send(JSON.stringify({ type: "stop" }));
       audioWS.close();
     }
   } catch (_) {}
+  if (!audioWS || audioWS.readyState === WebSocket.CLOSED) finalizeStop();
+}
+
+function finalizeStop() {
+  try { if (micStream) micStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
   recorder = null;
   micStream = null;
   audioWS = null;
-  els.mic.textContent = "mic off";
-  els.mic.className = "chip chip-idle";
-  els.micBtn.textContent = "Start session";
-  els.micBtn.classList.remove("active");
-  els.micBtn.setAttribute("aria-pressed", "false");
+  reconnects = 0;
+  setMicUI(false);
   setState("idle", "");
 }
 

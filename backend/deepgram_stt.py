@@ -37,6 +37,35 @@ KEYWORDS = [
 
 OnText = Callable[[str], Awaitable[None]]
 
+# Connect resilience: Deepgram's socket can blip on open. Retry a few times with
+# linear backoff before giving up so a transient hiccup doesn't kill the session.
+CONNECT_ATTEMPTS = int(os.getenv("DEEPGRAM_CONNECT_ATTEMPTS", "3"))
+CONNECT_OPEN_TIMEOUT = float(os.getenv("DEEPGRAM_OPEN_TIMEOUT", "8"))
+
+
+def interpret_message(data: dict) -> tuple[str, str]:
+    """Pure: map one Deepgram message to (action, text).
+
+    action ∈ {"interim", "segment", "segment_flush", "flush", "ignore"}:
+      * interim       — partial words for the live panel only
+      * segment       — a finalized chunk to accumulate (is_final, not speech_final)
+      * segment_flush — finalized chunk that ends the utterance (speech_final)
+      * flush         — endpoint with no new text (UtteranceEnd) -> emit what we have
+      * ignore        — empty/keepalive/metadata; do nothing
+    """
+    mtype = data.get("type")
+    if mtype == "Results":
+        alts = (data.get("channel") or {}).get("alternatives") or [{}]
+        text = (alts[0].get("transcript") or "").strip()
+        if not text:
+            return ("ignore", "")
+        if data.get("is_final"):
+            return ("segment_flush" if data.get("speech_final") else "segment", text)
+        return ("interim", text)
+    if mtype == "UtteranceEnd":
+        return ("flush", "")
+    return ("ignore", "")
+
 
 def _build_url() -> str:
     params = [
@@ -61,11 +90,13 @@ async def run_deepgram_session(
     if not key:
         raise RuntimeError("DEEPGRAM_API_KEY is not set on the server")
 
-    async with websockets.connect(
-        _build_url(), additional_headers={"Authorization": f"Token {key}"}
-    ) as dg:
+    dg = await _connect_with_retry(
+        _build_url(), {"Authorization": f"Token {key}"}
+    )
+    try:
         stop = asyncio.Event()
         segments: list[str] = []
+        last_final = [""]  # boxed so the closure can dedup consecutive finals
 
         async def pump_browser_to_dg() -> None:
             try:
@@ -95,25 +126,24 @@ async def run_deepgram_session(
         async def pump_dg_to_callbacks() -> None:
             try:
                 async for raw in dg:
-                    data = json.loads(raw)
-                    mtype = data.get("type")
-                    if mtype == "Results":
-                        alt = data["channel"]["alternatives"][0]
-                        text = (alt.get("transcript") or "").strip()
-                        if not text:
-                            continue
-                        if data.get("is_final"):
-                            segments.append(text)
-                            if data.get("speech_final"):
-                                await _flush(segments, on_final)
-                        else:
-                            await on_interim(text)
-                    elif mtype == "UtteranceEnd":
-                        await _flush(segments, on_final)
+                    try:
+                        data = json.loads(raw)
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+                    action, text = interpret_message(data)
+                    if action == "interim":
+                        await on_interim(text)
+                    elif action == "segment":
+                        segments.append(text)
+                    elif action == "segment_flush":
+                        segments.append(text)
+                        await _flush(segments, last_final, on_final)
+                    elif action == "flush":
+                        await _flush(segments, last_final, on_final)
             except websockets.ConnectionClosed:
                 pass
             finally:
-                await _flush(segments, on_final)  # drain leftovers on close
+                await _flush(segments, last_final, on_final)  # drain on close
                 stop.set()
 
         async def keepalive() -> None:
@@ -130,12 +160,36 @@ async def run_deepgram_session(
         await asyncio.gather(
             pump_browser_to_dg(), pump_dg_to_callbacks(), keepalive()
         )
+    finally:
+        try:
+            await dg.close()
+        except Exception:
+            pass
 
 
-async def _flush(segments: list[str], on_final: OnText) -> None:
+async def _connect_with_retry(url: str, headers: dict[str, str]):
+    """Open the Deepgram socket, retrying transient failures with linear backoff."""
+    last_exc: Exception | None = None
+    for attempt in range(1, CONNECT_ATTEMPTS + 1):
+        try:
+            return await websockets.connect(
+                url, additional_headers=headers, open_timeout=CONNECT_OPEN_TIMEOUT
+            )
+        except Exception as exc:  # network/handshake hiccup -> retry
+            last_exc = exc
+            if attempt < CONNECT_ATTEMPTS:
+                await asyncio.sleep(0.4 * attempt)
+    raise RuntimeError(f"could not connect to Deepgram after {CONNECT_ATTEMPTS} attempts") from last_exc
+
+
+async def _flush(segments: list[str], last_final: list[str], on_final: OnText) -> None:
     if not segments:
         return
     utterance = " ".join(segments).strip()
     segments.clear()
-    if utterance:
-        await on_final(utterance)
+    if not utterance:
+        return
+    if utterance == last_final[0]:  # drop a duplicate of the immediately prior final
+        return
+    last_final[0] = utterance
+    await on_final(utterance)
