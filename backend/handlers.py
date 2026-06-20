@@ -37,14 +37,17 @@ def _step_change_events(state: SessionState) -> list[dict[str, Any]]:
     ]
 
 
+def _available_protocols(state: SessionState) -> str:
+    return ", ".join(p.name for p in state.protocols.values()) or "none loaded"
+
+
 def _handle_load_protocol(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
     if not cmd.protocol_name:
-        msg = cmd.clarify_prompt or "Which protocol would you like to load?"
-        return [clarify_event(msg)]
+        # State is authoritative for what's loadable; don't trust a stale prompt.
+        return [clarify_event(f"Which protocol would you like to load? (Available: {_available_protocols(state)})")]
     proto = state.find_protocol(cmd.protocol_name)
     if proto is None:
-        available = ", ".join(p.name for p in state.protocols.values()) or "none loaded"
-        return [clarify_event(f"I don't have a protocol called '{cmd.protocol_name}'. Available: {available}.")]
+        return [clarify_event(f"I don't have a protocol called '{cmd.protocol_name}'. Available: {_available_protocols(state)}.")]
     state.active_protocol = proto
     state.current_step_index = 0
     state.clear_timers()

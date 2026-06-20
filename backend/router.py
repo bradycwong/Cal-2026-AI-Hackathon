@@ -160,9 +160,10 @@ def deterministic_route(transcript: str) -> Command:
         name = re.sub(r"\bprotocol\b", "", rest, flags=re.IGNORECASE).strip()
         # "load a protocol" with no actual name -> do not guess
         if not name or name.lower() in {"a", "the", "protocol", ""}:
+            # Handler fills the authoritative "Available: …" list from state.
             return Command(
                 intent="load_protocol",
-                clarify_prompt="Which protocol would you like to load? (Available: DNA Extraction)",
+                clarify_prompt="Which protocol would you like to load?",
             )
         return Command(intent="load_protocol", protocol_name=name)
 

@@ -60,6 +60,37 @@ def test_start_timer_event_shape():
     assert ev["payload"]["expired"] is False
 
 
+def test_all_protocols_load_and_advance():
+    # Generality: every shipped protocol loads and exposes step 1.
+    state = fresh_state()
+    for name in ["DNA Extraction", "PCR Setup", "Bacterial Transformation", "Plasmid Miniprep"]:
+        events = handle_command(Command(intent="load_protocol", protocol_name=name), state)
+        p = events[0]["payload"]
+        assert p["kind"] == "step_change", f"{name} did not load"
+        assert p["current_step"]["id"] == 1
+
+
+def test_new_protocol_reagents_in_inventory():
+    state = fresh_state()
+    for reagent, expect in [
+        ("master mix", "2X master mix"),
+        ("competent cells", "Competent cells"),
+        ("neutralization buffer", "Neutralization buffer"),
+    ]:
+        events = handle_command(Command(intent="find_inventory", reagent_name=reagent), state)
+        p = events[0]["payload"]
+        assert p["kind"] == "inventory_result", f"{reagent} not found"
+        assert p["name"] == expect
+
+
+def test_load_no_name_lists_all_protocols():
+    state = fresh_state()
+    events = handle_command(Command(intent="load_protocol"), state)
+    msg = events[0]["payload"]["message"]
+    for name in ["DNA Extraction", "PCR Setup", "Bacterial Transformation", "Plasmid Miniprep"]:
+        assert name in msg
+
+
 def test_find_inventory_hit():
     state = fresh_state()
     events = handle_command(Command(intent="find_inventory", reagent_name="proteinase K"), state)
