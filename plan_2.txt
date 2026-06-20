@@ -1,9 +1,38 @@
 # Plan: Electronic Lab Notebook ("Otto") — Hands-Free AI Lab Assistant
 
-> **Two docs, one product.** `real haq doc.pdf` is the **north-star spec** (vision, full
-> requirements, data models, NFRs). **This file is the 23-hour build plan** — what we actually
+> **Two docs, one product.** `improved_requirements_doc.pdf` is the **north-star spec** (vision,
+> full requirements, data models, NFRs). **This file is the 23-hour build plan** — what we actually
 > ship and in what order. Where they disagree, the build plan wins for *what to build now*; the
 > PDF wins for *where this is going*.
+
+---
+
+## Locked invariants (from Plan 3 — do not violate; everything else is swappable)
+
+The typed-first skeleton is built and these boundaries are now frozen. Voice, SQLite, and every
+other organ hang off this spine without touching it.
+
+1. **One Command schema.** Every transcript -> exactly one validated `Command`. Intents:
+   `load_protocol`, `next_step`, `log_entry`, `start_timer`, `find_inventory`, + `unknown`.
+2. **Typed-first pipeline.** `text box -> route -> handle -> UI`. Voice later calls the **same**
+   `ingest(transcript)` entrypoint — nothing else changes.
+3. **Deterministic handlers own state.** The LLM never mutates state. `handle_command` is plain
+   Python and does the `Command -> persistence` field translation (`log_text -> note.text`).
+4. **Server-side keys only.** Browser never sees `DEEPGRAM_API_KEY` / `ANTHROPIC_API_KEY`.
+5. **Event-based UI contract (Hybrid).** One envelope `{ type, payload, ts }`; frontend dispatches
+   on **4 outer types** `{ transcript_update, command_result, timer_update, error }` with PDF field
+   names inside. A new command adds a `command_result.kind` value — **never** a new event type.
+
+**Router fallback (locked, per user directive).** The LLM is primary, but `router.py` ships a tiny
+**deterministic fallback** (`deterministic_route`) that covers the five exact demo lines with no
+network/SDK. `ROUTER_MODE=auto` uses the LLM when `ANTHROPIC_API_KEY` is set and falls back on any
+error — API weirdness must never kill the pitch.
+
+> ⏱ **Hard timebox.** If the typed demo is not working by hour 4, **stop expanding and simplify** —
+> ship the five typed beats + clarification path and harden those, nothing more.
+
+Immediately after the typed five-beat demo is verified, go **straight to Deepgram audio** (this
+plan): the project only becomes impressive once it is voice-driven.
 
 ## Context
 
@@ -244,10 +273,10 @@ load from files at startup.
 | Beat | Utterance | `Command` | Handler → UI update (no speech) |
 |---|---|---|---|
 | 1 | "Load DNA extraction protocol." | `load_protocol{protocol_name}` | set active → **current-step panel shows "Step 1: add 200 µL lysis buffer."** |
-| 5 | "What's next?" | `next_step` | advance cursor → step panel advances (**no RAG**) |
 | 2 | "Log: added 200 µL lysis buffer to sample A." | `log_entry{log_text, sample_id}` | structured row in log feed (+ SQLite, fast-follow) |
 | 3 | "Start a 10-minute incubation timer." | `start_timer{duration_s, timer_label}` | countdown card; expiry → visible flash (+ optional chime) |
 | 4 | "Where's the proteinase K?" | `find_inventory{reagent_name}` | fuzzy match → inventory card "Freezer 2, shelf B, ~4 doses left." |
+| 5 | "What's next?" | `next_step` | advance cursor → step panel advances (**no RAG**) |
 | — | "Load a protocol." (no name) / garbled | `unknown{clarify_prompt}` *or* intent with null param | **Clarification panel** (large font): "Which protocol? (Available: DNA Extraction)" — never acts on a guess |
 
 Open-ended `ask` is **stretch** (single Claude call over the loaded protocol JSON — no embeddings).
@@ -367,4 +396,4 @@ requirements.txt, README.md (run + demo script)
   KeepAlive https://developers.deepgram.com/docs/audio-keep-alive ·
   end-of-speech https://developers.deepgram.com/docs/understanding-end-of-speech-detection
 - Pricing: https://deepgram.com/learn/speech-to-text-api-pricing-breakdown-2025
-- Product north star: `real haq doc.pdf` (Electronic Lab Notebook requirements, v0.1)
+- Product north star: `improved_requirements_doc.pdf` (Electronic Lab Notebook requirements, v0.3)

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Otto — Voice-Driven ELN</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>Otto</h1>
+    <div class="chips">
+      <span id="chip-conn" class="chip chip-idle">disconnected</span>
+      <span id="chip-state" class="chip">idle</span>
+    </div>
+  </header>
+
+  <main class="grid">
+    <!-- BIG current step: the single biggest thing on screen -->
+    <section class="panel step-panel" aria-live="polite">
+      <h2 class="panel-title">Current step</h2>
+      <div class="step-prev" id="step-prev"></div>
+      <div class="step-current" id="step-current">No protocol loaded.</div>
+      <div class="step-next" id="step-next"></div>
+    </section>
+
+    <section class="panel">
+      <h2 class="panel-title">Transcript</h2>
+      <div class="transcript" id="transcript"></div>
+    </section>
+
+    <section class="panel">
+      <h2 class="panel-title">Timers</h2>
+      <div class="timers" id="timers"><div class="muted">No active timers.</div></div>
+    </section>
+
+    <section class="panel">
+      <h2 class="panel-title">Log</h2>
+      <ul class="log" id="log"></ul>
+    </section>
+
+    <section class="panel">
+      <h2 class="panel-title">Inventory</h2>
+      <div class="inventory" id="inventory"><div class="muted">No lookups yet.</div></div>
+    </section>
+
+    <!-- never-fail-silently: clarification area -->
+    <section class="panel clarify-panel" id="clarify-panel" aria-live="assertive">
+      <h2 class="panel-title">Clarification</h2>
+      <div class="clarify" id="clarify"><div class="muted">—</div></div>
+    </section>
+  </main>
+
+  <!-- Typed command box: skeleton input AND permanent live fallback -->
+  <form class="composer" id="composer" autocomplete="off">
+    <input id="composer-input" type="text" placeholder="Type a command — e.g. 'Load DNA extraction protocol'" />
+    <button type="submit">Send</button>
+  </form>
+
+  <datalist id="demo-lines"></datalist>
+  <script src="/static/app.js"></script>
+</body>
+</html>
