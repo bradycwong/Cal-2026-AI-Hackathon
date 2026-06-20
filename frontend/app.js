@@ -111,11 +111,25 @@ function fmtStep(s) {
 }
 
 function onStepChange(p) {
+  // A null prev_step means this is the first step of a freshly loaded protocol;
+  // the server cleared its timers, so drop stale timer cards to match.
+  if (!p.prev_step) clearTimerCards();
   els.stepPrev.textContent = fmtStep(p.prev_step);
   els.stepCurrent.textContent = p.current_step ? fmtStep(p.current_step) : "Protocol complete.";
   els.stepNext.textContent = fmtStep(p.next_step);
   clearClarify();
   setState("done", "chip-ok");
+}
+
+function clearTimerCards() {
+  timers.forEach((el) => el.remove());
+  timers.clear();
+  if (!els.timers.querySelector(".muted")) {
+    const m = document.createElement("div");
+    m.className = "muted";
+    m.textContent = "No active timers.";
+    els.timers.appendChild(m);
+  }
 }
 
 function onLogEntry(p) {

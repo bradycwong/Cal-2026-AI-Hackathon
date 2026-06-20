@@ -27,6 +27,7 @@ class Step:
     id: int
     text: str
     duration_s: Optional[int] = None
+    timer_label: Optional[str] = None  # label for the auto-timer on timed steps
     parameters: dict[str, Any] = field(default_factory=dict)
 
     def as_event(self) -> dict[str, Any]:
@@ -74,6 +75,7 @@ def load_protocol_file(path: Path) -> Protocol:
             id=int(s["id"]),
             text=str(s["text"]),
             duration_s=s.get("duration_s"),
+            timer_label=s.get("timer_label"),
             parameters=s.get("parameters") or {},
         )
         for s in p["steps"]

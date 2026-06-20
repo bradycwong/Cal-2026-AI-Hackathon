@@ -56,7 +56,16 @@ Type each into the command box at the bottom:
 5. `What's next?`                         → step panel advances
 
 Clarification path (never fails silently): `Load a protocol.` → clarification
-area asks "Which protocol?" instead of guessing.
+area asks "Which protocol?" (listing the loaded protocols) instead of guessing.
+
+**Auto-timers.** Steps that declare a `duration_s` start their countdown
+automatically when they become the current step (on load or "what's next"),
+labelled from the step's `timer_label`. You can still start ad-hoc timers by
+voice/typing. Disable with `OTTO_AUTO_TIMERS=false`.
+
+**Protocols.** Four ship in `backend/data/protocols/` (DNA Extraction, PCR Setup,
+Bacterial Transformation, Plasmid Miniprep). Add another by dropping a YAML file
+in that directory — no code change; it's auto-loaded and selectable by name.
 
 ## Test
 
@@ -89,5 +98,5 @@ Log persistence: the log feed is written to SQLite (`backend/data/otto.db`, set
 `GET /api/state` on load, so it survives a page refresh or a server restart.
 Protocols + inventory stay file-driven; the rest of session state is in-memory.
 
-Deferred swappable organs (NOT yet): VAD-gated streaming (cost), 2nd protocol,
-auto-timers, TTS, open-ended Q&A, upload/library pages.
+Deferred swappable organs (NOT yet): VAD-gated streaming (cost), TTS,
+open-ended Q&A, upload/library pages.

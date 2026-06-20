@@ -1,5 +1,6 @@
 """Handler checks — hand-built Commands -> exact locked event shapes."""
 
+import backend.handlers as handlers
 from backend.handlers import handle_command
 from backend.schema import Command
 from backend.state import SessionState
@@ -58,6 +59,42 @@ def test_start_timer_event_shape():
     assert ev["type"] == "timer_update"
     assert set(ev["payload"]) == {"timer_id", "label", "remaining_s", "expired"}
     assert ev["payload"]["expired"] is False
+
+
+def test_auto_timer_starts_on_timed_step(monkeypatch):
+    monkeypatch.setattr(handlers, "AUTO_TIMERS", True)
+    state = fresh_state()
+    # DNA Extraction step 1 is manual -> load emits only step_change.
+    events = handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    assert [e["type"] for e in events] == ["command_result"]
+    # Step 2 is a 10-min incubation -> advancing auto-starts a labelled timer.
+    events = handle_command(Command(intent="next_step"), state)
+    assert events[0]["type"] == "command_result"
+    timer = events[1]
+    assert timer["type"] == "timer_update"
+    assert timer["payload"]["label"] == "incubation"
+    assert timer["payload"]["remaining_s"] > 0
+
+
+def test_auto_timer_starts_on_load_when_first_step_is_timed(monkeypatch):
+    monkeypatch.setattr(handlers, "AUTO_TIMERS", True)
+    state = fresh_state()
+    # Bacterial Transformation step 1 IS timed (thaw on ice) -> timer on load.
+    events = handle_command(
+        Command(intent="load_protocol", protocol_name="Bacterial Transformation"), state
+    )
+    assert events[0]["payload"]["kind"] == "step_change"
+    assert events[1]["type"] == "timer_update"
+    assert events[1]["payload"]["label"] == "thaw on ice"
+
+
+def test_auto_timer_can_be_disabled(monkeypatch):
+    monkeypatch.setattr(handlers, "AUTO_TIMERS", False)
+    state = fresh_state()
+    events = handle_command(
+        Command(intent="load_protocol", protocol_name="Bacterial Transformation"), state
+    )
+    assert all(e["type"] != "timer_update" for e in events)
 
 
 def test_all_protocols_load_and_advance():

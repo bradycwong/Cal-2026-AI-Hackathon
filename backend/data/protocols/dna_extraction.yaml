@@ -10,7 +10,8 @@ protocol:
       parameters: { volume_ul: 200, reagent: "lysis buffer" }
     - id: 2
       text: "Incubate at 65 °C for 10 minutes."
-      duration_s: 600             # 10-min incubation (auto-timer is a deferred organ)
+      duration_s: 600             # auto-timer starts on advance
+      timer_label: incubation
       parameters: { temp_c: 65 }
     - id: 3
       text: "Add 200 µL ethanol and mix by inversion."
@@ -19,6 +20,7 @@ protocol:
     - id: 4
       text: "Centrifuge at 13,000 g for 1 minute."
       duration_s: 60
+      timer_label: centrifuge
       parameters: { speed_g: 13000 }
     - id: 5
       text: "Elute DNA in 50 µL nuclease-free water."

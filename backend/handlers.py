@@ -10,6 +10,7 @@ This is also where Command field names are translated to persistence field names
 from __future__ import annotations
 
 import difflib
+import os
 from typing import Any
 
 from .schema import (
@@ -22,19 +23,29 @@ from .schema import (
 )
 from .state import SessionState
 
+AUTO_TIMERS = os.getenv("OTTO_AUTO_TIMERS", "true").lower() not in {"false", "0", "no"}
+
 
 def _step_change_events(state: SessionState) -> list[dict[str, Any]]:
+    """step_change for the new cursor, plus an auto-timer if the step is timed."""
     idx = state.current_step_index
     prev = state.step_at(idx - 1)
     cur = state.step_at(idx)
     nxt = state.step_at(idx + 1)
-    return [
+    events: list[dict[str, Any]] = [
         step_change_event(
             prev_step=prev.as_event() if prev else None,
             current_step=cur.as_event() if cur else None,
             next_step=nxt.as_event() if nxt else None,
         )
     ]
+    if AUTO_TIMERS and cur and cur.duration_s:
+        label = cur.timer_label or f"step {cur.id}"
+        timer = state.add_timer(cur.duration_s, label)
+        events.append(
+            timer_update_event(timer.timer_id, timer.label, timer.remaining_s(), expired=False)
+        )
+    return events
 
 
 def _available_protocols(state: SessionState) -> str:
