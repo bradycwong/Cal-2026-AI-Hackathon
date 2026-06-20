@@ -36,6 +36,13 @@ def test_log_entry_extracts_sample_and_ascii_units():
     assert "200 uL lysis buffer" in cmd.log_text
 
 
+def test_load_protocol_verb_dropped_by_stt():
+    # STT sometimes drops the leading "load"; the spoken name is still explicit.
+    cmd = route("DNA extraction protocol.")
+    assert cmd.intent == "load_protocol"
+    assert cmd.protocol_name and "dna" in cmd.protocol_name.lower()
+
+
 def test_start_timer():
     cmd = route("Start a 10-minute incubation timer.")
     assert cmd.intent == "start_timer"

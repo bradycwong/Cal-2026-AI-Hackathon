@@ -166,6 +166,14 @@ def deterministic_route(transcript: str) -> Command:
             )
         return Command(intent="load_protocol", protocol_name=name)
 
+    # load_protocol with the verb dropped by STT — "<name> protocol" still names
+    # the protocol explicitly (not a guess: the name is literally spoken).
+    m = re.match(r"^\s*(.+?)\s+protocol\b\.?$", raw, flags=re.IGNORECASE)
+    if m:
+        name = re.sub(r"^(?:the|a|an)\s+", "", m.group(1).strip(), flags=re.IGNORECASE)
+        if name and name.lower() not in {"a", "the", "this", "that", "next", "another"}:
+            return Command(intent="load_protocol", protocol_name=name)
+
     return Command(
         intent="unknown",
         clarify_prompt="Sorry, I didn't understand that. Try 'load DNA extraction protocol'.",

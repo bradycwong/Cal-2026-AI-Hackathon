@@ -2,9 +2,9 @@
 
 A hands-free lab assistant: speak (or type) a command — load a protocol, log an
 observation, start a timer, find a reagent, ask what's next — and the screen
-updates in real time. **This pass is the typed-first skeleton** (Plan 3): the
-full pipeline minus the microphone. Voice (Deepgram) and persistence (SQLite)
-are swappable organs added later without touching the spine.
+updates in real time. **Voice is now live** (Deepgram nova-2, server-proxied);
+persistence (SQLite) and the rest remain swappable organs added without touching
+the spine.
 
 ## The spine (locked)
 
@@ -16,7 +16,15 @@ transcript (string)
 ```
 
 Input channels are swappable; the spine is not. The typed box POSTs to
-`/api/ingest`; live Deepgram `is_final` will call the **same** `ingest()` later.
+`/api/ingest`; live Deepgram final transcripts call the **same** `ingest()` over
+`/ws/audio`. Voice is just another way to fill the transcript.
+
+## Voice
+
+Click **Start session** (top-right), allow the mic, and speak the demo lines.
+Mic audio streams as webm/opus to `/ws/audio`; the server proxies it to Deepgram
+nova-2 (key stays server-side), shows interim words live, and routes each finished
+utterance exactly like a typed line. Requires `DEEPGRAM_API_KEY` in `.env`.
 
 ## Run
 
@@ -55,7 +63,8 @@ pytest -q          # router harness + handler shape checks
 
 ```
 backend/
-  main.py        FastAPI: /api/ingest, WS /ws/events, static, timer loop, ingest() spine
+  main.py        FastAPI: /api/ingest, WS /ws/events + /ws/audio, static, timer loop, ingest() spine
+  deepgram_stt.py server-side Deepgram live STT proxy (key never reaches browser)
   schema.py      Command (flat-5 + unknown) + locked event-envelope builders
   router.py      route(transcript)->Command: LLM primary + deterministic fallback; ASCII normalize
   handlers.py    handle_command(): deterministic dispatch; missing param -> clarify
@@ -68,6 +77,5 @@ frontend/
 tests/           test_router.py, test_handlers.py
 ```
 
-Deferred swappable organs (NOT in this pass): live Deepgram STT/VAD/wake word,
-SQLite persistence, custom vocabulary, 2nd protocol, auto-timers, TTS,
-open-ended Q&A, upload/library pages.
+Deferred swappable organs (NOT yet): VAD-gated streaming / wake word, SQLite
+persistence, 2nd protocol, auto-timers, TTS, open-ended Q&A, upload/library pages.

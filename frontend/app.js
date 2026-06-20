@@ -18,6 +18,8 @@ const els = {
   clarifyPanel: $("clarify-panel"),
   form: $("composer"),
   input: $("composer-input"),
+  micBtn: $("mic-btn"),
+  mic: $("chip-mic"),
 };
 
 const timers = new Map(); // timer_id -> element
@@ -60,13 +62,29 @@ function dispatch(evt) {
   }
 }
 
+let interimEl = null;
 function onTranscript(p) {
-  const div = document.createElement("div");
-  div.className = "line " + (p.is_final ? "final" : "interim");
-  div.textContent = p.text;
-  els.transcript.appendChild(div);
+  if (p.is_final) {
+    if (interimEl) {
+      interimEl.remove();
+      interimEl = null;
+    }
+    const div = document.createElement("div");
+    div.className = "line final";
+    div.textContent = p.text;
+    els.transcript.appendChild(div);
+    setState("thinking", "chip-warn");
+  } else {
+    // interim: update a single in-place line so the panel doesn't flood
+    if (!interimEl) {
+      interimEl = document.createElement("div");
+      interimEl.className = "line interim";
+      els.transcript.appendChild(interimEl);
+    }
+    interimEl.textContent = p.text;
+    setState("listening", "chip-warn");
+  }
   els.transcript.scrollTop = els.transcript.scrollHeight;
-  setState("thinking", "chip-warn");
 }
 
 // command_result dispatches on `kind` — the only place that grows per feature.
@@ -180,6 +198,71 @@ function escapeHtml(s) {
     { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
   ));
 }
+
+// --- voice: arm-once mic -> /ws/audio -> Deepgram (server-proxied) ----------
+let micStream = null;
+let recorder = null;
+let audioWS = null;
+
+function pickMime() {
+  const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"];
+  return candidates.find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
+}
+
+async function startMic() {
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+    });
+  } catch (err) {
+    onError({ message: "Microphone permission denied: " + err });
+    return;
+  }
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  audioWS = new WebSocket(`${proto}://${location.host}/ws/audio`);
+  audioWS.binaryType = "arraybuffer";
+  audioWS.onopen = () => {
+    const mimeType = pickMime();
+    recorder = new MediaRecorder(micStream, mimeType ? { mimeType } : undefined);
+    recorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0 && audioWS && audioWS.readyState === WebSocket.OPEN) {
+        e.data.arrayBuffer().then((buf) => audioWS.send(buf));
+      }
+    };
+    recorder.start(250); // one MediaRecorder for the session => header-safe stream
+    els.mic.textContent = "listening";
+    els.mic.className = "chip chip-ok";
+    els.micBtn.textContent = "Stop session";
+    els.micBtn.classList.add("active");
+    setState("listening", "chip-warn");
+  };
+  audioWS.onclose = () => stopMic();
+  audioWS.onerror = () => onError({ message: "Audio socket error" });
+}
+
+function stopMic() {
+  try { if (recorder && recorder.state !== "inactive") recorder.stop(); } catch (_) {}
+  try { if (micStream) micStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
+  try {
+    if (audioWS && audioWS.readyState === WebSocket.OPEN) {
+      audioWS.send(JSON.stringify({ type: "stop" }));
+      audioWS.close();
+    }
+  } catch (_) {}
+  recorder = null;
+  micStream = null;
+  audioWS = null;
+  els.mic.textContent = "mic off";
+  els.mic.className = "chip chip-idle";
+  els.micBtn.textContent = "Start session";
+  els.micBtn.classList.remove("active");
+  setState("idle", "");
+}
+
+els.micBtn.addEventListener("click", () => {
+  if (micStream) stopMic();
+  else startMic();
+});
 
 let audioCtx;
 function chime() {

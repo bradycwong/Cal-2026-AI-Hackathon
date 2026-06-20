@@ -22,6 +22,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from .deepgram_stt import run_deepgram_session
 from .router import ROUTER_MODE, route
 from .schema import error_event, timer_update_event, transcript_update_event
 from .handlers import handle_command
@@ -148,6 +149,32 @@ async def ws_events(ws: WebSocket) -> None:
         manager.disconnect(ws)
     except Exception:
         manager.disconnect(ws)
+
+
+@app.websocket("/ws/audio")
+async def ws_audio(ws: WebSocket) -> None:
+    """Browser mic audio in -> Deepgram -> same ingest() spine.
+
+    Interim results display only; a finished utterance is routed exactly like a
+    typed line. Voice is just another way to fill the transcript.
+    """
+    await ws.accept()
+
+    async def on_interim(text: str) -> None:
+        await manager.broadcast([transcript_update_event(text, is_final=False)])
+
+    async def on_final(text: str) -> None:
+        await ingest(text)  # echoes the final transcript + routes + broadcasts
+
+    try:
+        await run_deepgram_session(ws, on_interim=on_interim, on_final=on_final)
+    except Exception as exc:
+        await manager.broadcast([error_event("stt_failed", str(exc), "deepgram")])
+    finally:
+        try:
+            await ws.close()
+        except Exception:
+            pass
 
 
 @app.get("/")

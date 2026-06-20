@@ -44,6 +44,19 @@ body {
 .chip-err { color: var(--err); border-color: var(--err); }
 .chip-idle { color: var(--muted); }
 
+.mic-btn {
+  background: var(--ok);
+  color: #06120c;
+  border: none;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 16px;
+  cursor: pointer;
+}
+.mic-btn.active { background: var(--err); color: #fff; }
+.mic-btn:hover { filter: brightness(1.08); }
+
 .grid {
   display: grid;
   grid-template-columns: 2fr 1fr;
