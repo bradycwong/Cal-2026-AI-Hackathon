@@ -31,12 +31,48 @@ DEEPGRAM_MODEL = os.getenv("DEEPGRAM_MODEL", "nova-3")
 # We boost distinctive domain nouns plus the command-trigger words "protocol",
 # "inventory", "log", and "load": these gate routing, so Deepgram mishearing
 # them breaks whole commands — worth the slight pull on neighbouring words.
+# The hands-free navigation words ("go to" + each page name) gate page routing
+# the same way, so we boost them too. ("inventory" is already boosted above.)
 KEYWORDS = [
     ("microliters", 2), ("proteinase", 3), ("lysis", 2), ("PCR", 2),
     ("centrifuge", 2), ("pipette", 2), ("aliquot", 2), ("incubate", 1),
     ("ethanol", 1), ("EDTA", 2), ("nuclease", 1), ("DNA", 2), ("Lab", 2),
     ("protocol", 3), ("inventory", 3), ("log", 3), ("load", 3),
+    ("go to", 3), ("dashboard", 3), ("protocols", 3), ("guide", 3),
+    ("commands", 3),
 ]
+
+# Boost weight applied to user-authored custom-command triggers. They gate alias
+# expansion (aliases.py) the same way the built-in words gate routing, so we pull
+# them at the command-trigger weight.
+_CUSTOM_BOOST = 3
+
+# Custom-command triggers (Commands page), boosted so Deepgram reliably hears a
+# user's own phrase. This set is recomputed wholesale on every alias sync (see
+# main.set_aliases -> set_custom_keywords): adding a command registers its
+# trigger here, and deleting it drops the trigger on the next sync — so a removed
+# command's phrase never lingers in the boost list. Only takes effect on the next
+# Deepgram session (_build_url reads it at connect time).
+_custom_keywords: list[str] = []
+
+
+def set_custom_keywords(triggers: list[str]) -> None:
+    """Replace the custom-command boost set from the current alias triggers.
+
+    Called on every alias sync, so the list always mirrors the live alias set —
+    add registers, delete removes. Blank triggers and phrases already covered by
+    the static KEYWORDS are dropped so we never double-boost the same term.
+    """
+    seen = {kw.lower() for kw, _ in KEYWORDS}
+    out: list[str] = []
+    for trigger in triggers or []:
+        phrase = (trigger or "").strip()
+        key = phrase.lower()
+        if phrase and key not in seen:
+            seen.add(key)
+            out.append(phrase)
+    global _custom_keywords
+    _custom_keywords = out
 
 OnText = Callable[[str], Awaitable[None]]
 OnControl = Callable[[dict[str, Any]], Awaitable[None]]
@@ -82,13 +118,14 @@ def _build_url() -> str:
         ("utterance_end_ms", "1000"),
         ("vad_events", "true"),
     ]
+    keywords = KEYWORDS + [(kw, _CUSTOM_BOOST) for kw in _custom_keywords]
     if DEEPGRAM_MODEL.lower().startswith("nova-3"):
         # Nova-3 uses keyterm prompting (no per-term boost weight); it rejects
         # the legacy `keywords` param with HTTP 400.
-        params += [("keyterm", kw) for kw, _boost in KEYWORDS]
+        params += [("keyterm", kw) for kw, _boost in keywords]
     else:
         # Nova-2 and earlier: keyword boosting with an intensifier.
-        params += [("keywords", f"{kw}:{boost}") for kw, boost in KEYWORDS]
+        params += [("keywords", f"{kw}:{boost}") for kw, boost in keywords]
     return f"{DEEPGRAM_URL}?{urlencode(params)}"
 
 
