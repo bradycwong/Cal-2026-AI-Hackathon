@@ -172,8 +172,8 @@
 <div class="grid grid-cols-12 gap-4 px-6 py-3 bg-surface-container-low text-on-surface-variant text-xs font-bold uppercase tracking-wider border-b border-outline-variant sticky top-0 z-10">
 <div class="col-span-4">Reagent Name</div>
 <div class="col-span-3">Location</div>
-<div class="col-span-3">Category</div>
-<div class="col-span-2">BUY/CREATION DATE</div>
+<div class="col-span-3">Date Created</div>
+<div class="col-span-2">Status</div>
 </div>
 <!-- Table Rows -->
 <div class="inventory-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors">
@@ -190,10 +190,10 @@
 <p class="text-on-surface text-sm">Freezer 2, Shelf B</p>
 </div>
 <div class="col-span-3">
-<span class="bg-primary-container/20 text-primary-fixed px-2 py-0.5 rounded text-xs font-bold">Molecular Reagent</span>
+<p class="font-data-label text-on-surface-variant text-sm">2023-12-04</p>
 </div>
 <div class="col-span-2">
-<p class="font-data-label text-on-surface-variant text-sm">12/04/2023</p>
+<span class="text-xs font-bold uppercase">In Stock</span>
 </div>
 </div>
 <div class="inventory-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors">
@@ -210,10 +210,10 @@
 <p class="text-on-surface text-sm">Chemical Storage A</p>
 </div>
 <div class="col-span-3">
-<span class="bg-surface-variant text-on-surface-variant px-2 py-0.5 rounded text-xs font-bold">Solvent</span>
+<p class="font-data-label text-on-surface-variant text-sm">2024-01-15</p>
 </div>
 <div class="col-span-2">
-<p class="font-data-label text-on-surface-variant text-sm">01/15/2024</p>
+<span class="text-xs font-bold uppercase">In Stock</span>
 </div>
 </div>
 <div class="inventory-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors">
@@ -230,10 +230,10 @@
 <p class="text-on-surface text-sm">Cold Room 04, Shelf 2</p>
 </div>
 <div class="col-span-3">
-<span class="bg-primary-container/20 text-primary-fixed px-2 py-0.5 rounded text-xs font-bold">Molecular Reagent</span>
+<p class="font-data-label text-on-surface-variant text-sm">2023-11-20</p>
 </div>
 <div class="col-span-2">
-<p class="font-data-label text-on-surface-variant text-sm">11/20/2023</p>
+<span class="text-xs font-bold uppercase">In Stock</span>
 </div>
 </div>
 <div class="inventory-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors">
@@ -250,10 +250,10 @@
 <p class="text-on-surface text-sm">Cabinet 12, Drawer 1</p>
 </div>
 <div class="col-span-3">
-<span class="bg-surface-variant text-on-surface-variant px-2 py-0.5 rounded text-xs font-bold">Detergent</span>
+<p class="font-data-label text-on-surface-variant text-sm">2024-02-10</p>
 </div>
 <div class="col-span-2">
-<p class="font-data-label text-on-surface-variant text-sm">02/10/2024</p>
+<span class="text-xs font-bold uppercase">Low</span>
 </div>
 </div>
 <div class="inventory-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors">
@@ -270,10 +270,10 @@
 <p class="text-on-surface text-sm">Storage Room B1</p>
 </div>
 <div class="col-span-3">
-<span class="bg-tertiary-container/20 text-tertiary-fixed-dim px-2 py-0.5 rounded text-xs font-bold">Consumable</span>
+<p class="font-data-label text-on-surface-variant text-sm">2023-08-30</p>
 </div>
 <div class="col-span-2">
-<p class="font-data-label text-on-surface-variant text-sm">08/30/2023</p>
+<span class="text-xs font-bold uppercase">In Stock</span>
 </div>
 </div>
 <!-- Historical Placeholder -->
@@ -304,20 +304,18 @@
 </div>
 </main>
 <script>
-    // Simple search highlight simulation
+    // Search filters the table: matches collapse to the top, non-matches are
+    // hidden (not just dimmed). Re-queries .inventory-row each keystroke so it
+    // keeps working after app.js re-renders the rows from /api/inventory.
     const searchInput = document.querySelector('input[type="text"]');
     searchInput.addEventListener('input', (e) => {
         const rows = document.querySelectorAll('.inventory-row');
-        const term = e.target.value.toLowerCase();
-        
+        const term = e.target.value.toLowerCase().trim();
+
         rows.forEach(row => {
-            const text = row.innerText.toLowerCase();
-            if (text.includes(term)) {
-                row.style.display = 'grid';
-                row.style.opacity = '1';
-            } else {
-                row.style.opacity = '0.2';
-            }
+            const match = !term || row.innerText.toLowerCase().includes(term);
+            row.style.display = match ? '' : 'none';
+            row.style.opacity = '1';
         });
     });
 </script>
