@@ -33,17 +33,44 @@ commands always work.
 
 ## Run
 
+Use **Python 3.12** (see `.python-version`). 3.13/3.14 are too new — some pinned
+deps don't ship wheels for them yet (see Troubleshooting).
+
 ```bash
-python -m venv .venv && source .venv/bin/activate
+python3.12 -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 cp .env.example .env          # optional — typed demo works with NO keys
 uvicorn backend.main:app --reload
-# open http://127.0.0.1:8000
+# open http://127.0.0.1:8000  (use localhost/127.0.0.1 — the mic needs a secure context)
 ```
 
 No API key? The router automatically uses a **deterministic fallback** that
 covers the five demo lines, so the typed demo always works. Set
 `ANTHROPIC_API_KEY` (and keep `ROUTER_MODE=auto`) to route via Claude.
+
+### Troubleshooting
+
+**`pydantic-core` (or another dep) fails to install.** `pydantic` pulls in
+`pydantic-core`, a Rust extension. If pip can't find a prebuilt wheel for your
+Python it falls back to compiling from source (needs the Rust toolchain) and
+fails. Almost always this means either an old pip or a too-new Python (3.13/3.14
+don't have wheels yet for the pinned versions). Fixes, in order:
+
+```bash
+python -m pip install --upgrade pip setuptools wheel   # 1) refresh pip, retry install
+```
+
+If it still fails, recreate the venv on Python 3.12:
+
+```bash
+deactivate 2>/dev/null; rm -rf .venv
+python3.12 -m venv .venv && source .venv/bin/activate
+python -m pip install --upgrade pip && pip install -r requirements.txt
+```
+
+No 3.12 on your machine? `brew install python@3.12` (macOS), or use
+[`uv`](https://docs.astral.sh/uv/): `uv venv --python 3.12 && uv pip install -r requirements.txt`.
 
 ## The 5 typed demo lines
 
