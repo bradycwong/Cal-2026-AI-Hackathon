@@ -64,37 +64,26 @@ def test_start_timer_event_shape():
     assert ev["payload"]["paused"] is False  # explicit duration -> runs immediately
 
 
-def test_auto_timer_starts_on_timed_step(monkeypatch):
-    monkeypatch.setattr(handlers, "AUTO_TIMERS", True)
+def test_advancing_to_timed_step_shows_paused_timer():
+    # Advancing onto a timed step surfaces a PAUSED card frozen at full duration;
+    # it must NOT auto-start the countdown.
     state = fresh_state()
     # DNA Extraction step 1 is manual -> load emits only step_change.
     events = handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
     assert [e["type"] for e in events] == ["command_result"]
-    # Step 2 is a 10-min incubation -> advancing auto-starts a labelled timer.
+    # Step 2 is a 10-min incubation -> advancing shows a paused labelled timer.
     events = handle_command(Command(intent="next_step"), state)
     assert events[0]["type"] == "command_result"
     timer = events[1]
     assert timer["type"] == "timer_update"
     assert timer["payload"]["label"] == "incubation"
-    assert timer["payload"]["remaining_s"] > 0
+    assert timer["payload"]["paused"] is True
+    assert timer["payload"]["remaining_s"] == 600  # frozen at full duration
 
 
-def test_auto_timer_starts_on_load_when_first_step_is_timed(monkeypatch):
-    monkeypatch.setattr(handlers, "AUTO_TIMERS", True)
-    state = fresh_state()
-    # Bacterial Transformation step 1 IS timed (thaw on ice) -> timer on load.
-    events = handle_command(
-        Command(intent="load_protocol", protocol_name="Bacterial Transformation"), state
-    )
-    assert events[0]["payload"]["kind"] == "step_change"
-    assert events[1]["type"] == "timer_update"
-    assert events[1]["payload"]["label"] == "thaw on ice"
-
-
-def test_timed_step_shows_paused_timer_by_default(monkeypatch):
-    # Default (manual): a timed step surfaces a PAUSED timer card frozen at the
-    # step's full duration instead of auto-counting down.
-    monkeypatch.setattr(handlers, "AUTO_TIMERS", False)
+def test_timed_step_shows_paused_timer_by_default():
+    # A timed step surfaces a PAUSED timer card frozen at the step's full
+    # duration instead of auto-counting down.
     state = fresh_state()
     events = handle_command(
         Command(intent="load_protocol", protocol_name="Bacterial Transformation"), state
@@ -117,9 +106,8 @@ def test_paused_timer_does_not_tick():
     assert timer.remaining_s() == 600
 
 
-def test_start_timer_resumes_paused_step_timer(monkeypatch):
+def test_start_timer_resumes_paused_step_timer():
     # "start timer" resumes the same paused card (same id), now running.
-    monkeypatch.setattr(handlers, "AUTO_TIMERS", False)
     state = fresh_state()
     load = handle_command(
         Command(intent="load_protocol", protocol_name="Bacterial Transformation"), state
@@ -135,8 +123,7 @@ def test_start_timer_resumes_paused_step_timer(monkeypatch):
     assert p["remaining_s"] > 0
 
 
-def test_start_timer_without_duration_on_untimed_step_clarifies(monkeypatch):
-    monkeypatch.setattr(handlers, "AUTO_TIMERS", False)
+def test_start_timer_without_duration_on_untimed_step_clarifies():
     state = fresh_state()
     # DNA Extraction step 1 is manual (no duration) -> nothing to start.
     handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
@@ -243,8 +230,7 @@ def test_repeat_step_without_protocol_clarifies():
     assert events[0]["payload"]["kind"] == "clarify"
 
 
-def test_prev_onto_timed_step_does_not_start_duplicate_timer(monkeypatch):
-    monkeypatch.setattr(handlers, "AUTO_TIMERS", True)
+def test_prev_onto_timed_step_does_not_start_duplicate_timer():
     state = fresh_state()
     handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
     handle_command(Command(intent="next_step"), state)

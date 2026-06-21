@@ -10,7 +10,6 @@ This is also where Command field names are translated to persistence field names
 from __future__ import annotations
 
 import difflib
-import os
 from typing import Any
 
 from . import router
@@ -27,13 +26,9 @@ from .schema import (
 )
 from .state import SessionState
 
-# Off by default: timed steps wait for an explicit "start timer" command rather
-# than starting their countdown the moment they become current.
-AUTO_TIMERS = os.getenv("LAB_AUTO_TIMERS", "false").lower() in {"true", "1", "yes"}
-
 
 def _step_change_events(state: SessionState, auto_timer: bool = True) -> list[dict[str, Any]]:
-    """step_change for the new cursor, plus an auto-timer if requested and timed."""
+    """step_change for the new cursor, plus a PAUSED timer card if the step is timed."""
     idx = state.current_step_index
     prev = state.step_at(idx - 1)
     cur = state.step_at(idx)
@@ -47,9 +42,9 @@ def _step_change_events(state: SessionState, auto_timer: bool = True) -> list[di
     ]
     if auto_timer and cur and cur.duration_s:
         label = cur.timer_label or f"step {cur.id}"
-        # Default: the timer appears paused and waits for "start timer".
-        # LAB_AUTO_TIMERS=true restores the old auto-start-on-step-change.
-        timer = state.add_timer(cur.duration_s, label, paused=not AUTO_TIMERS)
+        # Timed steps always arrive PAUSED (frozen at full duration) and wait for
+        # an explicit "start timer" — they never auto-count-down on step change.
+        timer = state.add_timer(cur.duration_s, label, paused=True)
         events.append(
             timer_update_event(
                 timer.timer_id, timer.label, timer.remaining_s(),

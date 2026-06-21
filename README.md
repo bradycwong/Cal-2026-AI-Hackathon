@@ -67,10 +67,9 @@ area asks "Which protocol?" (listing the loaded protocols) instead of guessing.
 
 **Manual timers.** When you reach a step that declares a `duration_s`, a
 **paused** timer card appears (frozen at the step's full duration, labelled from
-its `timer_label`) instead of counting down. Say (or type) **"start timer"** to
-begin the countdown. You can still start ad-hoc timers with a spoken duration
-("start a 10-minute timer"). Opt back into auto-start on step change with
-`LAB_AUTO_TIMERS=true`.
+its `timer_label`) instead of counting down. It never auto-starts on step
+change — say (or type) **"start timer"** to begin the countdown. You can still
+start ad-hoc timers with a spoken duration ("start a 10-minute timer").
 
 **Protocols.** Four ship in `backend/data/protocols/` (DNA Extraction, PCR Setup,
 Bacterial Transformation, Plasmid Miniprep). Add another by dropping a YAML file
