@@ -1202,9 +1202,7 @@
         return `<div class="inventory-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors group ${depletedCls}">
       <div class="col-span-4 flex items-center gap-3">
         <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary"><span class="material-symbols-outlined text-lg">science</span></div>
-        <div><p class="font-bold text-on-surface">${escapeHtml(it.name)}</p><p class="text-[10px] font-data-label text-outline">${escapeHtml(
-          it.code || ""
-        )}</p></div>
+        <div><p class="font-bold text-on-surface">${escapeHtml(it.name)}</p></div>
       </div>
       <div class="col-span-2 whitespace-nowrap"><span class="text-sm font-data-label ${amtCls}">${amtText}</span>${unitText}</div>
       <div class="col-span-3"><p class="text-on-surface text-sm">${escapeHtml(it.location)}</p></div>
