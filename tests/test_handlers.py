@@ -25,6 +25,7 @@ def test_load_emits_step_change():
     assert p["current_step"]["id"] == 1
     assert p["prev_step"] is None
     assert p["next_step"]["id"] == 2
+    assert p["loaded"] is True  # drives front-end navigation to the active protocol
 
 
 def test_next_step_advances():
@@ -32,6 +33,15 @@ def test_next_step_advances():
     handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
     events = handle_command(Command(intent="next_step"), state)
     assert events[0]["payload"]["current_step"]["id"] == 2
+
+
+def test_step_nav_is_not_marked_loaded():
+    # Only a fresh LOAD navigates; stepping must not bounce the user around.
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    for intent in ("next_step", "prev_step", "repeat_step"):
+        ev = handle_command(Command(intent=intent), state)[0]
+        assert ev["payload"]["loaded"] is False, intent
 
 
 def test_step_change_carries_tracker_fields():

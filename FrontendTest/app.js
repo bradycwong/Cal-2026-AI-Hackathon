@@ -489,8 +489,32 @@
     }
   }
 
+  // --- command-driven navigation --------------------------------------------
+  // A voice/typed command lands the user on the matching page. Driven by the
+  // same /ws/events stream, so voice and the typed box behave identically.
+  function currentPage() {
+    return (location.pathname.split("/").pop() || "dashboard.html") || "dashboard.html";
+  }
+  function navTo(page) {
+    if (currentPage() !== page) window.location.href = page;
+  }
+  function maybeNavigate(p) {
+    switch (p.kind) {
+      case "step_change":
+        if (p.loaded) navTo("guide.html"); // only on protocol LOAD, not step nav
+        return;
+      case "log_entry":
+      case "log_update":
+      case "log_removed":
+        return navTo("notebook.html");
+      case "inventory_result":
+        return navTo("inventory.html");
+    }
+  }
+
   // --- websocket dispatch ---------------------------------------------------
   function onCommandResult(p) {
+    maybeNavigate(p);
     switch (p.kind) {
       case "step_change":
         return renderStep(p);

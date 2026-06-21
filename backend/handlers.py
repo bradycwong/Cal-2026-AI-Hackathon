@@ -29,7 +29,9 @@ from .schema import (
 from .state import SessionState
 
 
-def _step_change_events(state: SessionState, auto_timer: bool = True) -> list[dict[str, Any]]:
+def _step_change_events(
+    state: SessionState, auto_timer: bool = True, loaded: bool = False
+) -> list[dict[str, Any]]:
     """step_change for the new cursor, plus a PAUSED timer card if the step is timed."""
     idx = state.current_step_index
     prev = state.step_at(idx - 1)
@@ -47,6 +49,7 @@ def _step_change_events(state: SessionState, auto_timer: bool = True) -> list[di
             all_steps=all_steps,
             current_index=current_index,
             protocol_name=protocol_name,
+            loaded=loaded,
         )
     ]
     if auto_timer and cur and cur.duration_s:
@@ -77,7 +80,7 @@ def _handle_load_protocol(cmd: Command, state: SessionState) -> list[dict[str, A
     state.active_protocol = proto
     state.current_step_index = 0
     state.clear_timers()
-    return _step_change_events(state)
+    return _step_change_events(state, loaded=True)
 
 
 def _handle_next_step(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
