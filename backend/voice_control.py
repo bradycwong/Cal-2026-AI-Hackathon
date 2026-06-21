@@ -24,19 +24,21 @@ class VoiceDecision:
     label: str
 
 
-# Anchored to the whole utterance so a control word only fires when it IS the
-# command (never mid-sentence). The optional suffixes/spellings absorb common STT
-# variants (e.g. "muted", "un mute", "un-mute") so spoken unmute reliably resumes.
-_MUTE_PATTERNS = [
-    re.compile(r"^(?:please\s+)?mute(?:d)?(?:\s+lab)?$", re.IGNORECASE),
-    re.compile(r"^(?:please\s+)?stop\s+listening$", re.IGNORECASE),
-    re.compile(r"^(?:please\s+)?stop\s+reporting$", re.IGNORECASE),
-]
-
+# Unmute stays anchored to the whole utterance in ``classify_control`` so a
+# resume word only fires when it IS the command (never mid-sentence); the
+# optional suffixes/spellings absorb common STT variants ("un mute", "un-mute").
 _UNMUTE_PATTERNS = [
     re.compile(r"^(?:please\s+)?un[\s-]?mute(?:d)?(?:\s+lab)?$", re.IGNORECASE),
     re.compile(r"^(?:please\s+)?(?:start|resume)\s+listening$", re.IGNORECASE),
 ]
+
+# Muting is LOOSE (per user request): "mute" anywhere in an utterance mutes, so
+# it works even when STT bundles it into a longer phrase (e.g. "okay, mute").
+# \bmute\b never matches inside "unmute"/"commute" (no word boundary before it),
+# and ``classify_control`` checks unmute first, so "un mute" still resumes.
+_MUTE_LOOSE = re.compile(
+    r"\b(?:mute(?:d)?|stop\s+(?:listening|reporting))\b", re.IGNORECASE
+)
 
 # While muted EVERYTHING is ignored anyway, so the only job left is to catch the
 # resume word. This unanchored matcher finds "unmute" anywhere in an utterance or
@@ -50,6 +52,11 @@ _UNMUTE_LOOSE = re.compile(
 def wants_unmute(text: str) -> bool:
     """True if ``text`` contains a resume word anywhere (muted-state use only)."""
     return bool(_UNMUTE_LOOSE.search(_clean(text)))
+
+
+def wants_mute(text: str) -> bool:
+    """True if ``text`` contains a mute word anywhere (loose, per user request)."""
+    return bool(_MUTE_LOOSE.search(_clean(text)))
 
 
 def _clean(text: str) -> str:
@@ -69,9 +76,10 @@ def classify_control(text: str) -> Optional[str]:
     cleaned = _clean(text)
     if not cleaned:
         return None
+    # Unmute (anchored) is checked first so "un mute" never reads as a loose mute.
     if _matches(_UNMUTE_PATTERNS, cleaned):
         return "unmute"
-    if _matches(_MUTE_PATTERNS, cleaned):
+    if wants_mute(cleaned):
         return "mute"
     return None
 

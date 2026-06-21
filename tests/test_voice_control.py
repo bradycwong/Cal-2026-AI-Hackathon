@@ -1,6 +1,11 @@
 """Voice control gate checks: always-listening plus mute/unmute."""
 
-from backend.voice_control import VoiceControl, classify_control, wants_unmute
+from backend.voice_control import (
+    VoiceControl,
+    classify_control,
+    wants_mute,
+    wants_unmute,
+)
 
 
 def test_normal_speech_reports_and_routes_while_unmuted():
@@ -87,9 +92,27 @@ def test_classify_control_detects_mute_and_unmute():
 
 def test_classify_control_ignores_non_control_text():
     assert classify_control("Load DNA extraction protocol") is None
-    assert classify_control("mute the sample") is None  # not a bare control phrase
     assert classify_control("") is None
     assert classify_control("   ") is None
+
+
+def test_mute_matches_loosely_anywhere_in_the_phrase():
+    # Per user request: "mute" found anywhere mutes, not just as a bare phrase.
+    for phrase in ("mute the sample", "okay mute please", "can you mute now"):
+        assert classify_control(phrase) == "mute", phrase
+    vc = VoiceControl()
+    decision = vc.process_final("okay mute the lab please")
+    assert vc.muted
+    assert decision.voice_state_changed
+    assert not decision.route_command
+
+
+def test_wants_mute_does_not_fire_inside_unmute_or_commute():
+    assert wants_mute("okay mute")
+    assert not wants_mute("please unmute now")  # no \bmute\b inside "unmute"
+    assert not wants_mute("start the commute")
+    # Unmute still wins when both could appear together.
+    assert classify_control("un mute") == "unmute"
 
 
 def test_unmute_tolerates_common_stt_variants():
