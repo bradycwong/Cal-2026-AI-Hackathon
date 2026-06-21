@@ -6,16 +6,24 @@
   vertical-align: middle;
 }
 
-/* Active nav link highlight (set by app.js wireNav()). */
-.nav-active {
+/* Active nav link highlight (set by app.js wireNav()). Two classes so the
+   white text beats Tailwind's .text-on-surface-variant utility (a single-class
+   rule ties on specificity and loses on source order). */
+.nav-link.nav-active {
   background-color: #2352C8;
-  color: #E8EDF7;
+  color: #FFFFFF;
   font-weight: 600;
 }
 /* Keep the current (active) page its highlight color on hover. */
 .nav-link.nav-active:hover {
   background-color: #2352C8;
-  color: #E8EDF7;
+  color: #FFFFFF;
+}
+/* Inactive tabs animate their text to white on hover. The transition-colors
+   utility already on each link drives the animation. Logout is a <div> (not a
+   .nav-link), so it is excluded. */
+.nav-link:hover {
+  color: #FFFFFF;
 }
 
 /* Live transcript lines in the voice dock. */

@@ -111,7 +111,11 @@ def log_entry_event(
     step_ref: Optional[int],
     category: Optional[str] = None,
     flag: Optional[dict[str, Any]] = None,
+    step_log: bool = False,
 ) -> dict[str, Any]:
+    # ``step_log`` marks the auto-note emitted when advancing a step. The
+    # frontend renders it into the feed like any log entry but does NOT navigate
+    # to the notebook page for it, so "next step" keeps the user on the guide.
     return command_result(
         "log_entry",
         id=id,
@@ -121,6 +125,7 @@ def log_entry_event(
         step_ref=step_ref,
         category=category,
         flag=flag,
+        step_log=step_log,
     )
 
 

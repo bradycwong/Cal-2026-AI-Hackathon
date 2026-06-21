@@ -38,7 +38,7 @@ from .schema import (
     transcript_update_event,
     voice_state_event,
 )
-from .handlers import handle_command
+from .handlers import advance_step, handle_command
 from .state import ProtocolParseError, SessionState
 from .voice_control import VoiceControl, classify_control
 
@@ -186,6 +186,23 @@ async def load_protocol_by_id(protocol_id: str) -> dict[str, Any]:
     events = handle_command(
         Command(intent="load_protocol", protocol_name=protocol_id), state
     )
+    await manager.broadcast(events)
+    return {"ok": True, "events": events}
+
+
+class StepAdvanceIn(BaseModel):
+    # Confirm Action -> log=True (default); Skip -> log=False.
+    log: bool = True
+
+
+@app.post("/api/step/next")
+async def api_step_next(body: StepAdvanceIn | None = None) -> dict[str, Any]:
+    """Button-driven step advance. ``log=True`` (Confirm Action, also the
+    default for a bodyless POST) writes a "Completed step N" note to the active
+    notebook the same way a spoken/typed "next step" does; ``log=False`` (Skip)
+    advances without a note."""
+    log_event = True if body is None else body.log
+    events = advance_step(state, log_event=log_event)
     await manager.broadcast(events)
     return {"ok": True, "events": events}
 

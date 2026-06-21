@@ -634,10 +634,15 @@
     );
   }
   async function refreshNotebookFeed() {
-    if ($("notebook-list") || $("notebook-title")) renderNotebooks(await fetchNotebooks());
-    if ($("log-rows")) {
+    if ($("notebook-list") || $("notebook-title") || $("notebook-select")) {
+      const data = await fetchNotebooks();
+      renderNotebooks(data);
+      renderNotebookSelect(data);
+    }
+    if ($("log-rows") || $("log-preview")) {
       logCache = await fetchLog();
       renderLog(logCache);
+      renderLogPreview(logCache);
     }
   }
   async function createNotebook(name) {
@@ -667,6 +672,78 @@
     });
   }
 
+  // The guide page's notebook <select> picks the active notebook (where step
+  // notes land). It shares the same /api/notebooks/{id}/select gate the sidebar
+  // list uses, so both stay in sync over the notebook_list event.
+  function renderNotebookSelect(data) {
+    const sel = $("notebook-select");
+    if (!sel) return;
+    const nbs = (data && data.notebooks) || [];
+    const activeId =
+      data && data.active_id != null
+        ? data.active_id
+        : (nbs.find((n) => n.active) || {}).id;
+    sel.innerHTML = nbs
+      .map((n) => `<option value="${n.id}">${escapeHtml(n.name)}</option>`)
+      .join("");
+    if (activeId != null) sel.value = String(activeId);
+  }
+  function wireNotebookSelect() {
+    const sel = $("notebook-select");
+    if (!sel || sel.dataset.wired) return;
+    sel.dataset.wired = "1";
+    sel.addEventListener("change", () => {
+      if (sel.value) selectNotebook(sel.value);
+    });
+  }
+
+  // Compact preview of the last 3 entries in the active notebook, shown under
+  // the notebook selector so the user sees what step notes are landing where.
+  function renderLogPreview(log) {
+    const host = $("log-preview");
+    if (!host) return;
+    const recent = (log || []).slice(-3).reverse();
+    if (!recent.length) {
+      host.innerHTML = `<p class="text-sm text-on-surface-variant italic">No entries in this notebook yet.</p>`;
+      return;
+    }
+    host.innerHTML = recent
+      .map((e) => {
+        const cat = e.category || (e.sample_id ? "Sample " + e.sample_id : "Note");
+        return `<div class="flex items-start gap-3 bg-surface-container-high rounded-lg px-3 py-2 border border-outline-variant">
+        <span class="material-symbols-outlined text-primary text-base mt-0.5">history_edu</span>
+        <div class="min-w-0 flex-1">
+          <p class="text-sm text-on-surface truncate">${escapeHtml(e.text)}</p>
+          <p class="text-[10px] font-data-label text-on-surface-variant">${escapeHtml(
+            cat
+          )} &middot; ${escapeHtml(fmtTime(e.timestamp))}</p>
+        </div>
+      </div>`;
+      })
+      .join("");
+  }
+
+  // --- step actions: Skip advances WITHOUT logging --------------------------
+  // Confirm Action (#confirm-step) is wired by wireGuideConfirm() and sends
+  // "next step" through the spine, which logs a "Completed step N" note. Skip
+  // calls the endpoint with log=false so it advances without a note.
+  async function advanceStep(log) {
+    await fetch(API + "/api/step/next", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ log: !!log }),
+    });
+  }
+  function wireStepActions() {
+    const skip = $("skip-action");
+    if (!skip || skip.dataset.wired) return;
+    skip.dataset.wired = "1";
+    skip.addEventListener("click", () => {
+      if (skip.disabled) return;
+      advanceStep(false).catch(() => {});
+    });
+  }
+
   function renderStep(step) {
     if (!step) return;
     const cur = $("step-current");
@@ -691,6 +768,8 @@
         : "Protocol Phase —";
     const confirmBtn = $("confirm-step");
     if (confirmBtn) confirmBtn.disabled = idx < 0;
+    const skipBtn = $("skip-action");
+    if (skipBtn) skipBtn.disabled = idx < 0;
 
     const tracker = $("step-tracker");
     if (tracker && Array.isArray(step.all_steps)) {
@@ -829,6 +908,8 @@
     if (phase) phase.textContent = "Protocol Phase —";
     const confirmBtn = $("confirm-step");
     if (confirmBtn) confirmBtn.disabled = true;
+    const skipBtn = $("skip-action");
+    if (skipBtn) skipBtn.disabled = true;
     const prev = $("step-prev");
     if (prev) prev.textContent = "";
     const nxt = $("step-next");
@@ -905,11 +986,13 @@
     if (i >= 0) logCache[i] = entry;
     else logCache.push(entry);
     renderLog(logCache);
+    renderLogPreview(logCache);
     refreshNotebookCounts();
   }
   function applyLogRemoved(id) {
     logCache = logCache.filter((e) => e.id !== id);
     renderLog(logCache);
+    renderLogPreview(logCache);
     refreshNotebookCounts();
   }
   function applyLogUpdate(p) {
@@ -918,6 +1001,7 @@
       e.text = p.text;
       if ("flag" in p) e.flag = p.flag;
       renderLog(logCache);
+      renderLogPreview(logCache);
     }
   }
 
@@ -936,6 +1020,10 @@
         if (p.loaded) navTo("guide.html"); // only on protocol LOAD, not step nav
         return;
       case "log_entry":
+        // The auto-note from advancing a step must NOT yank the user off the
+        // guide; only an explicit "log ..." command navigates to the notebook.
+        if (p.step_log) return;
+        return navTo("notebook.html");
       case "log_update":
       case "log_removed":
         return navTo("notebook.html");
@@ -963,10 +1051,12 @@
         return refreshProtocols();
       case "notebook_list":
         renderNotebooks(p);
-        if ($("log-rows")) {
+        renderNotebookSelect(p);
+        if ($("log-rows") || $("log-preview")) {
           fetchLog().then((l) => {
             logCache = l;
             renderLog(logCache);
+            renderLogPreview(logCache);
           });
         }
         return;
@@ -1319,15 +1409,19 @@
       if ($("inventory-rows")) renderInventory(await fetchInventory());
     });
     await hydrateSection("log", async () => {
-      if ($("log-rows")) {
+      if ($("log-rows") || $("log-preview")) {
         logCache = await fetchLog();
         renderLog(logCache);
+        renderLogPreview(logCache);
       }
     });
     await hydrateSection("notebooks", async () => {
-      if ($("notebook-list") || $("notebook-title")) {
-        renderNotebooks(await fetchNotebooks());
+      if ($("notebook-list") || $("notebook-title") || $("notebook-select")) {
+        const data = await fetchNotebooks();
+        renderNotebooks(data);
+        renderNotebookSelect(data);
         wireNotebookNew();
+        wireNotebookSelect();
       }
     });
     await hydrateSection("protocol state", async () => {
@@ -1342,6 +1436,7 @@
     wireLogModal();
     wireDemoReset();
     wireGuideConfirm();
+    wireStepActions();
     wireVoice();
   }
 

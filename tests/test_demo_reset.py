@@ -38,12 +38,12 @@ def test_session_reset_clears_stage_state_but_not_log():
     state = SessionState()
     state.load_files()
     handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
-    handle_command(Command(intent="next_step"), state)
+    handle_command(Command(intent="next_step"), state)  # auto-logs "Completed step 1"
     handle_command(Command(intent="log_entry", log_text="added 200 uL", sample_id="A"), state)
 
     assert state.active_protocol is not None
     assert state.current_step_index >= 0
-    assert state.log
+    assert len(state.log) == 2  # next_step note + manual log entry
 
     state.reset()
 
@@ -51,7 +51,7 @@ def test_session_reset_clears_stage_state_but_not_log():
     assert state.current_step_index == -1
     assert state.timers == []
     assert state._timer_seq == 0
-    assert len(state.log) == 1
+    assert len(state.log) == 2  # reset clears stage state, never the log
     assert state.protocols
     assert state.inventory
 
