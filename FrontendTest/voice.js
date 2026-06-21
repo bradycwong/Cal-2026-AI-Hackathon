@@ -286,7 +286,13 @@
     // Decorative ring carries no information — keep it out of the a11y tree.
     const pulse = $("voice-pulse");
     if (pulse) pulse.setAttribute("aria-hidden", "true");
-    setVoiceUI(!!micStream);
+    // Use stored intent so the button shows the correct state immediately on page
+    // load, before the mic re-arms asynchronously (micStream is always null here).
+    // Without this, navigating between pages briefly flashes "Voice off" even when
+    // voice is active, because micStream doesn't exist yet on the fresh page.
+    const activeIntent = !!micStream || getVoiceActiveStored();
+    if (activeIntent && !micStream) setVoiceStatus("Connecting", false);
+    setVoiceUI(activeIntent);
   }
 
   // Re-arm the mic after a navigation if the user had voice on when they left
