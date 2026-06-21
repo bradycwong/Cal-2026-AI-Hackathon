@@ -277,6 +277,20 @@ def build_prep_table(
 
         row["match_count"] = len(group)
         row["sources"] = [item.name for item in group]
+        row["source_details"] = [
+            {
+                "id": item.id,
+                "name": item.name,
+                "amount_display": (
+                    f"{item.amount} {item.unit}".strip()
+                    if item.amount
+                    else (item.quantity_approx or "?")
+                ),
+                "location": item.location or "",
+                "status": (item.status or "ok").strip().lower(),
+            }
+            for item in group
+        ]
         row["match_name"] = (
             anchor.name
             if len(group) == 1
