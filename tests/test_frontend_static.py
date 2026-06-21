@@ -62,6 +62,34 @@ def test_app_wires_protocol_import():
     assert "/api/protocols/${encodeURIComponent(id)}/load" in js
 
 
+def test_protocols_page_has_edit_modal():
+    html = (FT / "protocols.html").read_text(encoding="utf-8")
+    for token in (
+        "edit-protocol-modal",
+        "edit-protocol-name",
+        "edit-protocol-description",
+        "edit-steps-list",
+        "edit-step-add",
+        "edit-protocol-submit",
+    ):
+        assert token in html, f"protocols.html missing {token}"
+
+
+def test_app_wires_protocol_edit():
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    for token in (
+        "protocol-edit",          # the card button to the right of Load
+        "flex gap-2",             # Load + Edit live in one row
+        "openEditProtocolModal",
+        "handleProtocolEdit",
+        "wireEditProtocolModal",
+        '"protocol_updated"',     # WS dispatch case
+        '"PATCH"',
+        "/api/protocols/",
+    ):
+        assert token in js, f"app.js missing {token}"
+
+
 def test_protocols_import_modal_accepts_pdf():
     html = (FT / "protocols.html").read_text(encoding="utf-8")
     for token in ("import-file", "application/pdf"):

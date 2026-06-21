@@ -249,6 +249,169 @@
     });
   }
 
+  // --- edit protocol (structured: name + description + steps) ----------------
+  // The card's Edit button opens this; it fetches the FULL protocol (steps incl.
+  // params), lets the user edit text + duration + order, and PATCHes it back.
+  function setEditResult(message, tone) {
+    const el = $("edit-protocol-result");
+    if (el) el.className = `text-sm mb-3 min-h-[1.25rem] ${tone || ""}`;
+    if (el) el.textContent = message;
+  }
+
+  // A step's duration_s shows as the nicest whole unit: 600 -> "10 min",
+  // 90 -> "90 sec", null -> empty.
+  function durationToField(s) {
+    if (!s) return { value: "", unit: "min" };
+    return s % 60 === 0 ? { value: String(s / 60), unit: "min" } : { value: String(s), unit: "sec" };
+  }
+  function fieldToDuration(value, unit) {
+    const v = parseFloat(value);
+    if (!value || isNaN(v) || v <= 0) return null;
+    return unit === "min" ? Math.round(v * 60) : Math.round(v);
+  }
+
+  function renumberSteps() {
+    const list = $("edit-steps-list");
+    if (!list) return;
+    [...list.children].forEach((row, i) => {
+      const n = row.querySelector(".edit-step-num");
+      if (n) n.textContent = String(i + 1);
+    });
+  }
+
+  // Each row stashes its source step's params + timer_label on a JS property
+  // (row._step), NOT in the DOM, so reorder/delete carry them with the row.
+  function addStepRow(step) {
+    const list = $("edit-steps-list");
+    if (!list) return;
+    step = step || { text: "", duration_s: null, timer_label: null, parameters: {} };
+    const { value, unit } = durationToField(step.duration_s);
+    const iconBtn =
+      "w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-surface-variant hover:text-on-surface transition-colors active:scale-95 shrink-0";
+    const row = document.createElement("div");
+    row.className = "edit-step-row flex items-center gap-2";
+    row.innerHTML = `
+      <span class="edit-step-num text-on-surface-variant text-sm w-5 text-right shrink-0"></span>
+      <input class="edit-step-text flex-1 bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface text-sm" type="text" placeholder="Step description" />
+      <input class="edit-step-dur w-16 bg-surface-container-lowest border border-outline-variant rounded-lg px-2 py-2 text-on-surface text-sm" inputmode="decimal" placeholder="0" />
+      <select class="edit-step-unit bg-surface-container-lowest border border-outline-variant rounded-lg px-2 py-2 text-on-surface text-sm">
+        <option value="min">min</option><option value="sec">sec</option>
+      </select>
+      <button type="button" class="edit-step-up ${iconBtn}" title="Move up" aria-label="Move step up"><span class="material-symbols-outlined text-[18px]">arrow_upward</span></button>
+      <button type="button" class="edit-step-down ${iconBtn}" title="Move down" aria-label="Move step down"><span class="material-symbols-outlined text-[18px]">arrow_downward</span></button>
+      <button type="button" class="edit-step-remove ${iconBtn} hover:bg-error/10 hover:text-error" title="Remove step" aria-label="Remove step"><span class="material-symbols-outlined text-[18px]">close</span></button>`;
+    row.querySelector(".edit-step-text").value = step.text || "";
+    row.querySelector(".edit-step-dur").value = value;
+    row.querySelector(".edit-step-unit").value = unit;
+    row._step = { timer_label: step.timer_label || null, parameters: step.parameters || {} };
+    list.appendChild(row);
+    renumberSteps();
+  }
+
+  async function openEditProtocolModal(id) {
+    const modal = $("edit-protocol-modal");
+    if (!modal) return;
+    modal.dataset.protocolId = id;
+    modal.classList.remove("hidden");
+    setEditResult("Loading…", "text-on-surface-variant");
+    try {
+      const proto = await fetchFullProtocol(id);
+      $("edit-protocol-name").value = proto.name || "";
+      $("edit-protocol-description").value = proto.description || "";
+      const list = $("edit-steps-list");
+      list.innerHTML = "";
+      (proto.steps || []).forEach((s) => addStepRow(s));
+      if (!list.children.length) addStepRow();
+      setEditResult("");
+    } catch (e) {
+      setEditResult("Could not load protocol: " + e.message, "text-tertiary");
+    }
+  }
+
+  function closeEditProtocolModal() {
+    const m = $("edit-protocol-modal");
+    if (m) m.classList.add("hidden");
+  }
+
+  function collectEditSteps() {
+    const list = $("edit-steps-list");
+    if (!list) return [];
+    return [...list.children].map((row) => {
+      const text = (row.querySelector(".edit-step-text").value || "").trim();
+      const duration_s = fieldToDuration(
+        row.querySelector(".edit-step-dur").value,
+        row.querySelector(".edit-step-unit").value
+      );
+      const src = row._step || {};
+      return {
+        text,
+        duration_s,
+        // mirror the backend rule: a label only rides a timed step
+        timer_label: duration_s ? src.timer_label || null : null,
+        parameters: src.parameters || {},
+      };
+    });
+  }
+
+  async function handleProtocolEdit() {
+    const modal = $("edit-protocol-modal");
+    const id = modal && modal.dataset.protocolId;
+    if (!id) return;
+    const name = ($("edit-protocol-name").value || "").trim();
+    const description = ($("edit-protocol-description").value || "").trim();
+    const steps = collectEditSteps();
+    if (!name) return setEditResult("Name can't be empty.", "text-tertiary");
+    if (!steps.length || steps.some((s) => !s.text))
+      return setEditResult("Every step needs text (remove blank rows).", "text-tertiary");
+    setEditResult("Saving…", "text-on-surface-variant");
+    try {
+      const data = await patchProtocol(id, { name, description, steps });
+      if (data.ok) {
+        setEditResult("Saved.", "text-secondary");
+        await refreshProtocols();
+        await refreshRecent();
+        setTimeout(closeEditProtocolModal, 800);
+      } else {
+        setEditResult(data.error || data.detail || "Save failed.", "text-tertiary");
+      }
+    } catch (e) {
+      setEditResult("Save failed: " + e.message, "text-tertiary");
+    }
+  }
+
+  function wireEditProtocolModal() {
+    const modal = $("edit-protocol-modal");
+    if (!modal) return;
+    ["edit-protocol-cancel", "edit-protocol-cancel-2"].forEach((id) => {
+      const b = $(id);
+      if (b) b.addEventListener("click", closeEditProtocolModal);
+    });
+    const submit = $("edit-protocol-submit");
+    if (submit) submit.addEventListener("click", handleProtocolEdit);
+    const add = $("edit-step-add");
+    if (add) add.addEventListener("click", () => addStepRow());
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) closeEditProtocolModal();
+    });
+    // Delegate per-row up/down/remove so they survive re-renders.
+    const list = $("edit-steps-list");
+    if (list)
+      list.addEventListener("click", (ev) => {
+        const row = ev.target.closest(".edit-step-row");
+        if (!row) return;
+        if (ev.target.closest(".edit-step-remove")) {
+          row.remove();
+          renumberSteps();
+        } else if (ev.target.closest(".edit-step-up") && row.previousElementSibling) {
+          list.insertBefore(row, row.previousElementSibling);
+          renumberSteps();
+        } else if (ev.target.closest(".edit-step-down") && row.nextElementSibling) {
+          list.insertBefore(row.nextElementSibling, row);
+          renumberSteps();
+        }
+      });
+  }
+
   // --- inventory add / edit / delete ----------------------------------------
   let inventoryCache = []; // last-rendered items, for edit prefill (keyed by id)
   let editingId = null; // null = add mode; number = id of the item being edited
@@ -1693,6 +1856,9 @@
       case "protocol_imported":
         refreshRecent(); // keeps the cold-start fallback list current
         return refreshProtocols();
+      case "protocol_updated":
+        refreshRecent(); // name/desc may have changed in the dashboard fallback
+        return refreshProtocols();
       case "notebook_list":
         renderNotebooks(p);
         renderNotebookSelect(p);
@@ -1885,6 +2051,7 @@
     renderTimers();
     wirePrepModal();
     wireImportModal();
+    wireEditProtocolModal();
     wireAddItemModal();
     wireLogModal();
     wireLogEditModal();
@@ -1918,6 +2085,9 @@
     ingestCommand,
     renderProtocolCards,
     renderRecentProtocols,
+    fetchFullProtocol,
+    openEditProtocolModal,
+    handleProtocolEdit,
     renderDashboardNotebooks,
     renderInventory,
     renderLog,

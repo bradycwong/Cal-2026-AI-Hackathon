@@ -97,6 +97,32 @@
     </div>
   </div>
 </div>
+<!-- Edit Protocol Modal (structured: name + description + steps) -->
+<div id="edit-protocol-modal" class="hidden fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4">
+  <div class="bg-surface-container-high border border-outline-variant rounded-2xl w-full max-w-2xl p-6 shadow-2xl max-h-[90vh] flex flex-col">
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="font-headline-md text-headline-md">Edit Protocol</h3>
+      <button id="edit-protocol-cancel" class="text-on-surface-variant hover:text-on-surface" aria-label="Close"><span class="material-symbols-outlined">close</span></button>
+    </div>
+    <div class="overflow-y-auto pr-1">
+      <label class="block text-xs font-bold uppercase text-on-surface-variant mb-1" for="edit-protocol-name">Name</label>
+      <input id="edit-protocol-name" type="text" class="w-full mb-4 bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface" placeholder="Protocol name" />
+      <label class="block text-xs font-bold uppercase text-on-surface-variant mb-1" for="edit-protocol-description">Description</label>
+      <textarea id="edit-protocol-description" rows="2" class="w-full mb-4 bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface" placeholder="One-line summary"></textarea>
+      <div class="flex items-center justify-between mb-2">
+        <label class="block text-xs font-bold uppercase text-on-surface-variant">Steps</label>
+        <span class="text-xs text-on-surface-variant">text &middot; duration (optional)</span>
+      </div>
+      <div id="edit-steps-list" class="flex flex-col gap-2 mb-3"></div>
+      <button id="edit-step-add" type="button" class="mb-2 inline-flex items-center gap-1 text-primary text-sm font-semibold hover:underline"><span class="material-symbols-outlined text-sm">add</span>Add step</button>
+    </div>
+    <div id="edit-protocol-result" aria-live="polite" class="text-sm mb-3 min-h-[1.25rem]"></div>
+    <div class="flex justify-end gap-3">
+      <button id="edit-protocol-cancel-2" class="px-4 py-2 rounded-lg border border-outline text-on-surface hover:bg-surface-variant">Cancel</button>
+      <button id="edit-protocol-submit" class="px-4 py-2 rounded-lg bg-primary text-on-primary font-bold hover:bg-primary/90">Save</button>
+    </div>
+  </div>
+</div>
 <script src="voice.js" defer></script>
 <script src="app.js" defer></script>
 <script>
