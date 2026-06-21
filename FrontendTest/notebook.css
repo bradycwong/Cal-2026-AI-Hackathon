@@ -20,8 +20,22 @@
     box-shadow: 0 0 15px rgba(184,255,124,0.30);
 }
 
+/* Entry provenance accent: green = human (manual), gray = system (automatic). */
+.log-entry-row {
+    border-left: 4px solid transparent;
+}
+.entry-manual {
+    border-left-color: #B8FF7C; /* secondary */
+}
+.entry-automatic {
+    border-left-color: #4A5570; /* outline */
+}
+
 /* Reproducibility flags (plan 3): restrained status accents on the log feed. */
-.flagged {
+/* A reproducibility mismatch outranks the provenance accent (two-class selector
+   wins on specificity, regardless of source order). */
+.flagged,
+.log-entry-row.flagged {
     border-left: 4px solid #ff6b6b;
 }
 .log-flag {

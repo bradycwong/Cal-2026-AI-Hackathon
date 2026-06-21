@@ -1,0 +1,33 @@
+protocol:
+  id: bacterial_transformation
+  name: Bacterial Transformation
+  version: "1.0"
+  description: "Heat-shock transformation of competent E. coli with plasmid DNA."
+  category: Microbiology
+  status: READY
+  est_duration_min: 90
+  aliases: ["bacterial transformation protocol", "bacterial transformation", "transformation", "heat shock transformation"]
+  steps:
+    - id: 1
+      text: "Thaw competent cells on ice for 10 minutes."
+      duration_s: 600            # 10 min on ice
+      timer_label: thaw on ice
+      parameters: { temp_c: 0 }
+    - id: 2
+      text: "Add 2 µL plasmid DNA to 50 µL competent cells and flick to mix."
+      duration_s: null           # null = manual advance
+      parameters: { volume_ul: 2, reagent: "plasmid DNA" }
+    - id: 3
+      text: "Heat shock at 42 °C for 45 seconds, then return to ice for 2 minutes."
+      duration_s: 45
+      timer_label: heat shock
+      parameters: { temp_c: 42 }
+    - id: 4
+      text: "Add 950 µL SOC medium and recover at 37 °C shaking for 1 hour."
+      duration_s: 3600           # 1 h recovery
+      timer_label: recovery
+      parameters: { volume_ul: 950, reagent: "SOC medium", temp_c: 37 }
+    - id: 5
+      text: "Plate 100 µL on LB agar with antibiotic and incubate overnight at 37 °C."
+      duration_s: null
+      parameters: { volume_ul: 100, reagent: "LB agar", temp_c: 37 }

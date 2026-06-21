@@ -158,8 +158,13 @@ def test_log_entry_field_translation():
     assert p["text"] == "added 200 uL lysis buffer"  # log_text -> text
     assert p["sample_id"] == "A"
     assert p["step_ref"] == 1
-    assert set(p) == {"kind", "id", "text", "timestamp", "sample_id", "step_ref", "category", "flag", "step_log"}
+    assert set(p) == {
+        "kind", "id", "text", "timestamp", "sample_id", "step_ref", "category",
+        "flag", "step_log", "entry_type", "edited",
+    }
     assert p["step_log"] is False  # a manual log entry is not a step-advance note
+    assert p["entry_type"] == "manual"  # voice/typed "log ..." is a human note
+    assert p["edited"] is False
     # DNA Extraction step 1 expects 200 uL; the logged 200 uL matches.
     assert p["flag"]["status"] == "ok"
 

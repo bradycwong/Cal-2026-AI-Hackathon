@@ -34,6 +34,10 @@ SYSTEM_PROMPT = (
     "Choose exactly one intent from: load_protocol, next_step, skip_step, "
     "prev_step, repeat_step, log_entry, undo_log, correct_log, start_timer, "
     "stop_timer, find_inventory, ask, unknown. "
+    "Map 'next', 'next step', 'what's next', 'move on', 'continue', 'proceed', "
+    "'advance', 'confirm', 'confirm action', 'done', 'step done', 'complete', "
+    "'mark complete', or 'finished' to next_step — the user has completed the "
+    "current step and wants to advance (this marks the step done). "
     "Map 'skip', 'skip this step', 'skip step', or 'skip ahead' to skip_step "
     "(advances WITHOUT marking the step done). "
     "Map 'stop timer', 'cancel the timer', 'stop the alarm', or 'stop beeping' "
@@ -311,8 +315,19 @@ def deterministic_route(transcript: str) -> Command:
     if re.search(r"\bskip\b", t):
         return Command(intent="skip_step")
 
-    # next_step — "what's next", "next step", "next"
-    if re.search(r"\b(what'?s next|next step|move on|advance)\b", t) or t in {"next", "next."}:
+    # next_step — "what's next", "next step", "next", plus confirmation/completion
+    # phrasings that all mean "I'm done with this step, advance". This runs AFTER
+    # log_entry/skip/etc., so a note that merely mentions "done"/"complete" is
+    # logged (the leading verb wins) and "skip" still advances without marking done.
+    if re.search(
+        r"\b("
+        r"what'?s next|next step|move on|moving on|advance|proceed|continue|"
+        r"confirm(?:ed)?(?:\s+(?:action|step|this|that))?|"
+        r"mark(?:\s+(?:it|this|the\s+step))?\s+(?:done|complete|completed)|"
+        r"(?:step\s+)?(?:done|complete|completed|finished)"
+        r")\b",
+        t,
+    ) or t in {"next", "next."}:
         return Command(intent="next_step")
 
     # load_protocol — "load <name> protocol" / "load protocol <name>" / "load <name>"

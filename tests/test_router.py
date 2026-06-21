@@ -93,6 +93,47 @@ def test_next_step():
     assert route("Next step").intent == "next_step"
 
 
+def test_confirm_action_routes_to_next_step():
+    # "Confirm Action" is the Guide button's label; saying it should advance too.
+    for phrase in ("Confirm action", "confirm", "confirm this step", "confirmed"):
+        assert route(phrase).intent == "next_step", phrase
+
+
+def test_completion_phrasings_route_to_next_step():
+    # Natural "I finished this step, move on" phrasings all advance.
+    for phrase in (
+        "done",
+        "step done",
+        "I'm done",
+        "all done",
+        "complete",
+        "completed",
+        "step complete",
+        "mark complete",
+        "mark it done",
+        "finished",
+        "continue",
+        "proceed",
+        "move on",
+        "moving on",
+        "advance",
+        "next",
+    ):
+        assert route(phrase).intent == "next_step", phrase
+
+
+def test_completion_words_inside_a_note_still_log():
+    # A note that merely mentions "complete"/"done" must be logged, not advanced:
+    # log_entry is matched before next_step, so the leading verb wins.
+    cmd = route("Note that the reaction is complete")
+    assert cmd.intent == "log_entry"
+    assert "reaction is complete" in cmd.log_text
+
+    cmd = route("Record that step two is done")
+    assert cmd.intent == "log_entry"
+    assert "step two is done" in cmd.log_text
+
+
 def test_skip_routes_to_skip_step():
     assert route("Skip this step").intent == "skip_step"
     assert route("skip").intent == "skip_step"

@@ -475,6 +475,80 @@
     return r.json();
   }
 
+  // --- edit an existing log entry (per-row pencil -> pre-filled modal) -------
+  // Any entry is editable; the backend re-tags it manual + edited. Reuses the
+  // same modal pattern as "Manual Entry".
+  function openLogEditModal(id) {
+    const m = $("log-edit-modal");
+    if (!m) return;
+    const entry = logCache.find((e) => e.id === id);
+    if (!entry) return;
+    const idEl = $("log-edit-id");
+    const textEl = $("log-edit-text");
+    const res = $("log-edit-result");
+    if (idEl) idEl.value = String(id);
+    if (textEl) textEl.value = entry.text || "";
+    if (res) res.textContent = "";
+    m.classList.remove("hidden");
+    if (textEl) textEl.focus();
+  }
+  function closeLogEditModal() {
+    const m = $("log-edit-modal");
+    if (m) m.classList.add("hidden");
+  }
+  async function submitLogEdit(e) {
+    if (e) e.preventDefault();
+    const idEl = $("log-edit-id");
+    const textEl = $("log-edit-text");
+    const result = $("log-edit-result");
+    const id = parseInt((idEl && idEl.value) || "", 10);
+    const text = ((textEl && textEl.value) || "").trim();
+    if (!Number.isFinite(id)) return;
+    if (!text) {
+      if (result) result.textContent = "Entry text can't be empty.";
+      return;
+    }
+    if (result) result.textContent = "Saving...";
+    try {
+      await patchLog(id, text);
+      await refreshNotebookFeed();
+      if (result) result.textContent = "";
+      closeLogEditModal();
+    } catch (err) {
+      if (result) result.textContent = "Could not save: " + err.message;
+    }
+  }
+  function wireLogEditModal() {
+    const rows = $("log-rows");
+    if (rows && !rows.dataset.editWired) {
+      rows.dataset.editWired = "1";
+      // Event-delegate the per-row pencil so it survives every re-render.
+      rows.addEventListener("click", (ev) => {
+        const btn = ev.target.closest("[data-edit-id]");
+        if (btn) openLogEditModal(parseInt(btn.dataset.editId, 10));
+      });
+    }
+    const cancel = $("log-edit-cancel");
+    if (cancel) cancel.addEventListener("click", closeLogEditModal);
+    const form = $("log-edit-form");
+    if (form) form.addEventListener("submit", submitLogEdit);
+    const modal = $("log-edit-modal");
+    if (modal)
+      modal.addEventListener("click", (ev) => {
+        if (ev.target === modal) closeLogEditModal();
+      });
+  }
+
+  async function patchLog(id, text) {
+    const r = await fetch(API + "/api/log/" + id, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return r.json();
+  }
+
   // --- renderers (each is a no-op when its hook is absent) -------------------
   const STATUS_BADGE = {
     READY: "text-secondary bg-secondary-container/20",
@@ -698,14 +772,21 @@
     host.innerHTML = displayLog
       .map((e) => {
         const flagged = e.flag && e.flag.status === "mismatch" ? " flagged" : "";
-        return `<div class="log-entry-row${flagged} grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors" data-log-id="${e.id}">
+        // Provenance: automatic = system step-note, manual = human entry. An
+        // edited entry is always manual and reads "manual · edited".
+        const type = e.entry_type === "automatic" ? "automatic" : "manual";
+        const typeClass = type === "automatic" ? "entry-automatic" : "entry-manual";
+        const typeLabel = e.edited ? "manual · edited" : type;
+        const typeLabelCls = type === "automatic" ? "text-on-surface-variant" : "text-secondary";
+        return `<div class="log-entry-row ${typeClass}${flagged} group relative grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors" data-log-id="${e.id}">
       <div class="col-span-3 font-data-label text-on-surface text-sm">${escapeHtml(fmtTime(e.timestamp))}</div>
-      <div class="col-span-3"><span class="bg-primary-container/20 text-primary-fixed px-2 py-0.5 rounded text-xs font-bold">${escapeHtml(
+      <div class="col-span-3 flex flex-col gap-1 items-start"><span class="bg-primary-container/20 text-primary-fixed px-2 py-0.5 rounded text-xs font-bold">${escapeHtml(
         e.category || (e.sample_id ? "Sample " + e.sample_id : "Note")
-      )}</span></div>
+      )}</span><span class="text-[10px] lowercase ${typeLabelCls}">${escapeHtml(typeLabel)}</span></div>
       <div class="col-span-6"><p class="text-on-surface text-sm log-text">${escapeHtml(
         e.text
       )}</p>${renderLogFlag(e.flag)}</div>
+      <button type="button" data-edit-id="${e.id}" title="Edit entry" aria-label="Edit entry" class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-on-surface-variant hover:text-primary p-1"><span class="material-symbols-outlined text-base">edit</span></button>
     </div>`;
       })
       .join("");
@@ -1164,6 +1245,8 @@
       step_ref: p.step_ref,
       category: p.category,
       flag: p.flag,
+      entry_type: p.entry_type,
+      edited: p.edited,
     };
     const i = logCache.findIndex((e) => e.id === entry.id);
     if (i >= 0) logCache[i] = entry;
@@ -1183,6 +1266,8 @@
     if (e) {
       e.text = p.text;
       if ("flag" in p) e.flag = p.flag;
+      if ("entry_type" in p) e.entry_type = p.entry_type;
+      if ("edited" in p) e.edited = p.edited;
       renderLog(logCache);
       renderLogPreview(logCache);
     }
@@ -1392,6 +1477,7 @@
     wireImportModal();
     wireAddItemModal();
     wireLogModal();
+    wireLogEditModal();
     wireDemoReset();
     wireGuideConfirm();
     wireStepActions();
@@ -1414,6 +1500,7 @@
     importProtocol,
     handleProtocolImport,
     postLog,
+    patchLog,
     ingestCommand,
     renderProtocolCards,
     renderInventory,
