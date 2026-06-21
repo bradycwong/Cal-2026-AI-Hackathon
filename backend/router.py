@@ -285,6 +285,8 @@ def _parse_timer_label(text: str) -> str:
     if m and m.group(1).lower() not in {
         "a", "an", "the", "for", "minute", "minutes", "second", "seconds",
         "hour", "hours", "half", "new", "start", "set", "stop", "another",
+        "begin", "launch", "restart", "run", "countdown", "now", "please",
+        "this", "that", "my", "our",
     }:
         return m.group(1).lower()
     return "timer"
@@ -429,8 +431,15 @@ def deterministic_route(transcript: str) -> Command:
     ):
         return Command(intent="stop_timer")
 
-    # start_timer — must come before find/guide so "start a timer" wins
-    if "timer" in t or re.search(r"\bstart (?:a |an )?\d", t):
+    # start_timer — must come before find/guide so "start a timer" wins. Also
+    # accept "countdown" and begin/set verbs so STT variants ("start countdown",
+    # "begin timer") aren't mis-read as a protocol load. ("stop ... countdown" is
+    # caught by stop_timer above.)
+    if (
+        "timer" in t
+        or re.search(r"\b(?:start|begin|set|launch|restart|run|new)\b[\w\s]*\bcountdown\b", t)
+        or re.search(r"\b(?:start|begin|set)\s+(?:a |an )?\d", t)
+    ):
         dur = _parse_duration(raw)
         if dur is None:
             # No spoken duration -> let the handler start the current step's
@@ -632,8 +641,29 @@ def answer_question(question: str, protocol) -> str:
         return _fallback_answer_question(clean_question, protocol)
 
 
+# Unambiguous lab controls: matched deterministically BEFORE any LLM call so
+# timers + step navigation never depend on (or wait on) the model.
+_CONTROL_INTENTS = frozenset(
+    {"start_timer", "stop_timer", "next_step", "prev_step", "repeat_step", "skip_step"}
+)
+
+
+def control_route(transcript: str) -> Optional[Command]:
+    """High-confidence control fast path: returns a Command for a reliable control
+    intent, else None. Delegates to ``deterministic_route`` so the existing match
+    priority holds — e.g. "log that I started the timer" matches log_entry first
+    and returns None here (deferred to the LLM)."""
+    cmd = deterministic_route(transcript)
+    return cmd if cmd.intent in _CONTROL_INTENTS else None
+
+
 def route(transcript: str) -> Command:
-    """transcript -> Command. LLM primary, deterministic fallback. Never raises."""
+    """transcript -> Command. A deterministic control fast path runs first (timers
+    + step navigation never touch the LLM); everything else is LLM-primary with a
+    deterministic fallback. Never raises."""
+    control = control_route(transcript)
+    if control is not None:
+        return control
     mode = ROUTER_MODE
     if mode == "deterministic" or (mode == "auto" and not _llm_available()):
         return deterministic_route(transcript)

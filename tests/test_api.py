@@ -10,6 +10,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 import backend.main as main
+import backend.router as router
+from backend.schema import Command
 from backend.state import SessionState
 
 SHIPPED_DATA = Path(__file__).resolve().parents[1] / "backend" / "data"
@@ -96,6 +98,32 @@ def test_step_next_endpoint_skip_logs_skipped(client):
     assert log[-1]["text"].startswith("Skipped step 1")
     step_change = next(e["payload"] for e in events if e["payload"]["kind"] == "step_change")
     assert step_change["skipped_indices"] == [0]
+
+
+def test_ingest_timer_commands_bypass_llm(client, monkeypatch):
+    # Force the LLM seam "live" but stub it to a wrong intent: if /api/ingest
+    # depended on the LLM for timers, no timer event would ever appear.
+    monkeypatch.setattr(router, "ROUTER_MODE", "llm")
+    monkeypatch.setattr(router, "_llm_route", lambda t: Command(intent="unknown"))
+
+    r = client.post("/api/ingest", json={"transcript": "start a 10 minute timer"})
+    events = r.json()["events"]
+    timer = next(e["payload"] for e in events if e["type"] == "timer_update")
+    assert timer["paused"] is False  # explicit duration -> runs immediately
+
+    r = client.post("/api/ingest", json={"transcript": "stop timer"})
+    kinds = [e["payload"].get("kind") for e in r.json()["events"]]
+    assert "timer_removed" in kinds
+
+
+def test_ingest_start_timer_resumes_paused_step_timer(client, monkeypatch):
+    monkeypatch.setattr(router, "ROUTER_MODE", "llm")
+    monkeypatch.setattr(router, "_llm_route", lambda t: Command(intent="unknown"))
+    client.post("/api/protocols/dna_extraction/load")
+    client.post("/api/step/next")  # advance onto the timed step -> paused timer
+    r = client.post("/api/ingest", json={"transcript": "start timer"})
+    timers = [e["payload"] for e in r.json()["events"] if e["type"] == "timer_update"]
+    assert timers and timers[-1]["paused"] is False  # resumed, now running
 
 
 def test_post_log_persists_and_lists(client):

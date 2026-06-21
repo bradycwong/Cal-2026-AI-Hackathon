@@ -62,6 +62,19 @@ def test_app_wires_protocol_import():
     assert "/api/protocols/${encodeURIComponent(id)}/load" in js
 
 
+def test_protocols_import_modal_accepts_pdf():
+    html = (FT / "protocols.html").read_text(encoding="utf-8")
+    for token in ("import-file", "application/pdf"):
+        assert token in html, f"protocols.html missing {token}"
+
+
+def test_app_wires_pdf_import():
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert "/api/protocols/import/file" in js
+    assert "importProtocolFromFile" in js
+    assert "FormData" in js
+
+
 def test_app_renders_reproducibility_flag():
     js = (FT / "app.js").read_text(encoding="utf-8")
     assert "renderLogFlag" in js

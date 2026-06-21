@@ -17,7 +17,15 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -25,6 +33,7 @@ from pydantic import BaseModel
 from .deepgram_stt import run_deepgram_session
 from .router import ROUTER_MODE, route
 from .protocol_import import import_protocol
+from .pdf_extract import PdfExtractError, extract_pdf_text
 from .scaling import build_prep_table
 from .reproducibility import check as check_reproducibility
 from .schema import (
@@ -232,24 +241,64 @@ class ProtocolImportIn(BaseModel):
     name: str | None = None
 
 
+async def _import_failed(message: str) -> dict[str, Any]:
+    """Broadcast an import failure and return the controlled {ok: False} body."""
+    await manager.broadcast(
+        [error_event("protocol_import_failed", message, "protocol_import")]
+    )
+    return {"ok": False, "error": message}
+
+
+async def _run_import(text: str, name: str | None) -> dict[str, Any]:
+    """Shared tail for prose- and PDF-sourced imports: split -> register -> broadcast.
+
+    Malformed prose returns a controlled {ok: False} response, never a 500.
+    """
+    try:
+        proto, _ = import_protocol(text, name, state)
+    except ValueError as exc:
+        return await _import_failed(str(exc))
+    summary = next(p for p in state.protocol_catalog() if p["id"] == proto.id)
+    load_hint = f'Say "Load {proto.name}" to start it.'
+    event = protocol_imported_event(
+        proto.name, proto.id, len(proto.steps), proto.aliases, load_hint
+    )
+    await manager.broadcast([event])
+    return {"ok": True, "protocol": summary, "load_hint": load_hint}
+
+
 @app.post("/api/protocols/import")
 async def import_protocol_endpoint(body: ProtocolImportIn) -> dict[str, Any]:
-    """Paste-to-import: prose -> YAML -> registered protocol. Malformed prose
-    returns a controlled {ok: False} response, never a 500."""
+    """Paste-to-import: prose -> YAML -> registered protocol."""
+    return await _run_import(body.text, body.name)
+
+
+MAX_PDF_BYTES = 10 * 1024 * 1024  # reject oversized uploads before reading the whole thing
+
+
+@app.post("/api/protocols/import/file")
+async def import_protocol_file_endpoint(
+    file: UploadFile = File(...), name: str | None = Form(None)
+) -> dict[str, Any]:
+    """PDF-to-import: extract the PDF's text, then run the same import pipeline.
+
+    Request errors (not a PDF / too large) are 4xx; a readable PDF that yields no
+    usable steps returns a controlled {ok: False}, mirroring the prose endpoint.
+    """
+    raw = await file.read()
+    if len(raw) > MAX_PDF_BYTES:
+        raise HTTPException(status_code=413, detail="PDF is too large (max 10 MB).")
+    if not raw.startswith(b"%PDF"):
+        raise HTTPException(status_code=422, detail="expected a PDF file")
     try:
-        proto, _ = import_protocol(body.text, body.name, state)
-        summary = next(p for p in state.protocol_catalog() if p["id"] == proto.id)
-        load_hint = f'Say "Load {proto.name}" to start it.'
-        event = protocol_imported_event(
-            proto.name, proto.id, len(proto.steps), proto.aliases, load_hint
+        text = extract_pdf_text(raw)
+    except PdfExtractError as exc:
+        return await _import_failed(f"Couldn't read this PDF ({exc}).")
+    if not text.strip():
+        return await _import_failed(
+            "Couldn't read any text from this PDF -- it may be a scanned image."
         )
-        await manager.broadcast([event])
-        return {"ok": True, "protocol": summary, "load_hint": load_hint}
-    except ValueError as exc:
-        await manager.broadcast(
-            [error_event("protocol_import_failed", str(exc), "protocol_import")]
-        )
-        return {"ok": False, "error": str(exc)}
+    return await _run_import(text, name)
 
 
 @app.post("/api/demo/reset")

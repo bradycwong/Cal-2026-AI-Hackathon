@@ -100,6 +100,18 @@
     return r.json();
   }
 
+  async function importProtocolFromFile(file, name) {
+    const fd = new FormData();
+    fd.append("file", file);
+    if (name) fd.append("name", name);
+    // No Content-Type header: the browser sets the multipart boundary itself.
+    const r = await fetch(API + "/api/protocols/import/file", {
+      method: "POST",
+      body: fd,
+    });
+    return r.json();
+  }
+
   async function deleteProtocol(id) {
     const r = await fetch(`${API}/api/protocols/${encodeURIComponent(id)}`, {
       method: "DELETE",
@@ -112,43 +124,51 @@
     if ($("protocol-cards")) renderProtocolCards(await fetchProtocols());
   }
 
-  async function handleProtocolImport() {
+  function setImportResult(message, tone) {
     const result = $("import-result");
+    if (result) {
+      result.textContent = message;
+      result.className = `text-sm mb-4 min-h-[1.25rem] ${tone}`;
+    }
+  }
+
+  function resetImportForm() {
+    ["import-text", "import-name", "import-file"].forEach((id) => {
+      const el = $(id);
+      if (el) el.value = "";
+    });
+    const label = $("import-file-label");
+    if (label) label.textContent = "Drop a PDF here or click to choose";
+  }
+
+  async function handleProtocolImport() {
     const name = ($("import-name") || {}).value || "";
     const text = ($("import-text") || {}).value || "";
-    if (!text.trim()) {
-      if (result) {
-        result.textContent = "Paste at least one step.";
-        result.className = "text-sm mb-4 min-h-[1.25rem] text-tertiary";
-      }
+    const fileInput = $("import-file");
+    const file = fileInput && fileInput.files && fileInput.files[0];
+    if (!file && !text.trim()) {
+      setImportResult("Paste at least one step or drop a PDF.", "text-tertiary");
       return;
     }
-    if (result) {
-      result.textContent = "Importing...";
-      result.className = "text-sm mb-4 min-h-[1.25rem] text-on-surface-variant";
-    }
+    setImportResult(file ? "Reading PDF..." : "Importing...", "text-on-surface-variant");
     try {
-      const data = await importProtocol(text, name);
+      const data = file
+        ? await importProtocolFromFile(file, name)
+        : await importProtocol(text, name);
       if (data.ok) {
-        if (result) {
-          result.textContent = `Imported "${data.protocol.name}". ${data.load_hint || ""}`;
-          result.className = "text-sm mb-4 min-h-[1.25rem] text-secondary";
-        }
+        setImportResult(
+          `Imported "${data.protocol.name}". ${data.load_hint || ""}`,
+          "text-secondary"
+        );
         await refreshProtocols();
-        const ta = $("import-text");
-        const nm = $("import-name");
-        if (ta) ta.value = "";
-        if (nm) nm.value = "";
+        resetImportForm();
         setTimeout(closeImportModal, 1200);
-      } else if (result) {
-        result.textContent = data.error || "Import failed.";
-        result.className = "text-sm mb-4 min-h-[1.25rem] text-tertiary";
+      } else {
+        // {ok:false} carries `error`; a 4xx (wrong type / too large) carries `detail`.
+        setImportResult(data.error || data.detail || "Import failed.", "text-tertiary");
       }
     } catch (e) {
-      if (result) {
-        result.textContent = "Import failed: " + e.message;
-        result.className = "text-sm mb-4 min-h-[1.25rem] text-tertiary";
-      }
+      setImportResult("Import failed: " + e.message, "text-tertiary");
     }
   }
 
@@ -176,6 +196,39 @@
       modal.addEventListener("click", (e) => {
         if (e.target === modal) closeImportModal();
       });
+    wireImportDropzone();
+  }
+
+  function wireImportDropzone() {
+    const fileInput = $("import-file");
+    const dropzone = $("import-dropzone");
+    const label = $("import-file-label");
+    if (!fileInput || !dropzone) return;
+    const showName = (file) => {
+      if (label) label.textContent = file ? file.name : "Drop a PDF here or click to choose";
+    };
+    fileInput.addEventListener("change", () =>
+      showName(fileInput.files && fileInput.files[0])
+    );
+    ["dragover", "dragenter"].forEach((ev) =>
+      dropzone.addEventListener(ev, (e) => {
+        e.preventDefault();
+        dropzone.classList.add("border-primary", "text-on-surface");
+      })
+    );
+    ["dragleave", "drop"].forEach((ev) =>
+      dropzone.addEventListener(ev, () =>
+        dropzone.classList.remove("border-primary", "text-on-surface")
+      )
+    );
+    dropzone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      const dropped = e.dataTransfer && e.dataTransfer.files;
+      if (dropped && dropped.length) {
+        fileInput.files = dropped; // surface the dropped file to the form + submit
+        showName(dropped[0]);
+      }
+    });
   }
 
   // --- inventory add / edit / delete ----------------------------------------

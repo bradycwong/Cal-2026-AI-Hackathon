@@ -7,6 +7,7 @@ anthropic==0.40.0          # router LLM (structured outputs via messages.parse)
 websockets==14.1           # server-side Deepgram live STT proxy client
 python-dotenv==1.2.2        # load server-side .env keys during local runs
 python-multipart==0.0.20    # parse multipart/form-data for protocol file upload
+pypdf==6.13.3              # extract text from uploaded PDF protocols (pure-Python, universal wheels)
 
 # observability — Arize AX tracing via arize-otel (manual CHAIN + LLM spans;
 # pulls the opentelemetry + grpcio stack as transitive deps). The Anthropic

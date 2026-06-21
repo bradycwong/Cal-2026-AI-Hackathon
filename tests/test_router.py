@@ -8,7 +8,9 @@ import os
 
 os.environ["ROUTER_MODE"] = "deterministic"
 
+import backend.router as router
 from backend.router import deterministic_route, normalize_ascii, route
+from backend.schema import Command
 
 
 def test_normalize_units():
@@ -103,6 +105,36 @@ def test_stop_timer_wins_over_start_timer():
     # "stop timer" contains "timer" but must not be parsed as start_timer.
     assert route("stop timer").intent == "stop_timer"
     assert route("start timer").intent == "start_timer"
+
+
+def test_noisy_timer_phrases_route_deterministically():
+    # STT-like phrasings still land on the right control intent.
+    starts = {
+        "start the incubation timer now": "incubation",
+        "begin timer": None,        # no real label word -> handler-default
+        "start countdown": None,    # must NOT be read as load_protocol "countdown"
+    }
+    for phrase, label in starts.items():
+        cmd = route(phrase)
+        assert cmd.intent == "start_timer", phrase
+        assert cmd.timer_label == label, (phrase, cmd.timer_label)
+    for phrase in ("stop the alarm please", "cancel all timers", "silence beeping"):
+        assert route(phrase).intent == "stop_timer", phrase
+
+
+def test_control_fast_path_beats_llm(monkeypatch):
+    # Controls must resolve deterministically even with the LLM seam "live".
+    # Stub the (normally dead) LLM with a sentinel so we can SEE if it ran.
+    monkeypatch.setattr(router, "ROUTER_MODE", "llm")
+    monkeypatch.setattr(router, "_llm_route", lambda t: Command(intent="unknown"))
+    # Control intents bypass the LLM -> real intent, never the sentinel.
+    assert route("start a 10 minute timer").intent == "start_timer"
+    assert route("stop timer").intent == "stop_timer"
+    assert route("next step").intent == "next_step"
+    assert route("go back").intent == "prev_step"
+    # A non-control command DOES traverse the LLM seam -> sentinel surfaces
+    # (deterministic would have said load_protocol, proving the LLM ran).
+    assert route("load DNA extraction protocol").intent == "unknown"
 
 
 def test_find_inventory():

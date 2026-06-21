@@ -29,9 +29,10 @@
 <!-- Main Content Area -->
 <main class="ml-64 flex-1 flex flex-col relative h-full">
 <!-- Canvas -->
-<div class="flex-1 overflow-hidden flex flex-col px-container-padding py-stack-gap pt-8">
+<div class="flex-1 overflow-y-auto custom-scrollbar">
+<div class="px-container-padding py-stack-gap pt-8 pb-40 flex flex-col gap-8">
 <!-- Header -->
-<div class="max-w-full w-full space-y-4 mb-6">
+<div class="max-w-full w-full space-y-4">
 <div class="flex justify-between items-end gap-4 flex-wrap">
 <div>
 <h2 class="font-headline-lg text-headline-lg text-on-surface">Voice Commands</h2>
@@ -44,8 +45,7 @@
 </div>
 </div>
 <!-- Command Reference Table -->
-<div class="flex-1 min-h-0 overflow-hidden">
-<div class="glass-panel rounded-2xl overflow-hidden flex flex-col h-full">
+<div class="glass-panel rounded-2xl overflow-hidden flex flex-col">
 <div class="bg-surface-container-high px-6 py-4 flex justify-between items-center border-b border-outline-variant shrink-0">
 <div class="flex items-center gap-4">
 <span class="material-symbols-outlined text-primary">record_voice_over</span>
@@ -53,9 +53,9 @@
 </div>
 <span id="cmd-count" class="text-xs text-on-surface-variant font-data-label uppercase tracking-widest">15 commands</span>
 </div>
-<div class="flex-1 overflow-y-auto custom-scrollbar">
+<div>
 <table class="w-full text-left border-collapse">
-<thead class="sticky top-0 z-10">
+<thead>
 <tr class="bg-surface-container-high text-on-surface-variant">
 <th scope="col" class="font-data-label text-xs uppercase tracking-widest font-bold px-6 py-3 w-[22%]">Command</th>
 <th scope="col" class="font-data-label text-xs uppercase tracking-widest font-bold px-6 py-3 w-[40%]">Say something like…</th>
@@ -235,6 +235,50 @@
 </div>
 </div>
 </div>
+<!-- Experimental: build-your-own voice commands -->
+<section id="cc-section" class="glass-panel rounded-2xl overflow-hidden">
+<div class="px-6 py-4 border-b border-outline-variant flex items-center justify-between gap-4 flex-wrap bg-tertiary/5">
+<div class="flex items-center gap-3 min-w-0">
+<span class="material-symbols-outlined text-tertiary">science</span>
+<div class="min-w-0">
+<div class="flex items-center gap-2 flex-wrap">
+<span class="font-bold text-on-surface">Custom Commands</span>
+<span class="text-[10px] font-bold uppercase tracking-[0.2em] text-tertiary border border-tertiary/50 rounded-full px-2 py-0.5">Experimental</span>
+</div>
+<p class="text-xs text-on-surface-variant mt-0.5">Map a phrase you choose to a built-in action. Saved on this device — while this page is open, speaking the trigger fires it too.</p>
+</div>
+</div>
+<button id="cc-add" type="button" class="bg-primary text-on-primary px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-primary/90 transition-all shrink-0"><span class="material-symbols-outlined" style="font-size:18px">add</span>New command</button>
+</div>
+<!-- Builder form (hidden until "New command") -->
+<form id="cc-form" class="hidden px-6 py-5 border-b border-outline-variant bg-surface-container-low/40">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+<label class="block">
+<span class="text-xs font-bold uppercase text-on-surface-variant">Trigger phrase — what you say</span>
+<input id="cc-trigger" type="text" autocomplete="off" placeholder="e.g. fire it up" class="mt-1 w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface" />
+</label>
+<label class="block">
+<span class="text-xs font-bold uppercase text-on-surface-variant">Action</span>
+<select id="cc-action" class="mt-1 w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface"></select>
+</label>
+<label id="cc-arg-wrap" class="block md:col-span-2">
+<span id="cc-arg-label" class="text-xs font-bold uppercase text-on-surface-variant">Detail</span>
+<input id="cc-arg" type="text" autocomplete="off" class="mt-1 w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface" />
+</label>
+</div>
+<div class="mt-3 text-sm text-on-surface-variant flex items-center gap-2 flex-wrap">
+<span class="material-symbols-outlined text-secondary" style="font-size:18px">bolt</span>
+<span>When you say “<span id="cc-prev-trigger" class="text-on-surface font-medium">…</span>”, the assistant runs <span id="cc-prev-cmd" class="font-data-label text-secondary">…</span></span>
+</div>
+<div id="cc-error" class="text-error text-sm mt-2 min-h-[1.25rem]" aria-live="polite"></div>
+<div class="mt-2 flex justify-end gap-3">
+<button id="cc-cancel" type="button" class="px-4 py-2 rounded-lg border border-outline text-on-surface hover:bg-surface-variant">Cancel</button>
+<button type="submit" class="px-4 py-2 rounded-lg bg-primary text-on-primary font-bold hover:bg-primary/90">Save command</button>
+</div>
+</form>
+<!-- Saved custom commands -->
+<div id="cc-list" class="p-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3"></div>
+</section>
 </div>
 </div>
 <script>
@@ -245,6 +289,162 @@
     var n = document.querySelectorAll('table .cmd-row').length;
     var el = document.getElementById('cmd-count');
     if (el) el.textContent = n + ' commands';
+  })();
+</script>
+<script>
+  // --- Experimental: user-defined voice-command shortcuts -------------------
+  // Self-contained: no backend or shared app.js changes. A custom command maps a
+  // trigger phrase to ONE built-in action and is persisted in localStorage.
+  // "Run" — and, while this page is open, speaking the trigger — sends the
+  // mapped canonical phrase through the SAME /api/ingest spine the typed box and
+  // the live mic use, so it routes exactly like a real command.
+  (function () {
+    var KEY = "lab.customCommands.v1";
+
+    // action -> how to compose a phrase the router already understands (verified
+    // against backend/router.py for both the LLM and deterministic paths).
+    var ACTIONS = {
+      load_protocol:  { label: "Load a protocol", arg: "Protocol name", ph: "DNA extraction",                  build: function (a) { return "load " + a + " protocol"; } },
+      next_step:      { label: "Next step",       arg: null,            build: function () { return "next step"; } },
+      skip_step:      { label: "Skip step",       arg: null,            build: function () { return "skip step"; } },
+      prev_step:      { label: "Previous step",   arg: null,            build: function () { return "previous step"; } },
+      repeat_step:    { label: "Repeat step",     arg: null,            build: function () { return "repeat that"; } },
+      start_timer:    { label: "Start a timer",   arg: "Duration", ph: "5 minutes", optional: true,             build: function (a) { return a ? "start a " + a + " timer" : "start the timer"; } },
+      stop_timer:     { label: "Stop timer",      arg: null,            build: function () { return "stop timer"; } },
+      log_entry:      { label: "Log a note",      arg: "Note text", ph: "lysate looks cloudy",                 build: function (a) { return "log " + a; } },
+      find_inventory: { label: "Find an item",    arg: "Reagent", ph: "ethanol",                               build: function (a) { return "where is " + a; } },
+      add_inventory:  { label: "Add an item",     arg: "Reagent (+ amount / location)", ph: "5 g of EDTA on shelf 4", build: function (a) { return "add " + a + " to the inventory"; } },
+      ask:            { label: "Ask a question",  arg: "Question", ph: "what temperature for the spin?",       build: function (a) { return a; } },
+      mute:           { label: "Mute",            arg: null,            build: function () { return "mute"; } },
+      unmute:         { label: "Unmute",          arg: null,            build: function () { return "unmute"; } }
+    };
+
+    var byId = function (id) { return document.getElementById(id); };
+    var section = byId("cc-section");
+    if (!section) return;
+    var form = byId("cc-form"), list = byId("cc-list");
+    var elTrigger = byId("cc-trigger"), elAction = byId("cc-action"), elArg = byId("cc-arg");
+    var elArgWrap = byId("cc-arg-wrap"), elArgLabel = byId("cc-arg-label"), elErr = byId("cc-error");
+    var prevTrigger = byId("cc-prev-trigger"), prevCmd = byId("cc-prev-cmd");
+
+    Object.keys(ACTIONS).forEach(function (k) {
+      var o = document.createElement("option");
+      o.value = k; o.textContent = ACTIONS[k].label;
+      elAction.appendChild(o);
+    });
+
+    function load() { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { return []; } }
+    function store(items) { localStorage.setItem(KEY, JSON.stringify(items)); }
+    function normalize(s) { return (s || "").toLowerCase().replace(/[.,!?;:]+$/g, "").replace(/\s+/g, " ").trim(); }
+    function phraseFor(it) { var a = ACTIONS[it.action]; return a ? a.build((it.arg || "").trim()) : ""; }
+    function esc(s) {
+      return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+        return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+      });
+    }
+
+    function render() {
+      var items = load();
+      if (!items.length) {
+        list.innerHTML = '<p class="text-sm text-on-surface-variant col-span-full">No custom commands yet. Click “New command” to map a phrase to an action.</p>';
+        return;
+      }
+      list.innerHTML = items.map(function (it) {
+        return '<div class="cc-card bg-surface-container-lowest border border-outline-variant rounded-xl p-4 flex flex-col gap-2">' +
+            '<div class="flex items-start justify-between gap-2">' +
+              '<span class="font-semibold text-on-surface truncate" title="' + esc(it.trigger) + '">“' + esc(it.trigger) + '”</span>' +
+              '<button type="button" class="cc-del shrink-0 text-on-surface-variant hover:text-error transition-colors" data-id="' + esc(it.id) + '" title="Delete" aria-label="Delete command"><span class="material-symbols-outlined" style="font-size:18px">delete</span></button>' +
+            '</div>' +
+            '<div class="text-xs text-on-surface-variant">Runs <span class="font-data-label text-on-surface">' + esc(phraseFor(it)) + '</span></div>' +
+            '<div class="mt-1"><button type="button" class="cc-run inline-flex items-center gap-1 bg-secondary/15 text-secondary border border-secondary/40 rounded-lg px-3 py-1.5 text-sm font-bold hover:bg-secondary/25 transition-colors" data-id="' + esc(it.id) + '"><span class="material-symbols-outlined" style="font-size:18px">play_arrow</span>Run</button></div>' +
+          '</div>';
+      }).join("");
+    }
+
+    function run(phrase, btn) {
+      if (!phrase) return;
+      if (btn) btn.disabled = true;
+      fetch("/api/ingest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: phrase })
+      }).catch(function () {}).then(function () { if (btn) btn.disabled = false; });
+    }
+
+    function refreshForm() {
+      var a = ACTIONS[elAction.value];
+      if (a && a.arg) {
+        elArgWrap.classList.remove("hidden");
+        elArgLabel.textContent = a.arg + (a.optional ? " (optional)" : "");
+        elArg.placeholder = a.ph || "";
+      } else {
+        elArgWrap.classList.add("hidden");
+        elArg.value = "";
+      }
+      prevTrigger.textContent = elTrigger.value.trim() || "…";
+      prevCmd.textContent = (a ? a.build(elArg.value.trim()) : "") || "…";
+    }
+
+    byId("cc-add").addEventListener("click", function () {
+      form.classList.remove("hidden");
+      elErr.textContent = "";
+      refreshForm();
+      elTrigger.focus();
+    });
+    byId("cc-cancel").addEventListener("click", function () { form.reset(); form.classList.add("hidden"); });
+    elAction.addEventListener("change", refreshForm);
+    elTrigger.addEventListener("input", refreshForm);
+    elArg.addEventListener("input", refreshForm);
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var trigger = elTrigger.value.trim(), action = elAction.value, a = ACTIONS[action], arg = elArg.value.trim();
+      elErr.textContent = "";
+      if (!trigger) { elErr.textContent = "Enter a trigger phrase."; return; }
+      if (a && a.arg && !a.optional && !arg) { elErr.textContent = "Enter the " + a.arg.toLowerCase() + "."; return; }
+      var items = load();
+      if (items.some(function (it) { return normalize(it.trigger) === normalize(trigger); })) {
+        elErr.textContent = "A command with that trigger already exists."; return;
+      }
+      items.push({ id: "cc" + Date.now() + Math.floor(Math.random() * 1000), trigger: trigger, action: action, arg: arg });
+      store(items);
+      render();
+      form.reset();
+      form.classList.add("hidden");
+    });
+
+    list.addEventListener("click", function (e) {
+      var runBtn = e.target.closest(".cc-run"), delBtn = e.target.closest(".cc-del");
+      if (runBtn) {
+        var it = load().filter(function (x) { return x.id === runBtn.getAttribute("data-id"); })[0];
+        if (it) run(phraseFor(it), runBtn);
+      } else if (delBtn) {
+        var id = delBtn.getAttribute("data-id");
+        store(load().filter(function (x) { return x.id !== id; }));
+        render();
+      }
+    });
+
+    render();
+
+    // Live voice triggering while this page is open: a read-only second listener
+    // on the event bus watches for FINAL transcripts and fires any custom command
+    // whose trigger matches. It never touches app.js's own socket.
+    try {
+      var proto = location.protocol === "https:" ? "wss" : "ws";
+      var ws = new WebSocket(proto + "://" + location.host + "/ws/events");
+      var lastText = "", lastTs = 0;
+      ws.addEventListener("message", function (ev) {
+        var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+        if (!msg || msg.type !== "transcript_update" || !msg.payload || !msg.payload.is_final) return;
+        var said = normalize(msg.payload.text);
+        if (!said) return;
+        var now = Date.now();
+        if (said === lastText && now - lastTs < 2000) return; // de-dupe repeats
+        var hit = load().filter(function (it) { return normalize(it.trigger) === said; })[0];
+        if (hit) { lastText = said; lastTs = now; run(phraseFor(hit)); }
+      });
+    } catch (e) { /* event bus optional — the Run button still works */ }
   })();
 </script>
 <!-- Voice Assistant Bubble -->
