@@ -1,0 +1,351 @@
+﻿<!DOCTYPE html><html class="dark" lang="en" style=""><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>LIMS AI Assistant - Inventory</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500&family=DM+Sans:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500;600;700&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300..500&family=DM+Sans:wght@300..700&amp;family=JetBrains+Mono:wght@100..900&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "inverse-surface": "#E8EDF7",
+                    "surface-dim": "#0D1117",
+                    "on-error": "#1A0000",
+                    "secondary-fixed-dim": "#8FD95A",
+                    "error": "#FF6B6B",
+                    "on-secondary": "#0D1117",
+                    "on-secondary-fixed": "#0D1117",
+                    "surface": "#0D1117",
+                    "on-primary-fixed-variant": "#1A3A7A",
+                    "on-primary": "#051025",
+                    "background": "#0D1117",
+                    "secondary-fixed": "#B8FF7C",
+                    "surface-container-high": "#1A2235",
+                    "on-tertiary-container": "#FFD580",
+                    "primary": "#7BA7F5",
+                    "outline": "#4A5570",
+                    "tertiary-container": "#7A4A00",
+                    "on-tertiary-fixed-variant": "#7A4A00",
+                    "error-container": "#7A1515",
+                    "secondary-container": "#3A7A1A",
+                    "on-background": "#E8EDF7",
+                    "on-tertiary-fixed": "#1A0D00",
+                    "on-primary-fixed": "#051025",
+                    "on-tertiary": "#1A0D00",
+                    "tertiary": "#F5A623",
+                    "on-secondary-container": "#0D1117",
+                    "on-primary-container": "#E8EDF7",
+                    "primary-fixed-dim": "#7BA7F5",
+                    "secondary": "#B8FF7C",
+                    "surface-bright": "#253050",
+                    "inverse-on-surface": "#131929",
+                    "surface-container-low": "#111724",
+                    "outline-variant": "#253050",
+                    "surface-container-lowest": "#080C14",
+                    "on-secondary-fixed-variant": "#3A7A1A",
+                    "primary-container": "#2352C8",
+                    "on-surface": "#E8EDF7",
+                    "tertiary-fixed-dim": "#F5A623",
+                    "on-surface-variant": "#8A96B0",
+                    "primary-fixed": "#C5D5F5",
+                    "on-error-container": "#FFD5D5",
+                    "tertiary-fixed": "#FFD580",
+                    "surface-tint": "#7BA7F5",
+                    "surface-variant": "#1E2A3F",
+                    "surface-container": "#131929",
+                    "inverse-primary": "#2352C8",
+                    "surface-container-highest": "#1E2A3F"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+            },
+            "spacing": {
+                    "gutter": "24px",
+                    "touch-target": "48px",
+                    "stack-gap": "16px",
+                    "container-padding": "32px",
+                    "unit": "8px"
+            },
+            "fontFamily": {
+                    "headline-lg": ["DM Mono"],
+                    "data-label": ["JetBrains Mono"],
+                    "display-timer": ["JetBrains Mono"],
+                    "body-md": ["DM Sans"],
+                    "data-value": ["JetBrains Mono"],
+                    "body-lg": ["DM Sans"],
+                    "headline-lg-mobile": ["DM Mono"],
+                    "headline-md": ["DM Mono"]
+            },
+            "fontSize": {
+                    "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "600"}],
+                    "data-label": ["14px", {"lineHeight": "20px", "fontWeight": "500"}],
+                    "display-timer": ["72px", {"lineHeight": "80px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "data-value": ["18px", {"lineHeight": "24px", "fontWeight": "600"}],
+                    "body-lg": ["20px", {"lineHeight": "30px", "fontWeight": "400"}],
+                    "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "500"}]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-panel {
+            background: rgba(13,17,23,0.88);
+            backdrop-filter: blur(12px);
+            border: 1px solid #253050;
+        }
+        .inventory-row:hover {
+            background: rgba(184, 195, 255, 0.04);
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #0D1117;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #253050;
+            border-radius: 10px;
+        }
+        body {
+            background-color: #0D1117;
+            color: #E8EDF7;
+        }
+    </style>
+</head>
+<body class="font-body-md text-body-md overflow-hidden h-screen flex">
+<!-- SideNavBar Shell -->
+<aside class="fixed left-0 top-0 h-full w-64 bg-surface-container flex flex-col py-stack-gap border-r border-outline-variant z-30">
+<a href="dashboard.html" class="px-gutter mb-8 block hover:opacity-80 transition-opacity cursor-pointer">
+<h1 class="font-headline-md text-headline-md text-primary">Placeholder</h1>
+<p class="text-on-surface-variant text-sm">AI Assistant</p>
+</a>
+<nav class="flex-1 px-4 space-y-2"><a class="text-on-surface-variant flex items-center px-4 py-3 hover:bg-surface-variant rounded-xl transition-all duration-200" href="protocols.html"><span class="material-symbols-outlined mr-3">menu_book</span><span class="">Protocols</span></a><a class="text-on-surface-variant flex items-center px-4 py-3 hover:bg-surface-variant rounded-xl transition-all duration-200" href="notebook.html"><span class="material-symbols-outlined mr-3">description</span><span class="">Notebook</span></a><a class="text-on-surface-variant flex items-center px-4 py-3 hover:bg-surface-variant rounded-xl transition-all duration-200" href="guide.html"><span class="material-symbols-outlined mr-3">biotech</span><span class="">Guide</span></a><a class="bg-primary-container text-on-primary-container rounded-xl flex items-center px-4 py-3 transition-all duration-200" href="inventory.html"><span class="material-symbols-outlined mr-3">inventory_2</span><span class="">Inventory</span></a></nav>
+<div class="px-4 mt-auto border-t border-outline-variant pt-4 space-y-2">
+<a class="text-on-surface-variant flex items-center px-4 py-3 hover:bg-surface-variant rounded-xl transition-all duration-200" href="#">
+<span class="material-symbols-outlined mr-3">help</span>
+<span class="">Support</span>
+</a>
+<a class="text-on-surface-variant flex items-center px-4 py-3 hover:bg-surface-variant rounded-xl transition-all duration-200" href="#">
+<span class="material-symbols-outlined mr-3 text-error">logout</span>
+<span class="text-error">Logout</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="ml-64 flex-1 flex flex-col relative h-full">
+<!-- Canvas -->
+<div class="flex-1 overflow-hidden flex flex-col px-container-padding py-stack-gap pt-8">
+<!-- Inventory Header & Search -->
+<div class="max-w-full w-full space-y-6 mb-8">
+<div class="flex justify-between items-end">
+<div>
+<h2 class="font-headline-lg text-headline-lg text-on-surface">Inventory</h2>
+<p class="text-on-surface-variant text-sm mt-1">Manage and track laboratory reagents and supplies</p>
+</div>
+<button class="bg-primary px-6 py-2 text-on-primary font-bold rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined text-sm" data-icon="add">add</span>
+                Add Item
+            </button>
+</div>
+<!-- Search Bar (Voice & Text) -->
+<section class="glass-panel p-4 rounded-xl flex flex-col md:flex-row items-center gap-4">
+<div class="relative flex-1 group">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant group-focus-within:text-primary transition-colors">search</span>
+<input class="w-full bg-surface-container-lowest border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary rounded-lg py-3 pl-12 pr-12 text-on-surface placeholder:text-on-surface-variant outline-none transition-all" placeholder="Search inventory via voice or text..." type="text">
+<button class="absolute right-4 top-1/2 -translate-y-1/2 text-primary hover:scale-110 transition-transform">
+<span class="material-symbols-outlined" data-icon="mic" data-weight="fill">mic</span>
+</button>
+</div>
+<div class="flex items-center gap-2">
+<button class="px-4 py-2 rounded-full border border-outline-variant text-on-surface-variant flex items-center gap-2 text-sm font-medium hover:bg-surface-variant">
+<span class="material-symbols-outlined text-sm">filter_list</span>
+                    Category
+                </button>
+<button class="px-4 py-2 rounded-full border border-outline-variant text-on-surface-variant flex items-center gap-2 text-sm font-medium hover:bg-surface-variant">
+<span class="material-symbols-outlined text-sm">location_on</span>
+                    Location
+                </button>
+</div>
+</section>
+</div>
+<!-- Flat Table Content -->
+<div class="flex-1 min-h-0 overflow-hidden">
+<div class="glass-panel rounded-2xl overflow-hidden flex flex-col h-full">
+<div class="bg-surface-container-high px-6 py-4 flex justify-between items-center border-b border-outline-variant">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary" data-icon="inventory_2">inventory_2</span>
+<span class="font-bold text-on-surface">Stored Reagents</span>
+</div>
+<div class="text-xs font-data-label text-outline uppercase tracking-wider">
+                            Real-time Inventory: <span class="text-secondary">Synced</span>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto custom-scrollbar">
+<!-- Table Header -->
+<div class="grid grid-cols-12 gap-4 px-6 py-3 bg-surface-container-low text-on-surface-variant text-xs font-bold uppercase tracking-wider border-b border-outline-variant sticky top-0 z-10">
+<div class="col-span-4">Reagent Name</div>
+<div class="col-span-3">Location</div>
+<div class="col-span-3">Category</div>
+<div class="col-span-2">BUY/CREATION DATE</div>
+</div>
+<!-- Table Rows -->
+<div class="inventory-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors">
+<div class="col-span-4 flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-lg">science</span>
+</div>
+<div>
+<p class="font-bold text-on-surface">Proteinase K</p>
+<p class="text-[10px] font-data-label text-outline">ID: PRT-2044-K</p>
+</div>
+</div>
+<div class="col-span-3">
+<p class="text-on-surface text-sm">Freezer 2, Shelf B</p>
+</div>
+<div class="col-span-3">
+<span class="bg-primary-container/20 text-primary-fixed px-2 py-0.5 rounded text-xs font-bold">Molecular Reagent</span>
+</div>
+<div class="col-span-2">
+<p class="font-data-label text-on-surface-variant text-sm">12/04/2023</p>
+</div>
+</div>
+<div class="inventory-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors">
+<div class="col-span-4 flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-lg">science</span>
+</div>
+<div>
+<p class="font-bold text-on-surface">Ethanol 95%</p>
+<p class="text-[10px] font-data-label text-outline">ID: ETH-9502-V</p>
+</div>
+</div>
+<div class="col-span-3">
+<p class="text-on-surface text-sm">Chemical Storage A</p>
+</div>
+<div class="col-span-3">
+<span class="bg-surface-variant text-on-surface-variant px-2 py-0.5 rounded text-xs font-bold">Solvent</span>
+</div>
+<div class="col-span-2">
+<p class="font-data-label text-on-surface-variant text-sm">01/15/2024</p>
+</div>
+</div>
+<div class="inventory-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors">
+<div class="col-span-4 flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-lg">science</span>
+</div>
+<div>
+<p class="font-bold text-on-surface">Lysis Buffer (AL)</p>
+<p class="text-[10px] font-data-label text-outline">ID: LYS-1002-B</p>
+</div>
+</div>
+<div class="col-span-3">
+<p class="text-on-surface text-sm">Cold Room 04, Shelf 2</p>
+</div>
+<div class="col-span-3">
+<span class="bg-primary-container/20 text-primary-fixed px-2 py-0.5 rounded text-xs font-bold">Molecular Reagent</span>
+</div>
+<div class="col-span-2">
+<p class="font-data-label text-on-surface-variant text-sm">11/20/2023</p>
+</div>
+</div>
+<div class="inventory-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors">
+<div class="col-span-4 flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg bg-error-container/20 flex items-center justify-center text-error">
+<span class="material-symbols-outlined text-lg">warning</span>
+</div>
+<div>
+<p class="font-bold text-on-surface">Triton X-100</p>
+<p class="text-[10px] font-data-label text-outline">ID: TRX-5521-S</p>
+</div>
+</div>
+<div class="col-span-3">
+<p class="text-on-surface text-sm">Cabinet 12, Drawer 1</p>
+</div>
+<div class="col-span-3">
+<span class="bg-surface-variant text-on-surface-variant px-2 py-0.5 rounded text-xs font-bold">Detergent</span>
+</div>
+<div class="col-span-2">
+<p class="font-data-label text-on-surface-variant text-sm">02/10/2024</p>
+</div>
+</div>
+<div class="inventory-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors">
+<div class="col-span-4 flex items-center gap-3">
+<div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-lg">science</span>
+</div>
+<div>
+<p class="font-bold text-on-surface">Agarose (LE)</p>
+<p class="text-[10px] font-data-label text-outline">ID: AGR-8800-P</p>
+</div>
+</div>
+<div class="col-span-3">
+<p class="text-on-surface text-sm">Storage Room B1</p>
+</div>
+<div class="col-span-3">
+<span class="bg-tertiary-container/20 text-tertiary-fixed-dim px-2 py-0.5 rounded text-xs font-bold">Consumable</span>
+</div>
+<div class="col-span-2">
+<p class="font-data-label text-on-surface-variant text-sm">08/30/2023</p>
+</div>
+</div>
+<!-- Historical Placeholder -->
+<div class="p-12 flex flex-col items-center justify-center opacity-30 select-none">
+<span class="material-symbols-outlined text-6xl mb-4">inventory</span>
+<p class="font-headline-md">Inventory End Reached</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Voice Assistant Bubble -->
+<button id="voice-assistant-toggle" class="fixed bottom-8 right-8 z-50 flex items-center gap-3 bg-surface-container-lowest border border-outline-variant rounded-xl px-4 py-3 shadow-xl hover:border-primary transition-all duration-300">
+  <div class="relative w-8 h-8 flex items-center justify-center shrink-0">
+    <span class="absolute inset-0 rounded-full border border-secondary animate-ping opacity-40"></span>
+    <span class="absolute inset-1 rounded-full border border-secondary opacity-60"></span>
+    <span class="material-symbols-outlined text-secondary" style="font-size:16px">mic</span>
+  </div>
+  <div class="flex flex-col items-start">
+    <span class="text-[9px] font-bold text-secondary uppercase tracking-[0.2em] leading-none">Listening</span>
+    <span class="text-xs text-on-surface-variant">Voice Assistant</span>
+  </div>
+</button>
+</main>
+<script>
+    // Simple search highlight simulation
+    const searchInput = document.querySelector('input[type="text"]');
+    searchInput.addEventListener('input', (e) => {
+        const rows = document.querySelectorAll('.inventory-row');
+        const term = e.target.value.toLowerCase();
+        
+        rows.forEach(row => {
+            const text = row.innerText.toLowerCase();
+            if (text.includes(term)) {
+                row.style.display = 'grid';
+                row.style.opacity = '1';
+            } else {
+                row.style.opacity = '0.2';
+            }
+        });
+    });
+</script>
+
+
+
+
+
+
+</body></html>
