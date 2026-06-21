@@ -19,9 +19,14 @@ from pydantic import BaseModel
 Intent = Literal[
     "load_protocol",
     "next_step",
+    "prev_step",
+    "repeat_step",
     "log_entry",
+    "undo_log",
+    "correct_log",
     "start_timer",
     "find_inventory",
+    "ask",
     "unknown",
 ]
 
@@ -42,6 +47,7 @@ class Command(BaseModel):
     duration_s: Optional[int] = None      # start_timer
     timer_label: Optional[str] = None     # start_timer
     reagent_name: Optional[str] = None    # find_inventory
+    question: Optional[str] = None      # ask
     clarify_prompt: Optional[str] = None  # unknown / missing param -> clarification area
 
 

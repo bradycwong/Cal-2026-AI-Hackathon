@@ -30,12 +30,22 @@ ROUTER_MODE = os.getenv("ROUTER_MODE", "auto").lower()
 
 SYSTEM_PROMPT = (
     "You convert a single spoken lab command into ONE structured Command. "
-    "Choose exactly one intent from: load_protocol, next_step, log_entry, "
-    "start_timer, find_inventory, unknown. "
+    "Choose exactly one intent from: load_protocol, next_step, prev_step, "
+    "repeat_step, log_entry, undo_log, correct_log, start_timer, "
+    "find_inventory, ask, unknown. "
+    "Map 'go back' or 'previous step' to prev_step. "
+    "Map 'repeat that', 'say that again', or 'what step am I on' to repeat_step. "
+    "Map 'scratch that', 'delete that', or 'undo the last note' to undo_log. "
+    "Map 'change the last note to X' or 'correct that to X' to correct_log "
+    "with log_text set to X. "
+    "Map open protocol questions to ask with question set to the user's words. "
+    "Map natural note phrasings such as 'make a note that X', 'record X', "
+    "'write down X', 'note down X', and 'remark X' to log_entry with log_text "
+    "set to X. "
     "If the intent is clear but a required parameter is missing or ambiguous, do "
     "NOT guess: leave that field null (or return intent='unknown') and put a "
     "one-line question in clarify_prompt. Never invent a protocol name, reagent, "
-    "duration, or sample id that was not said. "
+    "duration, sample id, note text, or question that was not said. "
     "Use ASCII units: write 'uL' (not the micro sign) and 'degrees C'."
 )
 
@@ -117,14 +127,43 @@ def deterministic_route(transcript: str) -> Command:
     if not t:
         return Command(intent="unknown", clarify_prompt="I didn't catch that. Could you repeat?")
 
-    # log_entry — "log: ...", "note: ...", "log that ..."
-    m = re.match(r"^\s*(?:log|note)\b[:,]?\s*(?:that\s+)?(.*)$", raw, flags=re.IGNORECASE)
+    # log_entry - "log X", "note X", "record X", "make a note that X"
+    m = re.match(
+        r"^\s*(?:"
+        r"log|note|record|remark|write down|note down|"
+        r"(?:make|add|take|jot)\s+(?:a\s+)?note"
+        r")\b[:,]?\s*(?:that\s+)?(.*)$",
+        raw,
+        flags=re.IGNORECASE,
+    )
     if m:
         body = m.group(1).strip()
         if not body:
             return Command(intent="log_entry", clarify_prompt="What would you like to log?")
         sample = _parse_sample_id(body)
         return Command(intent="log_entry", log_text=body, sample_id=sample)
+
+    # undo/correct log - these start with amend verbs, so they do not collide with log_entry.
+    if re.search(
+        r"\b(scratch that|delete (that|the last|my last)( note| entry)?|"
+        r"undo (that|the last)( note| entry)?)\b",
+        t,
+    ):
+        return Command(intent="undo_log")
+
+    m = re.match(
+        r"^\s*(?:correct|change|make)\s+(?:that|the last (?:note|entry))\s+to\s+(.+)$",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        replacement = normalize_ascii(m.group(1).strip().rstrip("."))
+        if not replacement:
+            return Command(
+                intent="correct_log",
+                clarify_prompt="What should I change the last note to?",
+            )
+        return Command(intent="correct_log", log_text=replacement)
 
     # start_timer — must come before find/guide so "start a timer" wins
     if "timer" in t or re.search(r"\bstart (?:a |an )?\d", t):
@@ -147,6 +186,17 @@ def deterministic_route(transcript: str) -> Command:
         if not reagent:
             return Command(intent="find_inventory", clarify_prompt="Which reagent are you looking for?")
         return Command(intent="find_inventory", reagent_name=reagent)
+
+    # backward/repeat navigation - must run before the generic next_step check.
+    if re.search(r"\b(go back|previous step|back a step|step back|previous)\b", t):
+        return Command(intent="prev_step")
+
+    if re.search(
+        r"\b(repeat( that| the step| this)?|say that again|"
+        r"what step (am i|are we) on|current step|read (it|that) again)\b",
+        t,
+    ):
+        return Command(intent="repeat_step")
 
     # next_step — "what's next", "next step", "next"
     if re.search(r"\b(what'?s next|next step|move on|advance)\b", t) or t in {"next", "next."}:
@@ -174,6 +224,10 @@ def deterministic_route(transcript: str) -> Command:
         name = re.sub(r"^(?:the|a|an)\s+", "", m.group(1).strip(), flags=re.IGNORECASE)
         if name and name.lower() not in {"a", "the", "this", "that", "next", "another"}:
             return Command(intent="load_protocol", protocol_name=name)
+
+    # ask - last-resort question catch. Earlier command patterns win first.
+    if re.match(r"^\s*(how|what|why|which|when|does|is|are|can)\b", t):
+        return Command(intent="ask", question=raw)
 
     return Command(
         intent="unknown",
