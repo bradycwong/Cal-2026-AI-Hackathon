@@ -25,6 +25,7 @@ from .schema import (
     log_removed_event,
     log_update_event,
     navigate_event,
+    prep_control_event,
     reset_event,
     step_change_event,
     timer_removed_event,
@@ -96,7 +97,24 @@ def _available_protocols(state: SessionState) -> str:
     return ", ".join(p.name for p in state.protocols.values()) or "none loaded"
 
 
+def _start_run(state: SessionState) -> list[dict[str, Any]]:
+    """Confirm the reagent prep and begin the run. The prep popup is a GATE: the
+    protocol does not start until the operator has determined a sample count, so a
+    confirm with no count asks for one rather than guessing. Lifting the gate just
+    closes the popup — the cursor is already on step 1 from the load."""
+    if not state.active_protocol:
+        return [clarify_event("No protocol is loaded. Say 'load DNA extraction protocol' first.")]
+    if state.prep_sample_count is None:
+        return [clarify_event("How many samples? Say e.g. 'set samples to 24' (or set it in the prep panel) before starting the run.")]
+    state.prep_open = False
+    return [prep_control_event("close")]
+
+
 def _handle_load_protocol(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    # "start protocol" routes here with no name; while the prep gate is up it means
+    # "begin the run", not "load a protocol called nothing".
+    if state.prep_open and not cmd.protocol_name:
+        return _start_run(state)
     if not cmd.protocol_name:
         # State is authoritative for what's loadable; don't trust a stale prompt.
         return [clarify_event(f"Which protocol would you like to load? (Available: {_available_protocols(state)})")]
@@ -108,6 +126,7 @@ def _handle_load_protocol(cmd: Command, state: SessionState) -> list[dict[str, A
     state.current_step_index = 0
     state.protocol_complete = False
     state.skipped_steps.clear()
+    state.prep_sample_count = None  # fresh prep gate for the newly loaded protocol
     state.clear_timers()
     return _step_change_events(state, loaded=True)
 
@@ -115,6 +134,10 @@ def _handle_load_protocol(cmd: Command, state: SessionState) -> list[dict[str, A
 def _handle_next_step(
     cmd: Command, state: SessionState, *, completed: bool = True
 ) -> list[dict[str, Any]]:
+    if state.prep_open:
+        # The prep popup is the gate: "next"/"done"/"confirm" begins the run
+        # (requiring a sample count) instead of advancing the step.
+        return _start_run(state)
     if not state.active_protocol:
         return [clarify_event("No protocol is loaded. Say 'load DNA extraction protocol' first.")]
     last = len(state.active_protocol.steps) - 1
@@ -427,6 +450,26 @@ def _handle_cancel_protocol(cmd: Command, state: SessionState) -> list[dict[str,
     return [reset_event(notes_cleared=False)]
 
 
+def _handle_set_sample_count(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    """Set the reagent-prep sample count (absolute). Records the count so the run
+    can start, and relays it for the client to re-scale the prep table. Never
+    guesses: a missing/invalid count asks for one."""
+    if cmd.sample_count is None:
+        return [clarify_event("How many samples? For example, 'set samples to 24'.")]
+    if cmd.sample_count < 1:
+        return [clarify_event("The sample count must be at least 1.")]
+    state.prep_sample_count = cmd.sample_count
+    return [prep_control_event("set_samples", sample_count=cmd.sample_count)]
+
+
+def _handle_confirm_prep(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    """'looks good' / 'close prep' / the Done button: lift the prep gate and begin
+    the run (requires a sample count). A no-op close when nothing is gated."""
+    if state.prep_open:
+        return _start_run(state)
+    return [prep_control_event("close")]
+
+
 _DISPATCH = {
     "load_protocol": _handle_load_protocol,
     "cancel_protocol": _handle_cancel_protocol,
@@ -445,6 +488,8 @@ _DISPATCH = {
     "ask": _handle_ask,
     "show_protocol": _handle_show_protocol,
     "navigate_page": _handle_navigate_page,
+    "set_sample_count": _handle_set_sample_count,
+    "confirm_prep": _handle_confirm_prep,
     "unknown": _handle_unknown,
 }
 

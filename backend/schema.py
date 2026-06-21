@@ -34,6 +34,8 @@ Intent = Literal[
     "ask",
     "show_protocol",
     "navigate_page",
+    "set_sample_count",
+    "confirm_prep",
     "unknown",
 ]
 
@@ -59,6 +61,7 @@ class Command(BaseModel):
     location: Optional[str] = None        # add_inventory (e.g. "shelf 4", "Fridge 1")
     question: Optional[str] = None      # ask
     page: Optional[str] = None            # navigate_page (page key: dashboard/notebook/...)
+    sample_count: Optional[int] = None    # set_sample_count (reagent-prep scaling)
     clarify_prompt: Optional[str] = None  # unknown / missing param -> clarification area
 
 
@@ -77,7 +80,8 @@ def make_event(type: EventType, payload: dict[str, Any]) -> dict[str, Any]:
 # --- command_result kinds ---------------------------------------------------
 # kind in { step_change, log_entry, log_removed, log_update, inventory_result,
 #           inventory_added, clarify, voice_state, ask_result, timer_removed,
-#           protocol_imported, protocol_updated, reset }
+#           protocol_imported, protocol_updated, navigate, notebook_list,
+#           prep_control, reset }
 
 
 def command_result(kind: str, **fields: Any) -> dict[str, Any]:
@@ -232,6 +236,15 @@ def navigate_event(page: str, hash: str = "") -> dict[str, Any]:
     the hands-free ``show_protocol`` command: a voice "jump to guide" lands the
     operator on the guide view, with ``hash`` (e.g. ``#run``) centering the step."""
     return command_result("navigate", page=page, hash=hash)
+
+
+def prep_control_event(action: str, sample_count: Optional[int] = None) -> dict[str, Any]:
+    """Drive the reagent-prep modal hands-free (additive command_result kind).
+
+    ``action`` is ``"set_samples"`` (re-scale to ``sample_count``) or ``"close"``
+    (dismiss the popup and begin the run). The modal itself is a front-end-only
+    surface, so this just relays the operator's intent for the client to apply."""
+    return command_result("prep_control", action=action, sample_count=sample_count)
 
 
 def voice_state_event(muted: bool, label: str) -> dict[str, Any]:

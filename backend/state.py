@@ -251,6 +251,14 @@ class SessionState:
         # In-memory like the cursor; surfaced on step_change so the tracker can
         # render them yellow instead of green.
         self.skipped_steps: set[int] = set()
+        # Reagent-prep gate: a freshly loaded protocol opens the prep popup and the
+        # run does NOT begin until the operator sets a sample count and confirms.
+        # ``prep_open`` (the gate) is owned by the front end, which POSTs
+        # /api/prep/state when the modal opens/closes; the handlers only read it.
+        # ``prep_sample_count`` is the count the operator determined (None until
+        # set) — starting the run requires it, so a count is never guessed.
+        self.prep_open: bool = False
+        self.prep_sample_count: Optional[int] = None
         self.log: list[dict[str, Any]] = []
         self.timers: list[Timer] = []
         self._log_seq = 0
@@ -538,6 +546,8 @@ class SessionState:
             self.current_step_index = -1
             self.protocol_complete = False
             self.skipped_steps.clear()
+            self.prep_open = False
+            self.prep_sample_count = None
             self.clear_timers()
         return True
 

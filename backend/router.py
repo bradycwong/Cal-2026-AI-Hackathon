@@ -311,6 +311,58 @@ def _parse_timer_label(text: str) -> str:
     return "timer"
 
 
+# Reagent-prep modal control. Verbs that introduce an absolute sample count
+# ("set/scale/use ... N samples"); a bare "<N> samples" also counts.
+_SAMPLE_VERB_RE = r"\b(?:set|change|adjust|make|use|run|scale|prep|prepare)\b"
+
+
+def _parse_prep_command(text: str) -> Optional[Command]:
+    """Recognize reagent-prep modal commands, else None.
+
+    Two shapes: an absolute sample-count change ("set samples to 24", "scale to 8
+    samples", "32 samples") or an explicit confirm/close ("close prep", "looks
+    good"). Sample counts are absolute only and never guessed -- a set/scale
+    phrase with no number returns a clarify Command instead of inventing a count.
+    """
+    t = text.lower().strip()
+
+    # confirm_prep -- explicit "close the prep and begin" phrases that do NOT
+    # already mean next_step ("done"/"confirm") or load_protocol ("start
+    # protocol"); those close the modal at the handler layer when it is open.
+    if re.search(
+        r"\b(?:close|dismiss|hide)\s+(?:the\s+)?prep\b"
+        r"|\bprep(?:\s+(?:is|looks))?\s+(?:good|done|ready|complete)\b"
+        r"|\b(?:reagents?|they)\s+look\s+good\b"
+        r"|\blooks\s+good\b"
+        r"|\b(?:i'?m|i am)\s+ready\b|\bready\s+to\s+(?:start|go|begin)\b",
+        t,
+    ):
+        return Command(intent="confirm_prep")
+
+    # set_sample_count -- needs "sample(s)"/"sample count" plus either a set/scale
+    # verb or a leading "<N> samples". Questions ("how many samples", "where are
+    # the samples") are left for ask/find_inventory further down.
+    s = _replace_number_words(t)
+    if not re.search(r"\bsamples?\b|\bsample count\b", s):
+        return None
+    if re.match(
+        r"^\s*(?:how|what|why|which|when|who|do|does|is|are|can|could|should|would|where)\b",
+        s,
+    ):
+        return None
+    is_set = re.search(_SAMPLE_VERB_RE, s) is not None
+    is_bare = re.match(r"^\s*\d+\s+samples?\b", s) is not None
+    if not (is_set or is_bare):
+        return None
+    m = re.search(r"\b(\d+)\b", s)
+    if not m:
+        return Command(
+            intent="set_sample_count",
+            clarify_prompt="How many samples? For example, 'set samples to 24'.",
+        )
+    return Command(intent="set_sample_count", sample_count=int(m.group(1)))
+
+
 # Quantity + unit for add_inventory ("5g", "5 grams", "100 uL"). Spelled-out
 # units are canonicalized to their short form so the stored row stays tidy.
 _INV_UNIT_RE = re.compile(
@@ -439,6 +491,14 @@ def deterministic_route(transcript: str) -> Command:
                 clarify_prompt="What should I change the last note to?",
             )
         return Command(intent="correct_log", log_text=replacement)
+
+    # reagent prep modal — "set samples to 24", "scale to 8 samples", "close
+    # prep", "looks good". Runs after log/correct (so a note that mentions
+    # samples is still logged) and before the timer/step blocks (so "set 24
+    # samples" isn't read as a timer and "prep done" isn't read as next_step).
+    prep = _parse_prep_command(raw)
+    if prep is not None:
+        return prep
 
     # clear_done_timers — dismiss ONLY finished/expired timers. MUST precede
     # stop_timer: stop_timer's verbs (stop/cancel/dismiss) + "all timers" would
@@ -750,7 +810,8 @@ def answer_question(question: str, protocol) -> str:
 # timers + step navigation never depend on (or wait on) the model.
 _CONTROL_INTENTS = frozenset(
     {"start_timer", "stop_timer", "clear_done_timers", "next_step", "prev_step",
-     "repeat_step", "skip_step", "show_protocol", "cancel_protocol", "navigate_page"}
+     "repeat_step", "skip_step", "show_protocol", "cancel_protocol", "navigate_page",
+     "set_sample_count", "confirm_prep"}
 )
 
 

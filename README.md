@@ -1,150 +1,216 @@
-# Lab — Voice-Driven Electronic Lab Notebook
+# Lab - Voice-Driven Electronic Lab Notebook
 
-A hands-free lab assistant: speak (or type) a command — load a protocol, log an
-observation, start a timer, find a reagent, ask what's next — and the screen
-updates in real time. **Voice is now live** (Deepgram nova-3, server-proxied);
-persistence (SQLite) and the rest remain swappable organs added without touching
-the spine.
+Lab is a hands-free electronic lab notebook for running protocols in the lab:
+start a voice session, load a protocol, follow the active step, log observations,
+manage timers, check inventory, scale reagent prep, and keep notebook records in
+sync across the UI.
 
-## The spine (locked)
+## What works now
 
+- **Live app:** FastAPI serves the current UI from `FrontendTest/` at
+  `http://127.0.0.1:8000`.
+- **Voice control:** browser mic audio streams to `/ws/audio`, the backend proxies
+  it to Deepgram nova-3, and final transcripts run through the same command spine.
+  The Deepgram key stays server-side in `.env`.
+- **Always-listening mute:** after a voice session starts, the mic stays connected.
+  `mute` stops transcript updates and command routing; `unmute` resumes. The mute
+  state is sticky across reconnects.
+- **Protocol library:** four protocols ship in `backend/data/protocols/`. The UI
+  can load, import from pasted text, import from PDF, edit, and delete protocols.
+- **Guided run:** the Guide page shows the active step, previous/current/next
+  context, skipped/completed status, active timers, and a reagent-prep table.
+- **Notebooks:** logs are SQLite-backed, scoped to the active notebook, searchable,
+  editable, sortable, and exportable as Markdown, CSV, or print-to-PDF.
+- **Inventory:** inventory is CSV-backed and can be searched, added, edited, and
+  deleted from the UI. Voice can find items and add simple inventory entries.
+- **Factory reset:** Reset Demo restores the shipped protocol and inventory seed
+  data, clears run state, wipes notes/notebooks, clears timers, and unmutes voice.
+
+## The spine
+
+The central contract is still intentionally small:
+
+```text
+spoken transcript
+  -> route(transcript)        one validated Command
+  -> handle_command(Command)  deterministic state mutation
+  -> emit UI events           over /ws/events
 ```
-transcript (string)
-  -> route(transcript)        ONE validated Command   (router.py — the only LLM call)
-  -> handle_command(Command)  deterministic; mutates SessionState (handlers.py)
-  -> emit UI events           over WS /ws/events       (4 outer types, locked)
-```
 
-Input channels are swappable; the spine is not. The typed box POSTs to
-`/api/ingest`; live Deepgram final transcripts call the **same** `ingest()` over
-`/ws/audio`. Voice is just another way to fill the transcript.
+The frontend dispatches on four outer event types:
+`transcript_update`, `command_result`, `timer_update`, and `error`. New behavior
+adds `command_result.kind` values instead of adding new outer event types.
 
-## Voice
-
-Click **Start session** (top-right), allow the mic, and speak. Mic audio streams
-as webm/opus to `/ws/audio`; the server proxies it to Deepgram nova-3 (key stays
-server-side), shows interim words live, and routes finished utterances through the
-same spine. Requires `DEEPGRAM_API_KEY` in `.env`.
-
-**Mute/unmute.** After Start, every finished utterance is routed as a command.
-Say or type `mute` (the word `mute` **anywhere** in an utterance mutes, e.g.
-"okay, mute"), or click **Mute**, to stop transcript updates and command routing
-— all three toggle the same gate. While muted the mic
-**keeps listening** but ignores everything except `unmute`; mute is sticky and
-survives reconnects, so it stays muted until you say/type `unmute` (or click
-**Unmute**) to resume. Other typed commands always work.
+Visible UI controls usually use structured REST endpoints directly. Spoken
+commands enter through `/ws/audio` and then the same `ingest()` spine used by the
+backend tests and command-driven buttons.
 
 ## Run
 
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env          # optional — typed demo works with NO keys
-uvicorn backend.main:app --reload
-# open http://127.0.0.1:8000
+PowerShell:
+
+```powershell
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+Copy-Item .env.example .env
+.\.venv\Scripts\python.exe -m uvicorn backend.main:app --reload
 ```
 
-No API key? The router automatically uses a **deterministic fallback** that
-covers the five demo lines, so the typed demo always works. Set
-`ANTHROPIC_API_KEY` (and keep `ROUTER_MODE=auto`) to route via Claude.
+Open `http://127.0.0.1:8000`.
 
-## Demo
+Voice requires `DEEPGRAM_API_KEY` in `.env`. `ANTHROPIC_API_KEY` is optional:
+with no Anthropic key, the router uses deterministic fallback paths for the demo
+commands. The current `FrontendTest/` UI does not expose a free-form typed command
+box, so the demo is voice plus visible page controls.
 
-Type these into the command box at the bottom:
+## Updated demo
 
-1. `Load DNA extraction protocol.` -> BIG current-step panel shows Step 1
-2. `What's next?` -> step panel advances
-3. `Go back.` -> step panel returns to the previous step without starting a duplicate auto-timer
-4. `Repeat that.` -> current step is re-announced without moving the cursor
-5. `Log: added 200 microliters lysis buffer to sample A.` -> structured log row
-6. `Scratch that.` -> last log row is removed
-7. `Log: added 250 uL lysis buffer.` then `Change that to added 300 uL lysis buffer.` -> last row updates in place
-8. `Start a 10-minute incubation timer.` -> countdown card, chime on expiry
-9. `Where's the proteinase K?` -> inventory card
-10. `How much lysis buffer in step 1?` -> protocol answer in the clarification panel
+1. Click **Reset Demo** to start from the factory seed state.
+2. Click **Start voice session** in the lower-right dock and allow microphone
+   access.
+3. Say `Load DNA extraction protocol`, or open **Protocols** and click the DNA
+   Extraction load button. The app lands on the Guide with step 1 active.
+4. In the reagent-prep modal, set the sample count to `12` and click **Compute**.
+   The table shows scaled reagent totals and inventory status.
+5. On the Guide, say `Next step` or click **Confirm Action**. The current step is
+   marked complete and an automatic notebook entry is written.
+6. Try step controls: say `Go back`, `Repeat that`, or `Skip this step`, or use
+   the matching Guide buttons. Skipped steps stay visible in the tracker.
+7. When a timed protocol step appears, the timer card starts paused. Say
+   `Start timer` to begin it, then say `Stop timer` or delete the timer card to
+   clear it.
+8. Say `Log added 200 uL lysis buffer to sample A`. Open **Notebook** to see the
+   entry, provenance badge, timestamp, and any reproducibility warning.
+9. Say `Scratch that`, or say `Correct that to added 300 uL lysis buffer`. You can
+   also add and edit entries with the Notebook page controls.
+10. On **Notebook**, create a second notebook, switch it active, and confirm
+    another protocol step. New step notes land in the selected notebook.
+11. Say `Where's the proteinase K?`, or search from **Inventory**. Add a new
+    inventory item from the page, then edit or delete it.
+12. On **Protocols**, click **Import Protocol**. Paste numbered steps or drop a
+    text-readable PDF; imported protocols are registered immediately and can be
+    loaded like shipped protocols.
+13. Edit a protocol from its card, then click **Reset Demo**. The reset restores
+    the shipped protocol/inventory seed data and removes the demo edits, imports,
+    notes, notebooks, timers, and active run.
 
-Clarification path (never fails silently): `Load a protocol.` → clarification
-area asks "Which protocol?" (listing the loaded protocols) instead of guessing.
+Clarification behavior is deliberate: if you say `Load a protocol` without naming
+one, the UI asks which protocol instead of guessing.
 
-**Manual timers.** When you reach a step that declares a `duration_s`, a
-**paused** timer card appears (frozen at the step's full duration, labelled from
-its `timer_label`) instead of counting down. It never auto-starts on step
-change — say (or type) **"start timer"** to begin the countdown. You can still
-start ad-hoc timers with a spoken duration ("start a 10-minute timer"). When a
-timer ends it **beeps** (for up to 30s). Say or type **"stop timer"**, or click
-the **×** on a timer card, to silence the alarm and/or cancel a running timer
-early.
+## Voice examples
 
-**Protocols.** Four ship in `backend/data/protocols/` (DNA Extraction, PCR Setup,
-Bacterial Transformation, Plasmid Miniprep). Add another by dropping a YAML file
-in that directory — no code change; it's auto-loaded and selectable by name.
-
-## Test
-
-```bash
-pytest -q          # router harness + handler shape checks
+```text
+Load DNA extraction protocol
+Next step
+Skip this step
+Go back
+Repeat that
+Start timer
+Stop timer
+Clear done timers
+Log sample A looks clear
+Scratch that
+Correct that to sample A looks cloudy
+Where is the EDTA?
+Add 5 g of EDTA on shelf 4 to inventory
+How much lysis buffer in step 1?
+Open notebook
+Show inventory
+Jump to guide
+Mute
+Unmute
 ```
+
+The **Commands** page lists the supported voice phrases and what each one does.
+
+## Data and reset model
+
+- Protocols live in `backend/data/protocols/*.yaml`.
+- Inventory lives in `backend/data/inventory.csv`.
+- Seed copies live under `backend/seed/` and are used by Reset Demo.
+- Notes and notebooks persist in SQLite at `backend/data/lab.db` by default.
+- Override data with `LAB_DATA_DIR`; override notes with `LAB_DB_PATH`, or set
+  `LAB_DB_PATH=:memory:` for non-persistent notes.
+
+Reset Demo is now a full factory reset. It restores seed protocols and inventory,
+clears all notes/notebooks, clears the active protocol and timers, clears recent
+protocol state, and unmutes voice. It does not depend on `LAB_DEMO_MODE`.
+
+## API surface
+
+- `POST /api/ingest` - command spine entrypoint for tests and command-like UI
+  actions.
+- `GET /api/state` - hydrate active protocol, log, and timer state.
+- `GET /api/protocols` and `GET /api/protocols/recent` - protocol catalog and
+  dashboard recents.
+- `POST /api/protocols/{id}/load` - deterministic protocol load.
+- `GET/PATCH/DELETE /api/protocols/{id}` - full protocol detail, edit, and
+  delete.
+- `POST /api/protocols/import` - pasted prose to protocol YAML.
+- `POST /api/protocols/import/file` - text-readable PDF to protocol YAML.
+- `POST /api/protocols` - direct YAML upload.
+- `POST /api/step/next` - button-driven confirm or skip.
+- `GET/POST /api/notebooks` and `POST /api/notebooks/{id}/select` - notebook
+  list, create, and switch active notebook.
+- `GET/POST /api/log` and `PATCH /api/log/{id}` - active-notebook log feed and
+  entry edits.
+- `GET/POST /api/inventory` and `PUT/DELETE /api/inventory/{id}` - inventory
+  read and item CRUD.
+- `POST /api/scale` - deterministic reagent prep scaling for the active or
+  selected protocol.
+- `POST /api/demo/reset` - factory reset.
+- `GET /api/health` - basic backend health and loaded data counts.
+- `WS /ws/events` - UI event stream.
+- `WS /ws/audio` - browser mic audio and voice mute controls.
 
 ## Layout
 
-```
+```text
 backend/
-  main.py        FastAPI: /api/ingest, /api/state, /api/protocols(+/{id}/load), /api/inventory, /api/log, WS /ws/events + /ws/audio, serves FrontendTest, timer loop, ingest() spine
-  deepgram_stt.py server-side Deepgram live STT proxy (key never reaches browser)
-  voice_control.py always-listening mute/unmute gate for spoken utterances
-  schema.py      Command (flat-5 + unknown) + locked event-envelope builders
-  router.py      route(transcript)->Command: LLM primary + deterministic fallback; ASCII normalize
-  handlers.py    handle_command(): deterministic dispatch; missing param -> clarify
-  state.py       SessionState; YAML/CSV loaders; timers; log (DB-backed via db.py)
-  db.py          SQLite NoteStore: persists the log so it survives refresh/restart
-  data/protocols/*.yaml (DNA Extraction, PCR Setup, Bacterial Transformation, Plasmid Miniprep), data/inventory.csv  (lab.db created at runtime)
-FrontendTest/     served live UI (dashboard/protocols/guide/notebook/inventory.html)
-  app.js         window.LabClient: REST hydrate + WS dispatch on the 4 event types
-frontend/         legacy app, kept on disk (sw.js still served at /sw.js); no longer the root
-tests/           router, handler, STT, voice-control, and persistence checks
+  main.py              FastAPI app, REST endpoints, WS events/audio, static UI
+  deepgram_stt.py      server-side Deepgram live STT proxy
+  voice_control.py     always-listening mute/unmute gate
+  schema.py            Command model and locked event-envelope builders
+  router.py            transcript -> Command, LLM optional with deterministic paths
+  handlers.py          deterministic command handlers
+  state.py             protocols, inventory, timers, notebooks, reset model
+  db.py                SQLite NoteStore for notes and notebooks
+  protocol_import.py   pasted/PDF protocol import helpers
+  pdf_extract.py       PDF text extraction and reflow
+  scaling.py           reagent prep scaling and inventory verdicts
+  reproducibility.py   deterministic volume checks for notebook flags
+  data/                live protocol, inventory, and runtime DB files
+  seed/                factory-reset baseline files
+
+FrontendTest/
+  dashboard.html       dashboard, recent protocols, recent notebooks, live status
+  protocols.html       protocol library, import, edit, delete
+  guide.html           active run, step tracker, timers, reagent prep
+  notebook.html        notebooks, log feed, edit, search, sort, export
+  inventory.html       inventory search/add/edit/delete
+  commands.html        voice command reference
+  app.js               REST hydrate, WS dispatch, render logic
+  voice.js             browser mic session and voice-state UI
+
+frontend/
+  sw.js                legacy self-unregistering service worker stub
+
+tests/                 API, router, handlers, voice, protocol import/edit,
+                       notebooks, reset, scaling, persistence, and UI static checks
 ```
 
-Log persistence: the log feed is written to SQLite (`backend/data/lab.db`, set
-`LAB_DB_PATH` to override or `:memory:` to disable) and rehydrated by the UI from
-`GET /api/state` on load, so it survives a page refresh or a server restart.
-Protocols + inventory stay file-driven; the rest of session state is in-memory.
+## Test
 
-Read snapshots for the UI: `GET /api/protocols` -> `{"protocols": [...]}`,
-`POST /api/protocols/{id}/load` (deterministic load), `GET /api/inventory` ->
-`{"items": [...]}`, `GET /api/log` -> `{"log": [...]}`, and `GET /api/state`
-(step enriched with `all_steps`, `current_index`, `protocol_name`).
+Use the repo virtual environment on Windows:
 
-Protocol import: `POST /api/protocols/import` with `{"text": "...", "name": "..."}`
-turns pasted prose into the canonical protocol YAML (written to
-`backend/data/protocols/`), registers it immediately, and surfaces it in
-`GET /api/protocols`. `IMPORT_MODE` (`auto|llm|deterministic`) selects the parser;
-with no API key it falls back to a deterministic line/duration parser, so import
-works offline. Imported protocols are always `READY` and survive a restart. The
-FrontendTest protocols page has an "Import Protocol" modal wired to this endpoint.
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q --basetemp .pytest-tmp\codex-run -p no:cacheprovider
+```
 
-Reagent prep scaling: `POST /api/scale` computes a deterministic prep table for
-the active protocol or a provided `protocol_id`. It reads structured protocol
-parameters (`reagent`, `volume_ul`), scales totals by sample count and overage,
-and compares those totals against inventory without calling the LLM or mutating
-lab state. Inventory matching here is stricter than the voice `find_inventory`
-command so generic shared words (e.g. "buffer") don't pair unrelated reagents. In
-the dashboard, load DNA Extraction, enter `12` samples and `10` percent overage,
-then compute: ethanol and nuclease-free water show in stock, while lysis buffer
-shows missing (no close inventory match).
+For README-only edits, `git diff --check -- README.md` is a lightweight formatting
+guard.
 
-Reproducibility flags: when a log entry is added at a step that declares a
-`volume_ul` parameter, a deterministic checker compares the logged volume against
-the expected one and attaches an optional `flag` (`status: ok|mismatch`) to the
-`log_entry`/`log_update` payloads and to `/api/log` + `/api/state`. v1 flags only
-`volume_ul` mismatches; it never edits the researcher's log text, and the flag is
-persisted as part of the lab record. The notebook renders a `OK`/`Warning` line.
+## Not yet
 
-## Demo reset
-
-The FrontendTest UI includes a Reset Demo control. It clears protocol progress,
-timers, transcript, clarification, and transient page state. Persisted notes are
-kept by default. Set `LAB_DEMO_MODE=true` before starting the server to wipe notes
-as part of reset. Reset never deletes protocol YAML files or inventory CSV data.
-
-Deferred swappable organs (NOT yet): VAD-gated streaming (cost), TTS,
-upload/library pages.
+Deferred pieces include TTS, VAD-gated streaming/cost optimization, production
+auth, hosted multi-user deployment, and real LIMS integration.

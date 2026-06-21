@@ -1354,12 +1354,20 @@
                 <td class="py-3 pr-3 font-data-label text-on-surface">${escapeHtml(row.total_display)}</td>
                 <td class="py-3 pr-3">
                   <div class="${prepVerdictClass(row.verdict)} font-bold">${escapeHtml(prepVerdictLabel(row))}</div>
+<<<<<<< Updated upstream
                   <div class="text-xs text-on-surface-variant">${escapeHtml(row.match_name || "No inventory match")}</div>
                   ${multiBottle ? `
                   <div class="mt-2">
                     <div class="text-[10px] uppercase text-on-surface-variant mb-1 tracking-wide">Use order (drag to reorder)</div>
                     <div class="priority-list" data-reagent="${escapeHtml(row.reagent)}">${priorityRows}</div>
                   </div>` : ""}
+=======
+                  <div class="text-xs text-on-surface-variant flex items-center gap-1">${
+                    row.match_name
+                      ? `<span class="material-symbols-outlined" style="font-size:13px" aria-hidden="true">location_on</span>${escapeHtml(row.location || "Location not set")}`
+                      : escapeHtml("No inventory match")
+                  }</div>
+>>>>>>> Stashed changes
                 </td>
               </tr>`;
             }).join("")}
@@ -1891,7 +1899,12 @@
   }
 
   function renderStep(step) {
-    if (!step) return;
+    if (!step) {
+      // No active run (e.g. after cancel/finish or a demo reset): keep the nav
+      // slot in sync — without this it would keep its stale "Jump to guide" state.
+      renderResumeRun(null);
+      return;
+    }
     // Finishing the final step clamps the cursor to the last real step and flips
     // ``finished``; the card then reads as "protocol complete" rather than just
     // sitting on the last step.
@@ -2021,18 +2034,43 @@
         <span class="material-symbols-outlined text-sm">${icon}</span>${escapeHtml(text)}</div>`;
   }
 
-  // Top-left nav shortcut back to the live run. Shown on every page only while a
-  // protocol is loaded; clicking it lands on the Guide (via the #run hash, which
-  // centers the current step). Kept live by renderStep (Guide + WS step_change)
-  // and by the "active run" hydrate section on non-Guide pages.
+  // Top-left nav slot. Always filled: a muted, inert "No protocol active"
+  // placeholder when nothing is running, swapped to a live "Jump to guide" CTA
+  // (with protocol name) while a protocol is loaded — clicking it lands on the
+  // Guide via the #run hash, which centers the current step. Kept live by
+  // renderStep (Guide + WS step_change) and by the "active run" hydrate section
+  // on non-Guide pages; resets to the placeholder on cancel/finish.
   function renderResumeRun(step) {
     const el = $("resume-run");
     if (!el) return;
     const active =
       !!step && step.current_index != null && step.current_index >= 0;
-    el.classList.toggle("hidden", !active);
+    const icon = el.querySelector(".material-symbols-outlined");
+    const label = $("resume-run-label");
     const nm = $("resume-run-name");
-    if (nm && active && step.protocol_name) nm.textContent = step.protocol_name;
+    // Live CTA palette (matches the nav primary buttons) vs a muted, inert
+    // placeholder (mirrors the Reset Demo button) so the slot is always filled.
+    const ACTIVE = ["nav-link", "bg-primary", "text-on-primary", "font-bold",
+                    "hover:opacity-90", "transition-opacity", "active:scale-95"];
+    const EMPTY = ["bg-surface-container-high", "text-on-surface-variant",
+                   "font-medium", "cursor-default"];
+    el.classList.remove(...(active ? EMPTY : ACTIVE));
+    el.classList.add(...(active ? ACTIVE : EMPTY));
+    if (active) {
+      el.setAttribute("href", "guide.html#run");
+      el.removeAttribute("aria-disabled");
+      el.title = "Jump to the protocol guide";
+      if (icon) icon.textContent = "play_arrow";
+      if (label) label.textContent = "Jump to guide";
+      if (nm) nm.textContent = step.protocol_name || "";
+    } else {
+      el.removeAttribute("href");
+      el.setAttribute("aria-disabled", "true");
+      el.title = "No protocol is currently active";
+      if (icon) icon.textContent = "science";
+      if (label) label.textContent = "No protocol active";
+      if (nm) nm.textContent = ""; // clear stale name (e.g. after cancel/finish)
+    }
   }
 
   // --- timers (driven by the outer timer_update event) ----------------------

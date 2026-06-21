@@ -531,12 +531,17 @@ def test_app_dispatches_navigate_kind():
 
 
 def test_every_page_has_jump_to_guide_nav_button():
-    # The "Jump to guide" nav shortcut lives on every page (shown only when a
-    # protocol is loaded) and links to the guide view with the #run hash.
+    # The nav slot lives on every page: a muted "No protocol active" placeholder
+    # by default, swapped by app.js (renderResumeRun) to a live "Jump to guide"
+    # link targeting the guide view via the #run hash while a protocol is loaded.
     for page in PAGES:
         html = (FT / page).read_text(encoding="utf-8")
-        assert 'id="resume-run"' in html, f"{page} missing Jump to guide nav button"
-        assert 'href="guide.html#run"' in html, f"{page} resume-run missing #run target"
+        assert 'id="resume-run"' in html, f"{page} missing protocol nav slot"
+        assert 'id="resume-run-label"' in html, f"{page} missing resume-run label hook"
+        assert "No protocol active" in html, f"{page} missing empty-state label"
+    # The #run target is applied dynamically by the client, not baked into markup.
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert 'guide.html#run' in js, "app.js missing #run target for the active run"
 
 
 def test_commands_page_documents_jump_to_guide():

@@ -383,3 +383,91 @@ def test_answer_question_fallback_matches_protocol_step(monkeypatch):
 
     assert "Step 1:" in answer
     assert "lysis buffer" in answer.lower()
+
+
+def test_step_context_humanizes_volume():
+    from backend.state import Protocol, Step
+
+    proto = Protocol(
+        id="p",
+        name="P",
+        steps=[
+            Step(id=1, text="Add buffer", parameters={"volume_ul": 50000, "reagent": "buffer"}),
+            Step(id=2, text="Add water", parameters={"volume_ul": 200, "reagent": "water"}),
+        ],
+    )
+    ctx = router._step_context(proto)
+    # large volume humanized to mL; raw microliter number never shown to the model
+    assert "volume=50 mL" in ctx
+    assert "50000" not in ctx
+    # sub-mL volume stays in uL
+    assert "volume=200 uL" in ctx
+
+
+# --- reagent prep modal voice control --------------------------------------
+
+
+def test_set_sample_count_parses_phrasings():
+    cases = {
+        "set samples to 24": 24,
+        "set the samples to 24": 24,
+        "change samples to 12": 12,
+        "change the sample count to 8": 8,
+        "scale to 8 samples": 8,
+        "scale for 16 samples": 16,
+        "make it 6 samples": 6,
+        "use 10 samples": 10,
+        "run 30 samples": 30,
+        "prep 18 samples": 18,
+        "32 samples": 32,
+    }
+    for phrase, n in cases.items():
+        cmd = route(phrase)
+        assert cmd.intent == "set_sample_count", phrase
+        assert cmd.sample_count == n, (phrase, cmd.sample_count)
+
+
+def test_set_sample_count_spelled_out_number():
+    cmd = route("set samples to twenty four")
+    assert cmd.intent == "set_sample_count"
+    assert cmd.sample_count == 24
+
+
+def test_set_sample_count_no_number_clarifies_not_guesses():
+    cmd = route("change the samples")
+    assert cmd.intent == "set_sample_count"
+    assert cmd.sample_count is None
+    assert cmd.clarify_prompt  # a question, never a guessed count
+
+
+def test_confirm_prep_phrasings_route_to_confirm_prep():
+    for phrase in (
+        "close prep",
+        "close the prep",
+        "looks good",
+        "reagents look good",
+        "prep looks good",
+        "prep done",
+        "ready to start",
+    ):
+        assert route(phrase).intent == "confirm_prep", phrase
+
+
+def test_prep_commands_are_control_fast_path(monkeypatch):
+    # Like the other control intents, prep commands resolve deterministically even
+    # with the (normally dead) LLM seam live -> they never reach the sentinel.
+    monkeypatch.setattr(router, "ROUTER_MODE", "llm")
+    monkeypatch.setattr(router, "_llm_route", lambda t: Command(intent="unknown"))
+    assert route("set samples to 24").intent == "set_sample_count"
+    assert route("close prep").intent == "confirm_prep"
+
+
+def test_prep_commands_do_not_steal_existing_intents():
+    # "done"/completion still advances (the handler closes the prep when it's
+    # open); naming a protocol still loads; a note that mentions samples is still
+    # logged; a sample question still asks / finds.
+    assert route("done").intent == "next_step"
+    assert route("start DNA extraction protocol").intent == "load_protocol"
+    assert route("log that we prepped 12 samples").intent == "log_entry"
+    assert route("how many samples do we need?").intent == "ask"
+    assert route("where are the samples?").intent == "find_inventory"
