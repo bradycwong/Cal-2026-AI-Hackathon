@@ -90,3 +90,30 @@ def test_classify_control_ignores_non_control_text():
     assert classify_control("mute the sample") is None  # not a bare control phrase
     assert classify_control("") is None
     assert classify_control("   ") is None
+
+
+def test_unmute_tolerates_common_stt_variants():
+    for phrase in ("un mute", "un-mute", "unmuted", "Unmute lab", "resume listening"):
+        assert classify_control(phrase) == "unmute", phrase
+
+
+def test_mute_tolerates_common_stt_variants():
+    for phrase in ("mute", "muted", "Mute lab", "stop listening"):
+        assert classify_control(phrase) == "mute", phrase
+
+
+def test_muted_mic_keeps_listening_and_only_unmute_resumes():
+    """While muted, every non-unmute final is ignored but still processed, and a
+    spoken unmute (incl. an STT variant) resumes normal operation."""
+    vc = VoiceControl(muted=True)
+
+    for noise in ("where is the proteinase k", "next step", "log a note"):
+        decision = vc.process_final(noise)
+        assert not decision.route_command
+        assert not decision.report_transcript
+        assert vc.muted  # still listening, still muted
+
+    decision = vc.process_final("un mute")
+    assert not vc.muted
+    assert decision.voice_state_changed
+    assert vc.process_final("next step").route_command  # normal operation resumed

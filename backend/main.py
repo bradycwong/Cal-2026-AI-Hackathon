@@ -221,9 +221,9 @@ async def ws_audio(ws: WebSocket) -> None:
     typed line. Voice is just another way to fill the transcript.
     """
     await ws.accept()
-    # A fresh session starts listening; reuse the shared gate so a typed/spoken
-    # "mute" during the session is reflected here too.
-    voice.set_muted(False)
+    # Mute is sticky: a (re)connect must NOT clear it, so a muted mic keeps
+    # listening across reconnects until an explicit "unmute". Just sync the UI to
+    # the shared gate's current state.
     await manager.broadcast([voice_state_event(voice.muted, voice.label)])
 
     async def on_interim(text: str) -> None:
