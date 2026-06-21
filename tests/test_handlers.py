@@ -97,6 +97,38 @@ def test_auto_timer_can_be_disabled(monkeypatch):
     assert all(e["type"] != "timer_update" for e in events)
 
 
+def test_timers_do_not_auto_start_by_default(monkeypatch):
+    # Default is manual: a timed step never auto-starts its countdown.
+    monkeypatch.setattr(handlers, "AUTO_TIMERS", False)
+    state = fresh_state()
+    events = handle_command(
+        Command(intent="load_protocol", protocol_name="Bacterial Transformation"), state
+    )
+    assert all(e["type"] != "timer_update" for e in events)
+    events = handle_command(Command(intent="next_step"), state)
+    assert all(e["type"] != "timer_update" for e in events)
+
+
+def test_start_timer_without_duration_uses_current_step(monkeypatch):
+    monkeypatch.setattr(handlers, "AUTO_TIMERS", False)
+    state = fresh_state()
+    # Bacterial Transformation step 1 is timed (thaw on ice, 600 s).
+    handle_command(Command(intent="load_protocol", protocol_name="Bacterial Transformation"), state)
+    events = handle_command(Command(intent="start_timer"), state)
+    assert events[0]["type"] == "timer_update"
+    assert events[0]["payload"]["label"] == "thaw on ice"
+    assert events[0]["payload"]["remaining_s"] > 0
+
+
+def test_start_timer_without_duration_on_untimed_step_clarifies(monkeypatch):
+    monkeypatch.setattr(handlers, "AUTO_TIMERS", False)
+    state = fresh_state()
+    # DNA Extraction step 1 is manual (no duration) -> nothing to start.
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    events = handle_command(Command(intent="start_timer"), state)
+    assert events[0]["payload"]["kind"] == "clarify"
+
+
 def test_all_protocols_load_and_advance():
     # Generality: every shipped protocol loads and exposes step 1.
     state = fresh_state()

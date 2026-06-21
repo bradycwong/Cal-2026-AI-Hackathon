@@ -104,7 +104,7 @@ def _parse_sample_id(text: str) -> Optional[str]:
 
 def _parse_timer_label(text: str) -> str:
     m = re.search(r"\b(?:a|an)?\s*([A-Za-z]+)\s+timer\b", text, flags=re.IGNORECASE)
-    if m and m.group(1).lower() not in {"minute", "second", "the", "new"}:
+    if m and m.group(1).lower() not in {"minute", "second", "the", "new", "start", "stop"}:
         return m.group(1).lower()
     return "timer"
 
@@ -130,10 +130,10 @@ def deterministic_route(transcript: str) -> Command:
     if "timer" in t or re.search(r"\bstart (?:a |an )?\d", t):
         dur = _parse_duration(raw)
         if dur is None:
-            return Command(
-                intent="start_timer",
-                clarify_prompt="How long should the timer run? (e.g. 'start a 10-minute timer')",
-            )
+            # No spoken duration -> let the handler start the current step's
+            # declared timer (only clarifies if there's no timed step).
+            lbl = _parse_timer_label(raw)
+            return Command(intent="start_timer", timer_label=None if lbl == "timer" else lbl)
         return Command(intent="start_timer", duration_s=dur, timer_label=_parse_timer_label(raw))
 
     # find_inventory — "where is/where's X", "location of X", "find X"
