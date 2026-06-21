@@ -143,6 +143,94 @@
       });
   }
 
+  // --- inventory add-item ---------------------------------------------------
+  async function refreshInventory() {
+    if ($("inventory-rows")) renderInventory(await fetchInventory());
+  }
+
+  async function addInventoryItem(payload) {
+    const r = await fetch(API + "/api/inventory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || `add failed (${r.status})`);
+    return data;
+  }
+
+  function openAddItemModal() {
+    const m = $("additem-modal");
+    if (!m) return;
+    // Clear any stale status message from a previous open.
+    const res = $("additem-result");
+    if (res) {
+      res.textContent = "";
+      res.className = "text-sm mb-4 min-h-[1.25rem]";
+    }
+    // Default "Date Created" to today for convenience.
+    const dc = $("additem-date");
+    if (dc && !dc.value) dc.value = new Date().toISOString().slice(0, 10);
+    m.classList.remove("hidden");
+    const name = $("additem-name");
+    if (name) name.focus();
+  }
+  function closeAddItemModal() {
+    const m = $("additem-modal");
+    if (m) m.classList.add("hidden");
+  }
+
+  async function handleAddItem() {
+    const result = $("additem-result");
+    const setMsg = (msg, cls) => {
+      if (result) {
+        result.textContent = msg;
+        result.className = "text-sm mb-4 min-h-[1.25rem] " + cls;
+      }
+    };
+    const name = (($("additem-name") || {}).value || "").trim();
+    const location = (($("additem-location") || {}).value || "").trim();
+    const date = (($("additem-date") || {}).value || "").trim();
+    const expiration = (($("additem-expiration") || {}).value || "").trim();
+    if (!name) {
+      setMsg("Reagent name is required.", "text-tertiary");
+      return;
+    }
+    setMsg("Saving...", "text-on-surface-variant");
+    try {
+      await addInventoryItem({ name, location, date, expiration });
+      await refreshInventory();
+      ["additem-name", "additem-location", "additem-date", "additem-expiration"].forEach(
+        (id) => {
+          const el = $(id);
+          if (el) el.value = "";
+        }
+      );
+      // Close immediately on success and stay closed; the new table row is the
+      // confirmation. (No delayed/auto re-open.)
+      closeAddItemModal();
+    } catch (e) {
+      setMsg("Could not add item: " + e.message, "text-tertiary");
+    }
+  }
+
+  function wireAddItemModal() {
+    const open = $("add-item");
+    if (!open) return;
+    open.addEventListener("click", openAddItemModal);
+    ["additem-cancel", "additem-cancel-2"].forEach((id) => {
+      const b = $(id);
+      if (b) b.addEventListener("click", closeAddItemModal);
+    });
+    const submit = $("additem-submit");
+    if (submit) submit.addEventListener("click", handleAddItem);
+    const modal = $("additem-modal");
+    if (modal)
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) closeAddItemModal();
+      });
+  }
+
   async function postLog(text, sample_id, category) {
     const r = await fetch(API + "/api/log", {
       method: "POST",
@@ -220,19 +308,22 @@
     const host = $("inventory-rows");
     if (!host) return;
     const header = `<div class="grid grid-cols-12 gap-4 px-6 py-3 bg-surface-container-low text-on-surface-variant text-xs font-bold uppercase tracking-wider border-b border-outline-variant sticky top-0 z-10">
-      <div class="col-span-4">Reagent Name</div><div class="col-span-3">Location</div><div class="col-span-3">Date Created</div><div class="col-span-2">Status</div></div>`;
+      <div class="col-span-3">Reagent Name</div><div class="col-span-3">Location</div><div class="col-span-2">Date Created</div><div class="col-span-2">Expiration</div><div class="col-span-2">Status</div></div>`;
     const rows = items
       .map(
         (it) => `<div class="inventory-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors">
-      <div class="col-span-4 flex items-center gap-3">
+      <div class="col-span-3 flex items-center gap-3">
         <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary"><span class="material-symbols-outlined text-lg">science</span></div>
         <div><p class="font-bold text-on-surface">${escapeHtml(it.name)}</p><p class="text-[10px] font-data-label text-outline">${escapeHtml(
           it.code || ""
         )}</p></div>
       </div>
       <div class="col-span-3"><p class="text-on-surface text-sm">${escapeHtml(it.location)}</p></div>
-      <div class="col-span-3"><p class="font-data-label text-on-surface-variant text-sm">${escapeHtml(
+      <div class="col-span-2"><p class="font-data-label text-on-surface-variant text-sm">${escapeHtml(
         it.date || "—"
+      )}</p></div>
+      <div class="col-span-2"><p class="font-data-label text-on-surface-variant text-sm">${escapeHtml(
+        it.expiration || "unknown"
       )}</p></div>
       <div class="col-span-2"><span class="text-xs font-bold uppercase">${escapeHtml(it.status)}</span></div>
     </div>`
@@ -853,6 +944,7 @@
     } catch (_) {}
     renderTimers();
     wireImportModal();
+    wireAddItemModal();
     wireDemoReset();
     wireVoice();
   }
@@ -860,6 +952,8 @@
   window.LabClient = {
     fetchProtocols,
     fetchInventory,
+    refreshInventory,
+    addInventoryItem,
     fetchLog,
     fetchState,
     loadProtocol,

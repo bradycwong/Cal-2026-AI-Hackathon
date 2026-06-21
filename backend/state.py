@@ -56,6 +56,7 @@ class InventoryItem:
     code: str = ""
     category: str = "General"
     date: str = ""
+    expiration: str = ""
     status: str = "ok"
 
 
@@ -203,6 +204,7 @@ def load_inventory_file(path: Path) -> list[InventoryItem]:
                     code=(row.get("code") or "").strip(),
                     category=(row.get("category") or "General").strip() or "General",
                     date=(row.get("date") or "").strip(),
+                    expiration=(row.get("expiration") or "").strip(),
                     status=status,
                 )
             )
@@ -210,7 +212,8 @@ def load_inventory_file(path: Path) -> list[InventoryItem]:
 
 
 _INVENTORY_COLUMNS = [
-    "name", "location", "quantity_approx", "notes", "code", "category", "date", "status",
+    "name", "location", "quantity_approx", "notes", "code", "category", "date",
+    "expiration", "status",
 ]
 
 
@@ -295,6 +298,7 @@ class SessionState:
                 "category": item.category,
                 "quantity_approx": item.quantity_approx,
                 "date": item.date,
+                "expiration": item.expiration,
                 "status": item.status,
                 "notes": item.notes,
             }
@@ -311,6 +315,7 @@ class SessionState:
         code: str = "",
         category: str = "General",
         date: str = "",
+        expiration: str = "",
         status: str = "ok",
     ) -> InventoryItem:
         """Append a manually-entered item to memory and persist it to the CSV.
@@ -332,6 +337,7 @@ class SessionState:
             code=code.strip(),
             category=(category or "General").strip() or "General",
             date=date.strip(),
+            expiration=expiration.strip(),
             status=status,
         )
         self.inventory.append(item)
@@ -344,7 +350,7 @@ class SessionState:
                 writer.writerow(_INVENTORY_COLUMNS)
             writer.writerow([
                 item.name, item.location, item.quantity_approx, item.notes,
-                item.code, item.category, item.date, item.status,
+                item.code, item.category, item.date, item.expiration, item.status,
             ])
         return item
 
