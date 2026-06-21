@@ -20,6 +20,26 @@ def fresh_state(tmp_path) -> SessionState:
     return state
 
 
+def test_inventory_view_humanizes_amount_display(tmp_path):
+    # Structured amount+unit gets a readable metric display ("1000 mL" -> "1 L"),
+    # while the raw amount/unit are preserved for editing.
+    from backend.inventory import InventoryItem, InventoryStore
+
+    store = InventoryStore(data_dir=tmp_path)
+    store.items = [
+        InventoryItem(name="Ethanol", location="A", quantity_approx="", amount="1000", unit="mL", id=1),
+        InventoryItem(name="EDTA", location="B", quantity_approx="", amount="500", unit="mL", id=2),
+        InventoryItem(name="Agarose", location="C", quantity_approx="", amount="1500", unit="mg", id=3),
+        InventoryItem(name="Mystery", location="D", quantity_approx="", amount="1-5", unit="mL", id=4),
+    ]
+    rows = {r["name"]: r for r in store.view()}
+    assert rows["Ethanol"]["amount_display"] == "1 L"      # 1000 mL -> 1 L
+    assert rows["EDTA"]["amount_display"] == "500 mL"      # under 1000 stays put
+    assert rows["Agarose"]["amount_display"] == "1.5 g"    # 1500 mg -> 1.5 g
+    assert rows["Mystery"]["amount_display"] == "1-5 mL"   # non-numeric left as written
+    assert rows["Ethanol"]["amount"] == "1000" and rows["Ethanol"]["unit"] == "mL"
+
+
 # --- router: phrase -> add_inventory Command --------------------------------
 
 def test_route_add_inventory_full_phrase():

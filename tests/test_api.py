@@ -151,30 +151,37 @@ def test_ingest_set_sample_count_emits_prep_control(client):
     assert main.state.prep_sample_count == 30
 
 
-def test_prep_gate_end_to_end(client, monkeypatch):
-    # Full hands-free gate: load opens the popup, the run will NOT start until a
-    # sample count is determined, then "start protocol" begins the run.
+def _prep_actions(resp):
+    return [
+        e["payload"].get("action")
+        for e in resp.json()["events"]
+        if e["payload"].get("kind") == "prep_control"
+    ]
+
+
+def test_prep_gate_starts_with_default_one(client, monkeypatch):
+    # The popup gates the run, but "start protocol" with no count set just
+    # defaults to 1 sample instead of asking "how many samples?".
     monkeypatch.setattr(router, "ROUTER_MODE", "deterministic")
     client.post("/api/protocols/dna_extraction/load")
     client.post("/api/prep/state", json={"open": True})  # front end raises the gate
 
-    # "start protocol" before a count -> clarify; the run stays gated.
     r = client.post("/api/ingest", json={"transcript": "start protocol"})
-    kinds = [e["payload"].get("kind") for e in r.json()["events"]]
-    assert "clarify" in kinds
-    assert main.state.prep_open is True
+    assert "close" in _prep_actions(r)
+    assert main.state.prep_open is False
+    assert main.state.prep_sample_count == 1
 
-    # Determine the count by voice, then start.
+
+def test_prep_gate_uses_set_count_when_provided(client, monkeypatch):
+    monkeypatch.setattr(router, "ROUTER_MODE", "deterministic")
+    client.post("/api/protocols/dna_extraction/load")
+    client.post("/api/prep/state", json={"open": True})
     client.post("/api/ingest", json={"transcript": "set samples to 24"})
     assert main.state.prep_sample_count == 24
     r = client.post("/api/ingest", json={"transcript": "start protocol"})
-    actions = [
-        e["payload"].get("action")
-        for e in r.json()["events"]
-        if e["payload"].get("kind") == "prep_control"
-    ]
-    assert "close" in actions
+    assert "close" in _prep_actions(r)
     assert main.state.prep_open is False
+    assert main.state.prep_sample_count == 24
 
 
 def test_post_log_persists_and_lists(client):

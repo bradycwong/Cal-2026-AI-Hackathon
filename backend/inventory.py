@@ -180,6 +180,9 @@ class InventoryStore:
 
     def view(self) -> list[dict[str, Any]]:
         """Read-only view of inventory for ``GET /api/inventory``."""
+        # Deferred: scaling imports inventory, so a top-level import would cycle.
+        from .scaling import humanize_metric
+
         return [
             {
                 "id": item.id,
@@ -190,6 +193,9 @@ class InventoryStore:
                 "quantity_approx": item.quantity_approx,
                 "amount": item.amount,
                 "unit": item.unit,
+                # Readable metric form ("1000 mL" -> "1 L") for display; raw
+                # amount/unit above stay authoritative for editing + math.
+                "amount_display": humanize_metric(item.amount, item.unit),
                 "date": item.date,
                 "status": item.status,
                 "notes": item.notes,

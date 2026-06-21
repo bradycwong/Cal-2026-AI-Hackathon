@@ -34,7 +34,7 @@ from .deepgram_stt import run_deepgram_session, set_custom_keywords
 from .router import ROUTER_MODE, route
 from .protocol_import import import_protocol
 from .pdf_extract import PdfExtractError, extract_pdf_text, reflow_pdf_text
-from .scaling import apply_reagent_deductions, build_prep_table
+from .scaling import apply_reagent_deductions, build_prep_table, humanize_metric
 from .reproducibility import check as check_reproducibility
 from .schema import (
     Command,
@@ -710,6 +710,7 @@ def _inventory_item_payload(item: Any) -> dict[str, Any]:
         "location": item.location,
         "amount": item.amount,
         "unit": item.unit,
+        "amount_display": humanize_metric(item.amount, item.unit),
         "quantity_approx": item.quantity_approx,
         "notes": item.notes,
         "date": item.date,

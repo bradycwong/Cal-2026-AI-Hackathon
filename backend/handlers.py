@@ -98,14 +98,14 @@ def _available_protocols(state: SessionState) -> str:
 
 
 def _start_run(state: SessionState) -> list[dict[str, Any]]:
-    """Confirm the reagent prep and begin the run. The prep popup is a GATE: the
-    protocol does not start until the operator has determined a sample count, so a
-    confirm with no count asks for one rather than guessing. Lifting the gate just
-    closes the popup — the cursor is already on step 1 from the load."""
+    """Confirm the reagent prep and begin the run. The prep popup gates the start
+    (the run waits until you confirm), but it never blocks: starting without a
+    sample count just defaults to 1, so "start"/"done" always begins. Lifting the
+    gate closes the popup — the cursor is already on step 1 from the load."""
     if not state.active_protocol:
         return [clarify_event("No protocol is loaded. Say 'load DNA extraction protocol' first.")]
     if state.prep_sample_count is None:
-        return [clarify_event("How many samples? Say e.g. 'set samples to 24' (or set it in the prep panel) before starting the run.")]
+        state.prep_sample_count = 1  # default: "start" with no count set uses 1 sample
     state.prep_open = False
     return [prep_control_event("close")]
 
