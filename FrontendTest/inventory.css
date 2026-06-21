@@ -9,6 +9,13 @@
 .inventory-row:hover {
     background: rgba(184, 195, 255, 0.04);
 }
+/* Depleted (amount 0) rows stay tinted red, even on hover. */
+.inventory-row.inv-depleted {
+    background: rgba(255, 107, 107, 0.10);
+}
+.inventory-row.inv-depleted:hover {
+    background: rgba(255, 107, 107, 0.16);
+}
 .custom-scrollbar::-webkit-scrollbar {
     width: 4px;
 }
