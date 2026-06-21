@@ -39,6 +39,12 @@ SYSTEM_PROMPT = (
     "'advance', 'confirm', 'confirm action', 'done', 'step done', 'complete', "
     "'mark complete', or 'finished' to next_step — the user has completed the "
     "current step and wants to advance (this marks the step done). "
+    "IMPORTANT: question-phrased variants such as 'what is the next step', "
+    "'what will the next step be', 'what does the next step say', or 'can you "
+    "tell me the next step' are read-only questions — map them to ask with "
+    "question set to the user's words, NOT to next_step. Only map to next_step "
+    "when the user is signalling completion/readiness to advance, not when they "
+    "are asking for information. "
     "Map 'skip', 'skip this step', 'skip step', or 'skip ahead' to skip_step "
     "(advances WITHOUT marking the step done). "
     "Map 'stop timer', 'cancel the timer', 'stop the alarm', or 'stop beeping' "
@@ -516,6 +522,19 @@ def deterministic_route(transcript: str) -> Command:
     # (not Completed). Must precede next_step so it isn't swallowed by "advance".
     if re.search(r"\bskip\b", t):
         return Command(intent="skip_step")
+
+    # Question-phrased "next step" requests -> ask (read-only, cursor stays put).
+    # "What IS the next step" asks for information; it must NOT advance the step
+    # counter. This check runs before the next_step regex so "next step" inside
+    # a question doesn't get swallowed by the nav pattern below.
+    if re.search(
+        r"\bwhat\s+(?:is|are|will|would|does|do)\s+(?:the\s+)?next\s+step\b"
+        r"|\btell\s+me\s+(?:about\s+)?(?:the\s+)?next\s+step\b"
+        r"|\bdescribe\s+(?:the\s+)?next\s+step\b"
+        r"|\bwhat\s+(?:is|are)\s+(?:the\s+)?(?:step\s+)?(?:after|following)\s+this\b",
+        t,
+    ):
+        return Command(intent="ask", question=raw)
 
     # next_step — "what's next", "next step", "next", plus confirmation/completion
     # phrasings that all mean "I'm done with this step, advance". This runs AFTER
