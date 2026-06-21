@@ -6,7 +6,7 @@ from backend.state import SessionState
 
 
 def test_log_survives_restart(tmp_path):
-    db = str(tmp_path / "otto.db")
+    db = str(tmp_path / "lab.db")
 
     s1 = SessionState(db_path=db)
     s1.load_files()

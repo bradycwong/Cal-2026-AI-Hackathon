@@ -1,4 +1,4 @@
-# Plan: Electronic Lab Notebook ("Otto") — Hands-Free AI Lab Assistant
+# Plan: Electronic Lab Notebook ("Lab") — Hands-Free AI Lab Assistant
 
 > **Two docs, one product.** `improved_requirements_doc.pdf` is the **north-star spec** (vision,
 > full requirements, data models, NFRs). **This file is the 23-hour build plan** — what we actually
@@ -52,9 +52,9 @@ the machine.** Input is voice; output is the screen. (No synthesized speech — 
 - **Stack:** Python / FastAPI backend + lightweight web frontend (vanilla JS, no build step).
 - **Voice model:** *Arm once, then hands-free.* Press **Start** before the lab begins (no
   streaming until then); after that the session listens continuously (VAD-gated) and a **wake word**
-  ("Hey Otto") gates commands. Satisfies "no manual reactivation between utterances" **and**
+  ("Hey Lab") gates commands. Satisfies "no manual reactivation between utterances" **and**
   protects Deepgram cost — never stream silence for hours.
-  - **MVP wake-word contract:** *every* command starts with **"Hey Otto …"** — one utterance, one
+  - **MVP wake-word contract:** *every* command starts with **"Hey Lab …"** — one utterance, one
     command. The prefix is required, not optional. **Do not build a multi-turn wake window** (open
     mic for N seconds after wake, follow-up commands without re-waking) unless the 5 beats are done
     and there's reserve time. One-shot wake is simpler, more demo-robust, and cheaper.
@@ -99,7 +99,7 @@ Browser (mic + VAD + UI)
   ▼
 FastAPI  ── WS /stream ──┐
   ├─ Deepgram live STT (interim shown; speech_final ends an utterance; KeepAlive in silence)
-  ├─ Wake-phrase gate  ("hey otto …" → command; else ignore)
+  ├─ Wake-phrase gate  ("hey lab …" → command; else ignore)
   ├─ Intent router  → ONE structured-output call → validated Pydantic object   ← the "brain"
   │     intent ∈ {load_protocol, next_step, log_entry, start_timer, find_inventory, unknown}
   │     (unknown = clear-but-incomplete or unrecognized → drives the Clarification panel)
@@ -161,7 +161,7 @@ class Command(BaseModel):
 ```
 
 **Graceful degradation on partial commands.** A strict schema is a double-edged sword: if a user
-says something clear-but-incomplete ("Hey Otto, load a protocol" with no name), the model may
+says something clear-but-incomplete ("Hey Lab, load a protocol" with no name), the model may
 hallucinate a payload to satisfy required fields. Defuse it two ways:
 - **In the system prompt:** *"If the intent is clear but a required parameter is missing or
   ambiguous, do NOT guess. Return `intent` with the relevant field left null, or `intent="unknown"`,
@@ -172,7 +172,7 @@ hallucinate a payload to satisfy required fields. Defuse it two ways:
   load? (Available: DNA Extraction)"). This is the concrete mechanism behind "never fail silently"
   (PDF FR-23) and keeps the hands-free loop interactive — the user just re-states with the detail.
 
-- **Anthropic call shape (GA — verify in Slice 0).** Use `client.messages.parse(model=OTTO_MODEL,
+- **Anthropic call shape (GA — verify in Slice 0).** Use `client.messages.parse(model=LAB_MODEL,
   output_format=Command, ...)` → `resp.parsed_output` is a validated `Command`. The SDK's
   `output_format=` kwarg is the high-level helper; it maps to `output_config.format` on the wire —
   same feature, one layer down. Structured outputs are **GA** now (no `structured-outputs-2025-11-13`
@@ -219,7 +219,7 @@ here — it can burn 2–3 hours on buffer config. Fall back to MediaRecorder th
 2. **Client VAD gates audio** (AnalyserNode RMS). Recorder only forwards during speech.
 3. **KeepAlive holds the socket cheaply** during silence — warm socket, **no billable audio**.
 4. **Endpointing closes utterances fast** via `speech_final: true`.
-5. **Wake-phrase gate** ("hey otto …") drops side-chatter in a loud hall. **MVP = one-shot wake:**
+5. **Wake-phrase gate** ("hey lab …") drops side-chatter in a loud hall. **MVP = one-shot wake:**
    every command carries the prefix; no open follow-up window (see Decisions). MVP uses
    transcript-prefix spotting (no extra dep). *Optional upgrade:* local wake word (Picovoice
    Porcupine) so STT isn't engaged at all until wake.
@@ -300,7 +300,7 @@ frontend/
   index.html         # panels: transcript · BIG current step · timers · log · inventory · state chips · clarification area
   app.js             # WS; MediaStream → AnalyserNode (VAD) + NEW MediaRecorder(250ms) per utterance; wake state
   styles.css
-.env.example         # DEEPGRAM_API_KEY, LLM key(s), OTTO_MODEL=claude-haiku-4-5
+.env.example         # DEEPGRAM_API_KEY, LLM key(s), LAB_MODEL=claude-haiku-4-5
 requirements.txt, README.md (run + demo script)
 ```
 
@@ -341,7 +341,7 @@ requirements.txt, README.md (run + demo script)
 ## Pre-flight checklist (do first)
 
 - [ ] Deepgram key works; pick the STT model the account has (nova-2 or nova-3).
-- [ ] LLM credits confirmed; set `OTTO_MODEL` (default `claude-haiku-4-5`; **not** retired
+- [ ] LLM credits confirmed; set `LAB_MODEL` (default `claude-haiku-4-5`; **not** retired
       `claude-3-5-haiku`). Confirm the chosen model supports **structured outputs / JSON mode**.
 - [ ] **Pin the `anthropic` SDK version** and confirm the live `messages.parse(output_format=…)`
       signature returns `.parsed_output` — this one call is load-bearing.

@@ -1,4 +1,4 @@
-# Otto — Voice-Driven Electronic Lab Notebook
+# Lab — Voice-Driven Electronic Lab Notebook
 
 A hands-free lab assistant: speak (or type) a command — load a protocol, log an
 observation, start a timer, find a reagent, ask what's next — and the screen
@@ -26,10 +26,10 @@ as webm/opus to `/ws/audio`; the server proxies it to Deepgram nova-2 (key stays
 server-side), shows interim words live, and routes finished utterances through the
 same spine. Requires `DEEPGRAM_API_KEY` in `.env`.
 
-**Wake word.** Voice is gated by "Hey Otto" so background talk doesn't fire
-commands: say `"Hey Otto, what's next?"`, or just `"Hey Otto"` then your command
+**Wake word.** Voice is gated by "Hey Lab" so background talk doesn't fire
+commands: say `"Hey Lab, what's next?"`, or just `"Hey Lab"` then your command
 within ~8 s. The typed box never needs a wake word. Disable with
-`OTTO_WAKE_REQUIRED=false`.
+`LAB_WAKE_REQUIRED=false`.
 
 ## Run
 
@@ -61,7 +61,7 @@ area asks "Which protocol?" (listing the loaded protocols) instead of guessing.
 **Auto-timers.** Steps that declare a `duration_s` start their countdown
 automatically when they become the current step (on load or "what's next"),
 labelled from the step's `timer_label`. You can still start ad-hoc timers by
-voice/typing. Disable with `OTTO_AUTO_TIMERS=false`.
+voice/typing. Disable with `LAB_AUTO_TIMERS=false`.
 
 **Protocols.** Four ship in `backend/data/protocols/` (DNA Extraction, PCR Setup,
 Bacterial Transformation, Plasmid Miniprep). Add another by dropping a YAML file
@@ -79,13 +79,13 @@ pytest -q          # router harness + handler shape checks
 backend/
   main.py        FastAPI: /api/ingest, /api/state, WS /ws/events + /ws/audio, static, timer loop, ingest() spine
   deepgram_stt.py server-side Deepgram live STT proxy (key never reaches browser)
-  wake.py        "Hey Otto" wake gate: which spoken utterances become commands
+  wake.py        "Hey Lab" wake gate: which spoken utterances become commands
   schema.py      Command (flat-5 + unknown) + locked event-envelope builders
   router.py      route(transcript)->Command: LLM primary + deterministic fallback; ASCII normalize
   handlers.py    handle_command(): deterministic dispatch; missing param -> clarify
   state.py       SessionState; YAML/CSV loaders; timers; log (DB-backed via db.py)
   db.py          SQLite NoteStore: persists the log so it survives refresh/restart
-  data/protocols/*.yaml (DNA Extraction, PCR Setup, Bacterial Transformation, Plasmid Miniprep), data/inventory.csv  (otto.db created at runtime)
+  data/protocols/*.yaml (DNA Extraction, PCR Setup, Bacterial Transformation, Plasmid Miniprep), data/inventory.csv  (lab.db created at runtime)
 frontend/
   index.html     panels + typed command box (permanent fallback)
   app.js         WS client; dispatch on the 4 event types
@@ -93,8 +93,8 @@ frontend/
 tests/           test_router.py, test_handlers.py, test_wake.py, test_persistence.py
 ```
 
-Log persistence: the log feed is written to SQLite (`backend/data/otto.db`, set
-`OTTO_DB_PATH` to override or `:memory:` to disable) and rehydrated by the UI from
+Log persistence: the log feed is written to SQLite (`backend/data/lab.db`, set
+`LAB_DB_PATH` to override or `:memory:` to disable) and rehydrated by the UI from
 `GET /api/state` on load, so it survives a page refresh or a server restart.
 Protocols + inventory stay file-driven; the rest of session state is in-memory.
 

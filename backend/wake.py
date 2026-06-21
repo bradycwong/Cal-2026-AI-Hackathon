@@ -4,8 +4,8 @@ Voice is always-on while a session is armed, but we should only ACT on speech
 addressed to the assistant. This gate decides, per finished utterance, whether it
 is a command:
 
-* "Hey Otto, what's next?"  -> route "what's next?"            (wake + command)
-* "Hey Otto."               -> open a short follow-up window    (bare wake)
+* "Hey Lab, what's next?"  -> route "what's next?"            (wake + command)
+* "Hey Lab."               -> open a short follow-up window    (bare wake)
 * "what's next?"  (<=window after a wake) -> route it           (follow-up)
 * "...background chatter..." (no wake, no window) -> ignore      (not for us)
 
@@ -22,12 +22,12 @@ import re
 import time
 from dataclasses import dataclass, field
 
-# Optional greeting before the wake word: "hey otto", "ok otto", bare "otto".
+# Optional greeting before the wake word: "hey lab", "ok lab", bare "lab".
 _GREET = r"(?:hey|hi|hello|ok|okay|yo)?"
 # STT routinely hears a wake word as a near-homophone; accept those so the demo
 # isn't held hostage by one mistranscribed syllable. Keyed by the chosen word.
 _HOMOPHONES = {
-    "otto": ["auto", "ado", "oddo"],
+    "lab": ["labb", "labh"],
     "jarvis": ["jervis", "darvis"],
     "computer": ["computor"],
 }
@@ -46,8 +46,8 @@ def _derive_aliases(word: str) -> list[str]:
 class WakeConfig:
     """Mutable wake settings shared across sessions; recompiles its regex on change."""
 
-    word: str = "otto"
-    aliases: list[str] = field(default_factory=lambda: _derive_aliases("otto"))
+    word: str = "lab"
+    aliases: list[str] = field(default_factory=lambda: _derive_aliases("lab"))
     required: bool = True
     window_s: float = 8.0
     _re: re.Pattern[str] = field(init=False, repr=False)
@@ -57,15 +57,15 @@ class WakeConfig:
 
     @classmethod
     def from_env(cls) -> "WakeConfig":
-        word = os.getenv("OTTO_WAKE_WORD", "otto").strip().lower() or "otto"
-        env_aliases = os.getenv("OTTO_WAKE_ALIASES")
+        word = os.getenv("LAB_WAKE_WORD", "lab").strip().lower() or "lab"
+        env_aliases = os.getenv("LAB_WAKE_ALIASES")
         aliases = (
             sorted({word, *_split_aliases(env_aliases)})
             if env_aliases is not None
             else _derive_aliases(word)
         )
-        required = os.getenv("OTTO_WAKE_REQUIRED", "true").lower() not in {"false", "0", "no"}
-        window_s = float(os.getenv("OTTO_WAKE_WINDOW_S", "8"))
+        required = os.getenv("LAB_WAKE_REQUIRED", "true").lower() not in {"false", "0", "no"}
+        window_s = float(os.getenv("LAB_WAKE_WINDOW_S", "8"))
         return cls(word=word, aliases=aliases, required=required, window_s=window_s)
 
     def _recompile(self) -> None:

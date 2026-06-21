@@ -23,7 +23,7 @@ from .schema import (
 )
 from .state import SessionState
 
-AUTO_TIMERS = os.getenv("OTTO_AUTO_TIMERS", "true").lower() not in {"false", "0", "no"}
+AUTO_TIMERS = os.getenv("LAB_AUTO_TIMERS", "true").lower() not in {"false", "0", "no"}
 
 
 def _step_change_events(state: SessionState) -> list[dict[str, Any]]:

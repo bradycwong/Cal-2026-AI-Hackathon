@@ -1,4 +1,4 @@
-"""Otto — the ONE Command schema and the locked WS event envelope.
+"""Lab — the ONE Command schema and the locked WS event envelope.
 
 This module is the data-flow boundary the whole product hangs off of. Two things
 live here and nothing else:

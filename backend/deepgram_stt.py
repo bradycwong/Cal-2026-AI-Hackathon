@@ -32,7 +32,7 @@ DEEPGRAM_MODEL = os.getenv("DEEPGRAM_MODEL", "nova-2")
 KEYWORDS = [
     ("microliters", 2), ("proteinase", 3), ("lysis", 2), ("PCR", 2),
     ("centrifuge", 2), ("pipette", 2), ("aliquot", 2), ("incubate", 1),
-    ("ethanol", 1), ("EDTA", 2), ("nuclease", 1), ("DNA", 2), ("Otto", 2),
+    ("ethanol", 1), ("EDTA", 2), ("nuclease", 1), ("DNA", 2), ("Lab", 2),
 ]
 
 OnText = Callable[[str], Awaitable[None]]

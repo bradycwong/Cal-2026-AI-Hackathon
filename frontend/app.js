@@ -361,7 +361,7 @@ els.micBtn.addEventListener("click", () => {
 
 // --- runtime-settable wake word --------------------------------------------
 function applyWake(word) {
-  const w = (word || "otto").trim();
+  const w = (word || "lab").trim();
   if (els.wakeInput && document.activeElement !== els.wakeInput) els.wakeInput.value = w;
   if (els.transcriptHint) els.transcriptHint.textContent = `say "Hey ${w}, …"`;
 }

@@ -36,9 +36,9 @@ from .wake import WakeGate, config as wake_config
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
-# Log persistence (the one stateful organ). Override with OTTO_DB_PATH; set to
+# Log persistence (the one stateful organ). Override with LAB_DB_PATH; set to
 # ":memory:" to disable on-disk persistence.
-DB_PATH = os.getenv("OTTO_DB_PATH", str(Path(__file__).parent / "data" / "otto.db"))
+DB_PATH = os.getenv("LAB_DB_PATH", str(Path(__file__).parent / "data" / "lab.db"))
 
 state = SessionState(db_path=DB_PATH)
 
@@ -115,7 +115,7 @@ async def _timer_loop() -> None:
 async def lifespan(app: FastAPI):
     state.load_files()
     print(
-        f"[otto] loaded {len(state.protocols)} protocol(s), "
+        f"[lab] loaded {len(state.protocols)} protocol(s), "
         f"{len(state.inventory)} inventory item(s); router mode={ROUTER_MODE}; "
         f"anthropic_key={'set' if os.getenv('ANTHROPIC_API_KEY') else 'absent'}"
     )
@@ -126,7 +126,7 @@ async def lifespan(app: FastAPI):
         task.cancel()
 
 
-app = FastAPI(title="Otto — Voice-Driven ELN (typed skeleton)", lifespan=lifespan)
+app = FastAPI(title="Lab — Voice-Driven ELN (typed skeleton)", lifespan=lifespan)
 
 
 class IngestIn(BaseModel):

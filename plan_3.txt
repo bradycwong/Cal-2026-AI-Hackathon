@@ -1,8 +1,8 @@
-# Plan 3: Lock the Otto skeleton (typed-first), keep organs swappable
+# Plan 3: Lock the Lab skeleton (typed-first), keep organs swappable
 
 ## Context
 
-This is a greenfield hackathon build ("Otto" — a voice-driven Electronic Lab Notebook). The repo
+This is a greenfield hackathon build ("Lab" — a voice-driven Electronic Lab Notebook). The repo
 currently has **no application code** — only `plan_1.txt`, `plan_2.txt`, `improved_requirements_doc.pdf`,
 and a stub `README.md`.
 
@@ -85,7 +85,7 @@ frontend/
                  # clarification area · state chips; + a typed command box (skeleton input + permanent fallback)
   app.js         # WS client; renders on the 4 event types; submits typed transcript
   styles.css
-.env.example     # DEEPGRAM_API_KEY, ANTHROPIC_API_KEY, OTTO_MODEL=claude-haiku-4-5
+.env.example     # DEEPGRAM_API_KEY, ANTHROPIC_API_KEY, LAB_MODEL=claude-haiku-4-5
 requirements.txt # fastapi, uvicorn[standard], pydantic, anthropic (PINNED), pyyaml
 README.md        # run command + the 5 typed demo lines
 ```
@@ -123,7 +123,7 @@ async def ingest(transcript: str) -> None:
 - Later, Deepgram `is_final` -> the **same** `ingest()`. Nothing else changes.
 
 **`router.py` — Anthropic call (verified current, GA):**
-`client.messages.parse(model=OTTO_MODEL, output_format=Command, ...)` -> `resp.parsed_output`.
+`client.messages.parse(model=LAB_MODEL, output_format=Command, ...)` -> `resp.parsed_output`.
 `output_format=` is the SDK helper for `output_config.format` on the wire; structured outputs are GA
 (no beta header on a current SDK); `claude-haiku-4-5` is supported. **Pin the `anthropic` version.**
 System prompt rule: *if intent is clear but a required param is missing/ambiguous, do NOT guess —

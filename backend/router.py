@@ -25,7 +25,7 @@ from typing import Optional
 
 from .schema import Command
 
-OTTO_MODEL = os.getenv("OTTO_MODEL", "claude-haiku-4-5")
+LAB_MODEL = os.getenv("LAB_MODEL", "claude-haiku-4-5")
 ROUTER_MODE = os.getenv("ROUTER_MODE", "auto").lower()
 
 SYSTEM_PROMPT = (
@@ -190,7 +190,7 @@ def _llm_route(transcript: str) -> Command:
 
     client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
     resp = client.messages.parse(
-        model=OTTO_MODEL,
+        model=LAB_MODEL,
         max_tokens=512,
         system=SYSTEM_PROMPT,
         output_format=Command,

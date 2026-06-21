@@ -12,7 +12,7 @@ venv/
 # OS
 .DS_Store
 
-# Otto (deferred organs)
+# Lab (deferred organs)
 *.db
 *.db-wal
 *.db-shm
