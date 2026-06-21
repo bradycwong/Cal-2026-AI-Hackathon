@@ -27,8 +27,9 @@ server-side), shows interim words live, and routes finished utterances through t
 same spine. Requires `DEEPGRAM_API_KEY` in `.env`.
 
 **Mute/unmute.** After Start, every finished utterance is routed as a command.
-Say `mute` or click **Mute** to stop transcript updates and command routing.
-The mic stays open so you can say `unmute` or click **Unmute** to resume. Typed
+Say `mute`, type `mute` in the command box, or click **Mute** to stop transcript
+updates and command routing — all three toggle the same gate. The mic stays open
+so you can say/type `unmute` (or click **Unmute**) to resume. Other typed
 commands always work.
 
 ## Run

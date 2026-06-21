@@ -32,7 +32,7 @@ from .schema import (
 )
 from .handlers import handle_command
 from .state import SessionState
-from .voice_control import VoiceControl
+from .voice_control import VoiceControl, classify_control
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
@@ -41,6 +41,10 @@ FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 DB_PATH = os.getenv("LAB_DB_PATH", str(Path(__file__).parent / "data" / "lab.db"))
 
 state = SessionState(db_path=DB_PATH)
+
+# Process-wide mute gate shared by every input channel: the typed box, the
+# spoken "mute"/"unmute", and the Mute button all toggle this one state.
+voice = VoiceControl()
 
 
 class ConnectionManager:
@@ -81,6 +85,15 @@ async def ingest(
     events: list[dict[str, Any]] = []
     text = (transcript or "").strip()
     if not text:
+        return events
+    # A typed/spoken "mute"/"unmute" toggles the shared mic gate instead of being
+    # routed as a lab command. (Voice handles its own control words upstream, so
+    # this is the path the typed command box takes.)
+    control = classify_control(text)
+    if control is not None:
+        vs = voice.set_muted(control == "mute")
+        events.append(voice_state_event(vs.muted, vs.label))
+        await manager.broadcast(events)
         return events
     if echo_transcript:
         events.append(transcript_update_event(text, is_final=True))
@@ -208,7 +221,9 @@ async def ws_audio(ws: WebSocket) -> None:
     typed line. Voice is just another way to fill the transcript.
     """
     await ws.accept()
-    voice = VoiceControl()
+    # A fresh session starts listening; reuse the shared gate so a typed/spoken
+    # "mute" during the session is reflected here too.
+    voice.set_muted(False)
     await manager.broadcast([voice_state_event(voice.muted, voice.label)])
 
     async def on_interim(text: str) -> None:

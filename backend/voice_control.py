@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -44,6 +45,22 @@ def _matches(patterns: list[re.Pattern[str]], text: str) -> bool:
     return any(p.match(text) for p in patterns)
 
 
+def classify_control(text: str) -> Optional[str]:
+    """Return ``"mute"`` / ``"unmute"`` if ``text`` is a control phrase, else None.
+
+    Shared by both input channels so a typed "mute" toggles the exact same gate
+    a spoken "mute" does. Unmute is checked first so it always wins.
+    """
+    cleaned = _clean(text)
+    if not cleaned:
+        return None
+    if _matches(_UNMUTE_PATTERNS, cleaned):
+        return "unmute"
+    if _matches(_MUTE_PATTERNS, cleaned):
+        return "mute"
+    return None
+
+
 class VoiceControl:
     """Per-audio-session control state.
 
@@ -72,12 +89,9 @@ class VoiceControl:
         if not text:
             return self._decision(False, False, "", False)
 
-        if _matches(_UNMUTE_PATTERNS, text):
-            state = self.set_muted(False)
-            return self._decision(False, False, "", state.changed)
-
-        if _matches(_MUTE_PATTERNS, text):
-            state = self.set_muted(True)
+        control = classify_control(text)
+        if control is not None:
+            state = self.set_muted(control == "mute")
             return self._decision(False, False, "", state.changed)
 
         if self.muted:

@@ -1,6 +1,6 @@
 """Voice control gate checks: always-listening plus mute/unmute."""
 
-from backend.voice_control import VoiceControl
+from backend.voice_control import VoiceControl, classify_control
 
 
 def test_normal_speech_reports_and_routes_while_unmuted():
@@ -74,3 +74,19 @@ def test_control_phrase_variants_are_recognized():
     assert vc.muted
     assert vc.process_final("start listening").voice_state_changed
     assert not vc.muted
+
+
+def test_classify_control_detects_mute_and_unmute():
+    assert classify_control("mute") == "mute"
+    assert classify_control("Please mute.") == "mute"
+    assert classify_control("stop listening") == "mute"
+    assert classify_control("unmute") == "unmute"
+    assert classify_control("Unmute!") == "unmute"
+    assert classify_control("start listening") == "unmute"
+
+
+def test_classify_control_ignores_non_control_text():
+    assert classify_control("Load DNA extraction protocol") is None
+    assert classify_control("mute the sample") is None  # not a bare control phrase
+    assert classify_control("") is None
+    assert classify_control("   ") is None
