@@ -5,13 +5,20 @@ import time
 import backend.handlers as handlers
 from backend.handlers import handle_command
 from backend.schema import Command
-from backend.state import SessionState
+from backend.state import Protocol, SessionState, Step
 
 
 def fresh_state() -> SessionState:
     state = SessionState()
     state.load_files()
     return state
+
+
+def _advance_to_last(state: SessionState) -> None:
+    """Step DNA Extraction up to (but not past) its final step (id 5, index 4)."""
+    last = len(state.active_protocol.steps) - 1
+    while state.current_step_index < last:
+        handle_command(Command(intent="next_step"), state)
 
 
 def test_load_emits_step_change():
@@ -433,3 +440,111 @@ def test_ask_returns_answer(monkeypatch):
         "question": "How much lysis buffer?",
         "answer": "Use 200 uL.",
     }
+
+
+# --- protocol completion on final "next step" -------------------------------
+
+
+def test_final_next_step_finishes_protocol():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    _advance_to_last(state)
+
+    events = handle_command(Command(intent="next_step"), state)
+
+    sc = _kind(events, "step_change")
+    assert sc["finished"] is True
+    assert sc["current_step"]["id"] == 5
+    assert sc["current_index"] == 4
+    assert state.current_step_index == 4
+    assert state.protocol_complete is True
+    # The final step is logged exactly once...
+    log = _kind(events, "log_entry")
+    assert log["text"].startswith("Completed step 5")
+    # ...and finishing emits no timer.
+    assert all(e["type"] != "timer_update" for e in events)
+
+
+def test_repeated_next_step_after_finish_is_idempotent():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    _advance_to_last(state)
+    handle_command(Command(intent="next_step"), state)
+    log_len = len(state.log)
+
+    events = handle_command(Command(intent="next_step"), state)
+
+    sc = _kind(events, "step_change")
+    assert sc["finished"] is True
+    assert sc["current_step"]["id"] == 5
+    assert state.current_step_index == 4
+    # No duplicate final log entry, and no log_entry event re-emitted.
+    assert len(state.log) == log_len
+    assert all(e["payload"].get("kind") != "log_entry" for e in events)
+
+
+def test_skip_finishes_without_logging():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    _advance_to_last(state)
+    log_len = len(state.log)
+
+    events = handlers.advance_step(state, log_event=False)
+
+    sc = _kind(events, "step_change")
+    assert sc["finished"] is True
+    assert state.protocol_complete is True
+    assert len(state.log) == log_len
+    assert all(e["payload"].get("kind") != "log_entry" for e in events)
+
+
+def test_one_step_protocol_finishes_on_first_next_step():
+    state = fresh_state()
+    state.active_protocol = Protocol(id="solo", name="Solo", steps=[Step(id=1, text="only step")])
+    state.current_step_index = 0
+    state.protocol_complete = False
+
+    events = handle_command(Command(intent="next_step"), state)
+
+    sc = _kind(events, "step_change")
+    assert sc["finished"] is True
+    assert sc["current_step"]["id"] == 1
+    assert state.current_step_index == 0
+    assert state.protocol_complete is True
+    assert _kind(events, "log_entry")["text"].startswith("Completed step 1")
+
+
+def test_prev_repeat_and_load_clear_finished():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    _advance_to_last(state)
+    handle_command(Command(intent="next_step"), state)
+    assert state.protocol_complete is True
+
+    events = handle_command(Command(intent="prev_step"), state)
+    assert _kind(events, "step_change")["finished"] is False
+    assert state.protocol_complete is False
+
+    # Re-finish (prev_step dropped us off the last step), then repeat clears it.
+    _advance_to_last(state)
+    handle_command(Command(intent="next_step"), state)
+    assert state.protocol_complete is True
+    events = handle_command(Command(intent="repeat_step"), state)
+    assert _kind(events, "step_change")["finished"] is False
+    assert state.protocol_complete is False
+
+    # Re-finish, then loading another protocol clears it.
+    handle_command(Command(intent="next_step"), state)
+    assert state.protocol_complete is True
+    events = handle_command(Command(intent="load_protocol", protocol_name="PCR Setup"), state)
+    assert _kind(events, "step_change")["finished"] is False
+    assert state.protocol_complete is False
+
+
+def test_normal_load_and_advance_emit_finished_false():
+    state = fresh_state()
+    load = handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    assert _kind(load, "step_change")["finished"] is False
+    events = handle_command(Command(intent="next_step"), state)
+    assert _kind(events, "step_change")["finished"] is False
+    assert state.protocol_complete is False

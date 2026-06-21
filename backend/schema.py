@@ -87,10 +87,12 @@ def step_change_event(
     current_index: Optional[int] = None,
     protocol_name: Optional[str] = None,
     loaded: bool = False,
+    finished: bool = False,
 ) -> dict[str, Any]:
     # ``loaded`` is True only when a protocol was just LOADED (not on step nav),
     # so the frontend can route to the active-protocol page without bouncing the
-    # user around on every "next step".
+    # user around on every "next step". ``finished`` is True once the operator
+    # has completed the final step (cursor stays clamped to the last real step).
     return command_result(
         "step_change",
         prev_step=prev_step,
@@ -100,6 +102,7 @@ def step_change_event(
         current_index=current_index,
         protocol_name=protocol_name,
         loaded=loaded,
+        finished=finished,
     )
 
 

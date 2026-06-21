@@ -746,8 +746,16 @@
 
   function renderStep(step) {
     if (!step) return;
+    // Finishing the final step clamps the cursor to the last real step and flips
+    // ``finished``; the card then reads as "protocol complete" rather than just
+    // sitting on the last step.
+    const finished = !!step.finished;
     const cur = $("step-current");
-    if (cur && step.current_step) cur.textContent = step.current_step.text;
+    if (cur) {
+      if (finished && step.protocol_name)
+        cur.textContent = `${step.protocol_name} protocol finished.`;
+      else if (step.current_step) cur.textContent = step.current_step.text;
+    }
     const name = $("protocol-name");
     if (name && step.protocol_name) name.textContent = step.protocol_name;
 
@@ -760,16 +768,22 @@
     const total = Array.isArray(step.all_steps) ? step.all_steps.length : 0;
     const human = idx >= 0 ? idx + 1 : 0;
     const counter = $("step-counter");
-    if (counter) counter.textContent = total ? `STEP ${human} / ${total}` : "STEP —";
+    if (counter) {
+      if (finished && total) counter.textContent = `STEP ${total} / ${total}`;
+      else counter.textContent = total ? `STEP ${human} / ${total}` : "STEP —";
+    }
     const phase = $("step-phase");
-    if (phase)
-      phase.textContent = total
-        ? `Protocol Phase ${String(human).padStart(2, "0")} / ${String(total).padStart(2, "0")}`
-        : "Protocol Phase —";
+    if (phase) {
+      if (finished) phase.textContent = "PROTOCOL COMPLETE";
+      else
+        phase.textContent = total
+          ? `Protocol Phase ${String(human).padStart(2, "0")} / ${String(total).padStart(2, "0")}`
+          : "Protocol Phase —";
+    }
     const confirmBtn = $("confirm-step");
-    if (confirmBtn) confirmBtn.disabled = idx < 0;
+    if (confirmBtn) confirmBtn.disabled = idx < 0 || finished;
     const skipBtn = $("skip-action");
-    if (skipBtn) skipBtn.disabled = idx < 0;
+    if (skipBtn) skipBtn.disabled = idx < 0 || finished;
 
     const tracker = $("step-tracker");
     if (tracker && Array.isArray(step.all_steps)) {
@@ -779,7 +793,7 @@
           let cls = "border-outline-variant opacity-50";
           let label = "Pending";
           let labelCls = "text-on-surface-variant";
-          if (i < idx) {
+          if (finished || i < idx) {
             icon = "check_circle";
             cls = "border-secondary";
             label = "Completed";

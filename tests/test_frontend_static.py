@@ -223,3 +223,16 @@ def test_hydration_errors_are_surfaced_not_swallowed():
     js = (FT / "app.js").read_text(encoding="utf-8")
     for token in ("hydrateSection", "showHydrateError", "console.warn", '"hydrate-error"'):
         assert token in js, f"app.js missing {token}"
+
+
+def test_app_handles_protocol_completion():
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    for token in (
+        "step.finished",
+        "protocol finished.",
+        "PROTOCOL COMPLETE",
+    ):
+        assert token in js, f"app.js missing {token}"
+    # Both action buttons must be disabled when the protocol is finished.
+    assert "confirmBtn.disabled = idx < 0 || finished" in js
+    assert "skipBtn.disabled = idx < 0 || finished" in js

@@ -31,7 +31,10 @@ from .state import SessionState
 
 
 def _step_change_events(
-    state: SessionState, auto_timer: bool = True, loaded: bool = False
+    state: SessionState,
+    auto_timer: bool = True,
+    loaded: bool = False,
+    finished: bool = False,
 ) -> list[dict[str, Any]]:
     """step_change for the new cursor, plus a PAUSED timer card if the step is timed."""
     idx = state.current_step_index
@@ -51,9 +54,10 @@ def _step_change_events(
             current_index=current_index,
             protocol_name=protocol_name,
             loaded=loaded,
+            finished=finished,
         )
     ]
-    if auto_timer and cur and cur.duration_s:
+    if auto_timer and not finished and cur and cur.duration_s:
         label = cur.timer_label or f"step {cur.id}"
         # Timed steps always arrive PAUSED (frozen at full duration) and wait for
         # an explicit "start timer" — they never auto-count-down on step change.
@@ -80,6 +84,7 @@ def _handle_load_protocol(cmd: Command, state: SessionState) -> list[dict[str, A
         return [clarify_event(f"I don't have a protocol called '{cmd.protocol_name}'. Available: {_available_protocols(state)}.")]
     state.active_protocol = proto
     state.current_step_index = 0
+    state.protocol_complete = False
     state.clear_timers()
     return _step_change_events(state, loaded=True)
 
@@ -91,11 +96,30 @@ def _handle_next_step(
         return [clarify_event("No protocol is loaded. Say 'load DNA extraction protocol' first.")]
     last = len(state.active_protocol.steps) - 1
     if state.current_step_index >= last:
-        return [clarify_event(f"You're on the last step of {state.active_protocol.name}.")]
+        # Final step: completing it FINISHES the protocol instead of dead-ending.
+        # The cursor stays clamped to the last real step; we just flip the
+        # protocol_complete flag and emit step_change(finished=True).
+        state.current_step_index = last
+        if state.protocol_complete:
+            # Idempotent: a repeated "next step" after finishing changes nothing
+            # and must not duplicate the final log entry.
+            return _step_change_events(state, auto_timer=False, finished=True)
+        events: list[dict[str, Any]] = []
+        if log_event:
+            completed = state.current_step()
+            if completed is not None:
+                category = state.active_protocol.name
+                entry = state.append_log(
+                    f"Completed step {completed.id}: {completed.text}", None, category, None
+                )
+                events.append(log_entry_event(**entry, step_log=True))
+        state.protocol_complete = True
+        events.extend(_step_change_events(state, auto_timer=False, finished=True))
+        return events
     # Record completing the step we're leaving BEFORE advancing, so the note's
     # step_ref points at the finished step (and lands in the active notebook).
     # The "skip" button advances with log_event=False to move on without a note.
-    events: list[dict[str, Any]] = []
+    events = []
     if log_event:
         completed = state.current_step()
         if completed is not None:
@@ -106,6 +130,7 @@ def _handle_next_step(
             # step_log=True so the frontend logs it without leaving the guide page.
             events.append(log_entry_event(**entry, step_log=True))
     state.current_step_index += 1
+    state.protocol_complete = False
     events.extend(_step_change_events(state))
     return events
 
@@ -125,12 +150,14 @@ def _handle_prev_step(cmd: Command, state: SessionState) -> list[dict[str, Any]]
     if state.current_step_index <= 0:
         return [clarify_event(f"You're on the first step of {state.active_protocol.name}.")]
     state.current_step_index -= 1
+    state.protocol_complete = False
     return _step_change_events(state, auto_timer=False)
 
 
 def _handle_repeat_step(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
     if not state.active_protocol:
         return [clarify_event("No protocol is loaded. Say 'load DNA extraction protocol' first.")]
+    state.protocol_complete = False
     return _step_change_events(state, auto_timer=False)
 
 

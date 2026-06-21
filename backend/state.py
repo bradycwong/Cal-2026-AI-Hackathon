@@ -183,6 +183,7 @@ class SessionState:
         self._inventory = InventoryStore(data_dir)
         self.active_protocol: Optional[Protocol] = None
         self.current_step_index: int = -1
+        self.protocol_complete: bool = False
         self.log: list[dict[str, Any]] = []
         self.timers: list[Timer] = []
         self._log_seq = 0
@@ -500,6 +501,7 @@ class SessionState:
         Leaves the log, protocols, and inventory untouched."""
         self.active_protocol = None
         self.current_step_index = -1
+        self.protocol_complete = False
         self.clear_timers()
         self._timer_seq = 0
 
