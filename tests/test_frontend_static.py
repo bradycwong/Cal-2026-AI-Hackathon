@@ -91,6 +91,46 @@ def test_app_wires_demo_reset():
     assert "notes_cleared" in js
 
 
+def test_every_page_has_shared_sidebar_nav():
+    nav_links = [
+        'data-nav="dashboard.html"',
+        'data-nav="protocols.html"',
+        'data-nav="notebook.html"',
+        'data-nav="guide.html"',
+        'data-nav="inventory.html"',
+    ]
+    for page in PAGES:
+        html = (FT / page).read_text(encoding="utf-8")
+        assert 'id="side-nav"' in html, f"{page} missing shared sidebar"
+        assert 'id="main-nav"' in html, f"{page} missing shared nav"
+        for link in nav_links:
+            assert link in html, f"{page} missing nav link {link}"
+
+
+def test_every_page_has_voice_controls():
+    for page in PAGES:
+        html = (FT / page).read_text(encoding="utf-8")
+        assert 'id="voice-toggle"' in html, f"{page} missing voice toggle"
+        assert 'id="voice-mute"' in html, f"{page} missing voice mute"
+        assert 'id="live-transcript"' in html, f"{page} missing transcript area"
+
+
+def test_app_wires_voice_pipeline():
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    for token in (
+        "/ws/audio",
+        "getUserMedia",
+        "MediaRecorder",
+        "startMic",
+        "stopMic",
+        "onTranscript",
+        "is_final",
+        "set_muted",
+        "wireNav",
+    ):
+        assert token in js, f"app.js missing {token}"
+
+
 def test_pages_expose_live_hooks():
     cards = (FT / "protocols.html").read_text(encoding="utf-8")
     assert 'id="protocol-cards"' in cards

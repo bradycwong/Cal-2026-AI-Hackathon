@@ -21,3 +21,21 @@
     background: #253050;
     border-radius: 10px;
 }
+
+/* Shared nav + voice + transcript styles (voice migration) */
+.nav-active {
+  background-color: var(--md-sys-color-primary-container, rgba(127,127,255,0.16));
+  color: var(--md-sys-color-on-primary-container, inherit);
+  font-weight: 600;
+}
+.transcript-line { padding: 2px 0; }
+.transcript-interim { opacity: 0.6; font-style: italic; }
+.transcript-final { opacity: 1; }
+#voice-pulse.voice-pulse-on {
+  opacity: 0.5;
+  animation: voice-ping 1.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes voice-ping {
+  0% { transform: scale(1); opacity: 0.6; }
+  75%, 100% { transform: scale(1.8); opacity: 0; }
+}
