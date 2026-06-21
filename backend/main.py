@@ -99,6 +99,8 @@ async def _timer_loop() -> None:
             continue
         events: list[dict[str, Any]] = []
         for timer in list(state.timers):
+            if timer.paused:  # frozen: don't tick or expire until started
+                continue
             remaining = timer.remaining_s()
             just_expired = remaining <= 0 and not timer.expired
             if just_expired:
@@ -166,6 +168,7 @@ async def get_state() -> dict[str, Any]:
                 "label": t.label,
                 "remaining_s": t.remaining_s(),
                 "expired": t.expired,
+                "paused": t.paused,
             }
             for t in state.timers
             if not t.expired
