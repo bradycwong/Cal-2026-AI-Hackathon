@@ -86,8 +86,9 @@ Locked invariants:
 ## Backend layout (`backend/`)
 
 - `main.py` — FastAPI app: REST (`/api/ingest`, `/api/state`, `/api/protocols*`,
-  `/api/inventory*`, `/api/log*`, `/api/notebooks*`, `/api/scale`, `/api/step/next`,
-  `/api/demo/reset`, `/api/timers/*`), WS `/ws/events` (output bus) + `/ws/audio`,
+  `/api/inventory*`, `/api/log*`, `/api/notebooks*`, `/api/scale`, `/api/tts`,
+  `/api/step/next`, `/api/demo/reset`, `/api/timers/*`), WS `/ws/events` (output
+  bus) + `/ws/audio`,
   the `ingest()` spine, the 1 Hz timer loop, and static UI serving.
 - `schema.py` — `Command` + the locked event-envelope builders (the boundary).
 - `router.py` — `route()`: LLM primary (dead on the pin) + deterministic fallback;
@@ -104,6 +105,9 @@ Locked invariants:
   `find_inventory`.
 - `reproducibility.py` — `check()`: flags logged-vs-expected `volume_ul` mismatches.
 - `deepgram_stt.py` — server-side Deepgram live STT proxy (key never reaches browser).
+- `deepgram_tts.py` — server-side Deepgram Speak (Aura) wrapper for AI voice output
+  (`POST /api/tts`); returns None without a key so the browser voice takes over.
+  Read-only, downstream of the spine (key never reaches browser).
 - `voice_control.py` — process-wide mute/unmute gate shared by typed box, spoken
   word, and Mute button. Mute is a **command gate, not mic-off**: the mic keeps
   listening while muted and only watches for "unmute"; it is sticky across reconnects.
@@ -140,4 +144,5 @@ hook simply skips that renderer. `voice.js` drives the mic dock.
   (e.g. `reproducibility_plan.txt`, `plan_demo_reset.txt`), not hidden.
 - `.env` holds **server-side keys only** — never shipped to the browser. The typed
   demo works with no keys. Env knobs: `ROUTER_MODE`/`IMPORT_MODE` (`auto|llm|deterministic`),
-  `LAB_MODEL`, `LAB_DB_PATH`, `LAB_DATA_DIR`, `LAB_DEMO_MODE`, `DEEPGRAM_*`, `ARIZE_*`.
+  `LAB_MODEL`, `LAB_DB_PATH`, `LAB_DATA_DIR`, `LAB_DEMO_MODE`, `DEEPGRAM_*`
+  (incl. `DEEPGRAM_TTS_MODEL` for AI voice output), `ARIZE_*`.

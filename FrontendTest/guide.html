@@ -16,7 +16,7 @@
 <!-- Left: Side Navigation / Protocol Steps -->
 <aside class="h-screen w-64 fixed left-0 top-0 border-r border-outline-variant flex flex-col py-gutter px-unit z-50 bg-surface-container-low" id="side-nav">
 <a href="dashboard.html" class="px-gutter mb-8 block hover:opacity-80 transition-opacity cursor-pointer">
-<h1 class="font-headline-md text-headline-md text-primary">Lab</h1>
+<h1 class="font-headline-md text-headline-md text-primary">BenchPilot</h1>
 <p class="text-on-surface-variant text-sm">AI Assistant</p>
 </a>
 <nav class="flex-1 space-y-1" id="main-nav">
@@ -28,6 +28,7 @@
 <a href="inventory.html" data-nav="inventory.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">inventory_2</span><span class="font-body-md text-body-md">Inventory</span></a>
 <a href="commands.html" data-nav="commands.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">record_voice_over</span><span class="font-body-md text-body-md">Commands</span></a>
 </nav>
+<button id="tts-mute" data-action="tts-mute" type="button" aria-pressed="false" title="Mute AI voice" class="mt-2 w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-surface-container-high border border-outline-variant text-on-surface-variant font-medium hover:bg-surface-variant transition-colors active:scale-95"><span class="material-symbols-outlined">volume_up</span><span data-tts-label class="font-body-md text-body-md">AI Voice On</span></button>
 <button id="demo-reset" data-action="demo-reset" type="button" class="mt-2 w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-surface-container-high border border-outline-variant text-on-surface-variant font-medium hover:bg-surface-variant transition-colors active:scale-95"><span class="material-symbols-outlined">restart_alt</span><span class="font-body-md text-body-md">Reset Demo</span></button>
 </aside>
 <!-- Center: Active Step Detail -->
@@ -77,7 +78,7 @@
 <span class="text-on-surface-variant font-data-label text-xs">READY</span>
 </div>
 
-<div id="live-transcript" data-persistent="1" class="font-data-value text-data-value text-on-surface leading-relaxed relative z-10 max-h-40 overflow-y-scroll transcript-noscrollbar" aria-live="polite"></div>
+<div id="live-transcript" data-persistent="1" class="font-data-value text-data-value text-on-surface leading-relaxed relative z-10 max-h-40 overflow-hidden" aria-live="polite"></div>
 </div>
 <!-- Notebook target + recent-log preview -->
 <div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 mt-gutter">
@@ -133,7 +134,7 @@
     <div class="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end mb-4">
       <label class="block">
         <span class="text-xs font-bold uppercase text-on-surface-variant">Samples</span>
-        <input id="prep-samples" type="number" min="1" value="12" class="mt-1 w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface" />
+        <input id="prep-samples" type="number" min="1" value="1" class="mt-1 w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface" />
       </label>
       <button id="prep-compute" type="button" class="bg-primary text-on-primary px-4 py-2 rounded-lg font-bold hover:bg-primary/90 transition-all">Compute</button>
     </div>

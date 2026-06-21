@@ -13,7 +13,7 @@
 <!-- SideNavBar Shell -->
 <aside class="h-screen w-64 fixed left-0 top-0 border-r border-outline-variant flex flex-col py-gutter px-unit z-50 bg-surface-container-low" id="side-nav">
 <a href="dashboard.html" class="px-gutter mb-8 block hover:opacity-80 transition-opacity cursor-pointer">
-<h1 class="font-headline-md text-headline-md text-primary">Lab</h1>
+<h1 class="font-headline-md text-headline-md text-primary">BenchPilot</h1>
 <p class="text-on-surface-variant text-sm">AI Assistant</p>
 </a>
 <nav class="flex-1 space-y-1" id="main-nav">
@@ -25,6 +25,7 @@
 <a href="inventory.html" data-nav="inventory.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">inventory_2</span><span class="font-body-md text-body-md">Inventory</span></a>
 <a href="commands.html" data-nav="commands.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">record_voice_over</span><span class="font-body-md text-body-md">Commands</span></a>
 </nav>
+<button id="tts-mute" data-action="tts-mute" type="button" aria-pressed="false" title="Mute AI voice" class="mt-2 w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-surface-container-high border border-outline-variant text-on-surface-variant font-medium hover:bg-surface-variant transition-colors active:scale-95"><span class="material-symbols-outlined">volume_up</span><span data-tts-label class="font-body-md text-body-md">AI Voice On</span></button>
 <button id="demo-reset" data-action="demo-reset" type="button" class="mt-2 w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-surface-container-high border border-outline-variant text-on-surface-variant font-medium hover:bg-surface-variant transition-colors active:scale-95"><span class="material-symbols-outlined">restart_alt</span><span class="font-body-md text-body-md">Reset Demo</span></button>
 </aside>
 <!-- Main Content Area -->
@@ -47,7 +48,7 @@
 <section class="glass-panel p-4 rounded-xl flex flex-col md:flex-row items-center gap-4">
 <div class="relative flex-1 group">
 <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant group-focus-within:text-primary transition-colors">search</span>
-<input aria-label="Search inventory" class="w-full bg-surface-container-lowest border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary rounded-lg py-3 pl-12 pr-4 text-on-surface placeholder:text-on-surface-variant outline-none transition-all" placeholder="Search inventory..." type="text">
+<input id="inventory-search" aria-label="Search inventory" class="w-full bg-surface-container-lowest border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary rounded-lg py-3 pl-12 pr-4 text-on-surface placeholder:text-on-surface-variant outline-none transition-all" placeholder="Search inventory..." type="text">
 </div>
 </section>
 </div>
@@ -85,7 +86,9 @@
     // Search filters the table: matches collapse to the top, non-matches are
     // hidden (not just dimmed). Re-queries .inventory-row each keystroke so it
     // keeps working after app.js re-renders the rows from /api/inventory.
-    const searchInput = document.querySelector('input[type="text"]');
+    const searchInput =
+        document.getElementById('inventory-search') ||
+        document.querySelector('input[type="text"]');
     searchInput.addEventListener('input', (e) => {
         const rows = document.querySelectorAll('.inventory-row');
         const term = e.target.value.toLowerCase().trim();

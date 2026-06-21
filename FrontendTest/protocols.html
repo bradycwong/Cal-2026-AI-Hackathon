@@ -13,7 +13,7 @@
 <!-- SideNavBar -->
 <aside class="h-screen w-64 fixed left-0 top-0 border-r border-outline-variant flex flex-col py-gutter px-unit z-50 bg-surface-container-low" id="side-nav">
 <a href="dashboard.html" class="px-gutter mb-8 block hover:opacity-80 transition-opacity cursor-pointer">
-<h1 class="font-headline-md text-headline-md text-primary">Lab</h1>
+<h1 class="font-headline-md text-headline-md text-primary">BenchPilot</h1>
 <p class="text-on-surface-variant text-sm">AI Assistant</p>
 </a>
 <nav class="flex-1 space-y-1" id="main-nav">
@@ -25,6 +25,7 @@
 <a href="inventory.html" data-nav="inventory.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">inventory_2</span><span class="font-body-md text-body-md">Inventory</span></a>
 <a href="commands.html" data-nav="commands.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">record_voice_over</span><span class="font-body-md text-body-md">Commands</span></a>
 </nav>
+<button id="tts-mute" data-action="tts-mute" type="button" aria-pressed="false" title="Mute AI voice" class="mt-2 w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-surface-container-high border border-outline-variant text-on-surface-variant font-medium hover:bg-surface-variant transition-colors active:scale-95"><span class="material-symbols-outlined">volume_up</span><span data-tts-label class="font-body-md text-body-md">AI Voice On</span></button>
 <button id="demo-reset" data-action="demo-reset" type="button" class="mt-2 w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-surface-container-high border border-outline-variant text-on-surface-variant font-medium hover:bg-surface-variant transition-colors active:scale-95"><span class="material-symbols-outlined">restart_alt</span><span class="font-body-md text-body-md">Reset Demo</span></button>
 </aside>
 <!-- Main Content Area -->
@@ -34,12 +35,12 @@
 <!-- Canvas -->
 <section class="p-gutter max-w-7xl mx-auto w-full">
 <!-- Header Section -->
-<div class="mb-10 flex flex-col md:flex-row md:items-start justify-between gap-6">
+<div class="mb-10 flex flex-col md:flex-row items-end justify-between gap-6">
 <div>
 <h2 class="font-headline-lg text-headline-lg mb-2">Protocol Library</h2>
 <p class="text-on-surface-variant max-w-2xl">Select a standard operation procedure to begin. The AI assistant will provide step-by-step guidance, voice-controlled timers, and automated data logging.</p>
 </div>
-<button id="import-protocol" class="shrink-0 inline-flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-lg font-bold hover:bg-primary/90 transition-all active:opacity-80"><span class="material-symbols-outlined">upload</span>Import Protocol</button>
+<button id="import-protocol" class="bg-primary px-6 py-2 text-on-primary font-bold rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"><span class="material-symbols-outlined text-sm">upload</span>Import Protocol</button>
 </div>
 <!-- Bento Grid of Protocol Cards (live: populated by app.js) -->
 <div id="protocol-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

@@ -96,6 +96,111 @@
     return data;
   }
 
+  // --- AI voice output (TTS) ------------------------------------------------
+  // Output-side mirror of the mic: the AI speaks its answers/clarifications and
+  // step instructions aloud. Deepgram Aura when a server key is set
+  // (POST /api/tts), else the browser's built-in speechSynthesis so the demo
+  // still talks with zero keys. This mute is independent of the bottom-right mic
+  // mute, which gates voice *commands* separately.
+  const TTS_MUTED_KEY = "lab.tts.muted";
+  let _ttsAvailable = false;
+  let _ttsMuted = (() => {
+    try {
+      return window.localStorage.getItem(TTS_MUTED_KEY) === "1";
+    } catch (_) {
+      return false;
+    }
+  })();
+  let _ttsAudio = null;
+
+  function setTTSAvailable(v) {
+    _ttsAvailable = !!v;
+  }
+
+  async function fetchTTS(text) {
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text })
+    });
+    if (res.status === 204) return null; // no server key -> browser fallback
+    if (!res.ok) throw new Error("Could not synthesize speech");
+    return res.blob();
+  }
+
+  function browserSpeak(text) {
+    try {
+      if (!("speechSynthesis" in window)) return;
+      window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+    } catch (_) {}
+  }
+
+  function stopSpeaking() {
+    if (_ttsAudio) {
+      try {
+        _ttsAudio.pause();
+      } catch (_) {}
+      _ttsAudio = null;
+    }
+    try {
+      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    } catch (_) {}
+  }
+
+  async function speak(text) {
+    const msg = (text || "").trim();
+    if (!msg || _ttsMuted) return;
+    stopSpeaking(); // latest message wins
+    if (_ttsAvailable) {
+      try {
+        const blob = await fetchTTS(msg);
+        if (blob) {
+          const audio = new Audio(URL.createObjectURL(blob));
+          _ttsAudio = audio;
+          audio.play().catch(() => browserSpeak(msg));
+          return;
+        }
+      } catch (_) {
+        // fall through to the browser voice
+      }
+    }
+    browserSpeak(msg);
+  }
+
+  function renderTTSMute() {
+    const btn = $("tts-mute");
+    if (!btn) return;
+    btn.setAttribute("aria-pressed", _ttsMuted ? "true" : "false");
+    btn.title = _ttsMuted ? "Unmute AI voice" : "Mute AI voice";
+    const icon = btn.querySelector(".material-symbols-outlined");
+    if (icon) icon.textContent = _ttsMuted ? "volume_off" : "volume_up";
+    const label = btn.querySelector("[data-tts-label]");
+    if (label) label.textContent = _ttsMuted ? "AI Voice Off" : "AI Voice On";
+  }
+
+  function setTTSMuted(m) {
+    _ttsMuted = !!m;
+    try {
+      window.localStorage.setItem(TTS_MUTED_KEY, _ttsMuted ? "1" : "0");
+    } catch (_) {}
+    if (_ttsMuted) stopSpeaking();
+    renderTTSMute();
+  }
+
+  function wireTTSMute() {
+    const btn = $("tts-mute");
+    if (!btn) return;
+    renderTTSMute();
+    btn.addEventListener("click", () => {
+      const muting = !_ttsMuted;
+      setTTSMuted(muting);
+      // Speak a short confirmation when turning the voice ON so the toggle has an
+      // immediate, audible effect (the click is also the gesture that unlocks
+      // browser audio autoplay).
+      if (!muting) speak("AI voice on");
+    });
+  }
+
   async function fetchScaleWithPriority(body) {
     const res = await fetch("/api/scale/with-priority", {
       method: "POST",
@@ -1194,19 +1299,18 @@
         const isZero = amtRaw !== "" && !isNaN(amtNum) && amtNum === 0;
         const depletedCls = isZero ? "inv-depleted" : "";
         const amtCls = isZero ? "text-error font-bold" : "text-on-surface";
-        const unitCls = isZero ? "text-error" : "text-on-surface-variant";
-        const amtText = amtRaw === "" ? escapeHtml(formatInventoryAmount(it)) : escapeHtml(amtRaw);
-        const unitText = amtRaw !== "" && unit
-          ? ` <span class="text-sm ${unitCls}">${escapeHtml(unit)}</span>`
-          : "";
+        // Prefer the backend's humanized amount ("1000 mL" -> "1 L"); fall back to
+        // raw amount + unit, then to quantity_approx for unstructured rows.
+        const display = (it.amount_display == null ? "" : String(it.amount_display)).trim();
+        const amtText = escapeHtml(
+          amtRaw === "" ? formatInventoryAmount(it) : display || (unit ? `${amtRaw} ${unit}` : amtRaw)
+        );
         return `<div class="inventory-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors group ${depletedCls}">
       <div class="col-span-4 flex items-center gap-3">
         <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary"><span class="material-symbols-outlined text-lg">science</span></div>
-        <div><p class="font-bold text-on-surface">${escapeHtml(it.name)}</p><p class="text-[10px] font-data-label text-outline">${escapeHtml(
-          it.code || ""
-        )}</p></div>
+        <div><p class="font-bold text-on-surface">${escapeHtml(it.name)}</p></div>
       </div>
-      <div class="col-span-2 whitespace-nowrap"><span class="text-sm font-data-label ${amtCls}">${amtText}</span>${unitText}</div>
+      <div class="col-span-2 whitespace-nowrap"><span class="text-sm font-data-label ${amtCls}">${amtText}</span></div>
       <div class="col-span-3"><p class="text-on-surface text-sm">${escapeHtml(it.location)}</p></div>
       <div class="col-span-2"><p class="font-data-label text-on-surface-variant text-sm">${escapeHtml(
         it.date || "—"
@@ -1370,7 +1474,6 @@
                 <td class="py-3 pr-3 font-data-label text-on-surface">${escapeHtml(row.total_display)}</td>
                 <td class="py-3 pr-3">
                   <div class="${prepVerdictClass(row.verdict)} font-bold">${escapeHtml(prepVerdictLabel(row))}</div>
-<<<<<<< Updated upstream
                   <div class="text-xs text-on-surface-variant">${escapeHtml(row.match_name || "No inventory match")}</div>
                   ${singleDisplay}
                   ${multiBottle ? `
@@ -1378,26 +1481,14 @@
                     <div class="text-[10px] uppercase text-on-surface-variant mb-1 tracking-wide">Use order — drag to reorder</div>
                     <div class="priority-list" data-reagent="${escapeHtml(row.reagent)}">${priorityRows}</div>
                   </div>` : ""}
-=======
-                  <div class="text-xs text-on-surface-variant flex items-center gap-1">${
-                    row.match_name
-                      ? `<span class="material-symbols-outlined" style="font-size:13px" aria-hidden="true">location_on</span>${escapeHtml(row.location || "Location not set")}`
-                      : escapeHtml("No inventory match")
-                  }</div>
->>>>>>> Stashed changes
                 </td>
               </tr>`;
             }).join("")}
           </tbody>
         </table>
       </div>
-      <div class="mt-4 pt-4 border-t border-outline-variant flex items-center justify-between gap-3">
-        <p class="text-xs text-on-surface-variant">Deduct used amounts from inventory after the run.</p>
-        <button id="prep-deduct" type="button"
-          class="flex items-center gap-1.5 bg-secondary text-on-secondary px-4 py-2 rounded-lg font-bold text-sm hover:bg-secondary/90 transition-all">
-          <span class="material-symbols-outlined text-base">remove_circle</span>
-          Deduct from Inventory
-        </button>
+      <div class="mt-4 pt-4 border-t border-outline-variant">
+        <p class="text-xs text-on-surface-variant">Reagents will be automatically deducted from inventory when the protocol finishes.</p>
       </div>
     `;
 
@@ -1408,57 +1499,24 @@
       const reagentName = listEl.dataset.reagent;
       _wirePriorityDrag(listEl, reagentName);
     });
-
-    // Wire the manual deduct button.
-    const deductBtn = $("prep-deduct");
-    if (deductBtn) {
-      deductBtn.addEventListener("click", () => handleDeductReagents());
-    }
   }
 
-  async function handleDeductReagents() {
-    const deductBtn = $("prep-deduct");
-    if (deductBtn) { deductBtn.disabled = true; deductBtn.innerHTML = '<span class="material-symbols-outlined text-base">hourglass_empty</span> Computing…'; }
-    try {
-      const samples = _lastPrepSamples || Number($("prep-samples")?.value || 1);
-      const plan = await fetchScaleWithPriority({
-        sample_count: samples,
-        overage_percent: 0,
-        priority_order: _getPriorityOrder(),
-      });
+  // sessionStorage key for the one-time deduct guard. Persists across page
+  // navigations within the same tab so coming back to dashboard and returning
+  // to guide.html does NOT re-trigger deduction.
+  const DEDUCT_DONE_KEY = "deduct-done-for-run";
 
-      const deductions = plan.deductions || [];
-      if (!deductions.length) {
-        alert("No inventory items to deduct (all reagents missing or have non-volume units).");
-        return;
-      }
-
-      const lines = deductions.map(
-        (d) => `• ${d.name}: −${d.deduct_ul} uL  →  ${d.new_amount > 0 ? d.new_amount + " " + d.new_unit + " remaining" : "EMPTY — will be removed"}`
-      );
-      const ok = confirm(
-        `Deduct reagents from inventory?\n\n${lines.join("\n")}\n\nThis cannot be undone.`
-      );
-      if (!ok) return;
-
-      await consumeReagents(deductions);
-      await handlePrepCompute();
-    } catch (err) {
-      alert(`Deduction failed: ${err.message || err}`);
-    } finally {
-      if (deductBtn) {
-        deductBtn.disabled = false;
-        deductBtn.innerHTML = '<span class="material-symbols-outlined text-base">remove_circle</span> Deduct from Inventory';
-      }
-    }
-  }
-
-  // Called automatically when a protocol finishes. Skips silently if there is
-  // nothing to deduct. The _deductTriggeredForRun guard prevents re-firing on
-  // subsequent WS renders of the same finished state.
+  // Called automatically when a protocol finishes. Silently deducts inventory
+  // and shows a toast notification per item. Uses sessionStorage so the guard
+  // survives navigation (e.g. guide → dashboard → guide).
   async function autoDeductOnComplete() {
+    try {
+      if (sessionStorage.getItem(DEDUCT_DONE_KEY) === "1") return;
+      sessionStorage.setItem(DEDUCT_DONE_KEY, "1");
+    } catch (e) { /* private mode — fall back to in-memory guard */ }
     if (_deductTriggeredForRun) return;
     _deductTriggeredForRun = true;
+
     try {
       const samples = _lastPrepSamples || 1;
       const plan = await fetchScaleWithPriority({
@@ -1469,16 +1527,17 @@
       const deductions = plan.deductions || [];
       if (!deductions.length) return;
 
-      const lines = deductions.map(
-        (d) => `• ${d.name}: −${d.deduct_ul} uL  →  ${d.new_amount > 0 ? d.new_amount + " " + d.new_unit + " remaining" : "EMPTY — will be removed"}`
-      );
-      const ok = confirm(
-        `Protocol complete! Deduct reagents from inventory?\n\n${lines.join("\n")}\n\nThis cannot be undone. Click Cancel to skip.`
-      );
-      if (!ok) return;
       await consumeReagents(deductions);
+
+      // Show one toast per deducted item.
+      for (const d of deductions) {
+        const remaining = d.new_amount > 0
+          ? `${d.new_amount} ${d.new_unit} remaining`
+          : "removed from inventory";
+        showToast(`${d.name} — ${remaining}`);
+        await new Promise((r) => setTimeout(r, 350));
+      }
     } catch (err) {
-      // Non-blocking: auto-deduct failure doesn't interrupt the protocol flow.
       console.warn("Auto-deduct failed:", err);
     }
   }
@@ -1527,32 +1586,101 @@
     return false;
   }
 
+  // --- inventory search (voice/typed "where is X") --------------------------
+  // "where is the X" routes to find_inventory and broadcasts an inventory_result
+  // event carrying the resolved canonical name. We drop that name into the
+  // inventory search box so the existing filter collapses the list to that item.
+  const INVENTORY_SEARCH_KEY = "inventory-search-on-load";
+
+  function applyInventorySearch(term) {
+    const box = $("inventory-search");
+    if (!box || !term) return; // not on the inventory page / nothing to search
+    box.value = term;
+    // The inline <script> in inventory.html listens for "input"; dispatching one
+    // reuses its collapse-to-top filter instead of duplicating the logic here.
+    box.dispatchEvent(new Event("input", { bubbles: true }));
+    box.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function flagInventorySearchOnLoad(term) {
+    try {
+      sessionStorage.setItem(INVENTORY_SEARCH_KEY, term);
+    } catch (e) {
+      /* sessionStorage unavailable (private mode); box just won't auto-fill */
+    }
+  }
+
+  function consumeInventorySearchOnLoad() {
+    try {
+      const term = sessionStorage.getItem(INVENTORY_SEARCH_KEY);
+      if (term) {
+        sessionStorage.removeItem(INVENTORY_SEARCH_KEY);
+        return term;
+      }
+    } catch (e) {
+      /* ignore */
+    }
+    return "";
+  }
+
   function prepModalOpen() {
     const modal = $("prep-modal");
     return !!modal && !modal.classList.contains("hidden");
   }
-  function openPrepModal(name) {
+  // Mirror the prep gate (run-not-started) + the operator's determined sample
+  // count to the backend so "start protocol"/"done" can require a real count
+  // before the run begins. Returns the promise so callers can sequence on it.
+  function postPrepState(patch) {
+    return fetch(API + "/api/prep/state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }).catch(() => {});
+  }
+  // ``gate`` raises the start-gate (used when the popup opens on a fresh load);
+  // re-opening to peek (breadcrumb / a voice sample change) does not re-gate.
+  function openPrepModal(name, gate) {
     const modal = $("prep-modal");
     if (!modal) return;
     const title = $("prep-protocol-name");
     const resolved = name || $("protocol-name")?.textContent || "Protocol";
     if (title) title.textContent = resolved;
     modal.classList.remove("hidden");
-    handlePrepCompute();
+    if (gate) postPrepState({ open: true });  // run not started until confirmed
+    handlePrepCompute();                       // preview only; not a "determination"
   }
   function closePrepModal() {
+    // Hide the popup only. The backend gate is lifted by the run actually
+    // starting (handled server-side), so dismissing never bypasses the count.
     const modal = $("prep-modal");
     if (modal) modal.classList.add("hidden");
   }
+  // The operator deliberately set a sample count (typed it / clicked Compute):
+  // record it so the run is allowed to start, then re-scale the table.
+  function determineSamples() {
+    const n = Number($("prep-samples")?.value || 0);
+    const posted = n >= 1 ? postPrepState({ sample_count: n }) : Promise.resolve();
+    handlePrepCompute();
+    return posted;
+  }
   function wirePrepModal() {
     const compute = $("prep-compute");
-    if (compute) compute.addEventListener("click", handlePrepCompute);
+    if (compute) compute.addEventListener("click", determineSamples);
+    const input = $("prep-samples");
+    if (input) input.addEventListener("change", determineSamples);
     const openBtn = $("prep-open");
     if (openBtn) openBtn.addEventListener("click", () => openPrepModal());
-    ["prep-close", "prep-done"].forEach((id) => {
-      const b = $(id);
-      if (b) b.addEventListener("click", closePrepModal);
-    });
+    // "Done" begins the run through the SAME spine as voice: record the shown
+    // count, then confirm the prep (which starts the run) instead of just hiding.
+    const done = $("prep-done");
+    if (done)
+      done.addEventListener("click", async () => {
+        await determineSamples();
+        ingestCommand("looks good").catch(() => {});
+      });
+    // X / clicking the backdrop just hides the popup; the run stays gated.
+    const close = $("prep-close");
+    if (close) close.addEventListener("click", closePrepModal);
     const modal = $("prep-modal");
     if (modal)
       modal.addEventListener("click", (e) => {
@@ -2166,9 +2294,52 @@
     el.scrollTop = el.scrollHeight;
   }
 
+  // --- "Thinking..." pending indicator --------------------------------------
+  // A submitted command produces no on-screen change until its command_result
+  // returns over the WS. Fast deterministic commands (timer, step nav) resolve
+  // well under our delay; only the `ask` intent makes a real LLM call (~1-2s).
+  // We show a DELAYED "Thinking" line so a slow ask feels responsive while fast
+  // commands never flicker -- no need to detect the intent client-side.
+  //
+  // Hooked at two points because the channels surface their transcript at
+  // different times: the typed/Guide box triggers it in ingestCommand() (the
+  // server batches that channel's transcript echo with the result, so it can't
+  // tell us early), while a spoken utterance is broadcast BEFORE routing, so the
+  // is_final branch below triggers it the moment voice lands.
+  let thinkingTimer = null;
+  let thinkingEl = null;
+
+  function startPending() {
+    clearPending(); // this submission supersedes any previous in-flight one
+    thinkingTimer = setTimeout(() => {
+      thinkingTimer = null;
+      const el = $("live-transcript");
+      if (!el) return;
+      revealTranscript();
+      clearInterim();
+      thinkingEl = document.createElement("div");
+      thinkingEl.className = "transcript-line transcript-thinking";
+      thinkingEl.textContent = "Thinking";
+      el.appendChild(thinkingEl);
+      el.scrollTop = el.scrollHeight;
+    }, 350);
+  }
+
+  function clearPending() {
+    if (thinkingTimer) {
+      clearTimeout(thinkingTimer);
+      thinkingTimer = null;
+    }
+    if (thinkingEl) {
+      thinkingEl.remove();
+      thinkingEl = null;
+    }
+  }
+
   function onTranscript(p) {
     if (p && p.is_final) {
       appendFinalLine(p.text, "user");
+      startPending(); // a finalized utterance == a command is now being processed
       return;
     }
     const el = $("live-transcript");
@@ -2184,6 +2355,7 @@
   }
 
   function clearTranscript() {
+    clearPending();
     clearInterim();
     const el = $("live-transcript");
     if (el) {
@@ -2197,6 +2369,7 @@
   // the Guide's always-on panel (data-persistent) stays visible at its reserved
   // min-height so the layout doesn't jump.
   function clearTranscriptForMute() {
+    clearPending();
     clearInterim();
     const el = $("live-transcript");
     if (!el) return;
@@ -2278,6 +2451,9 @@
   // handle_command -> broadcast over /ws/events), so on-screen buttons and
   // spoken commands behave identically. Events arrive via WS; ignore the body.
   async function ingestCommand(transcript) {
+    // Typed/clicked channel: trigger the pending indicator now -- the server
+    // won't echo this transcript back until the (possibly slow) command finishes.
+    startPending();
     await fetch(API + "/api/ingest", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2416,6 +2592,14 @@
       case "log_removed":
         return navTo("notebook.html");
       case "inventory_result":
+        // "where is X": land on inventory, then fill the box. When navigating in
+        // from another page, stash the resolved name so hydrate() re-applies it
+        // after rows render. Guard on currentPage so we never leave a stale flag
+        // when already on inventory (the dispatcher fills the box live there).
+        if (currentPage() !== "inventory.html" && p.name) {
+          flagInventorySearchOnLoad(p.name);
+        }
+        return navTo("inventory.html");
       case "inventory_added":
         return navTo("inventory.html");
     }
@@ -2423,10 +2607,12 @@
 
   // --- websocket dispatch ---------------------------------------------------
   function onCommandResult(p) {
+    clearPending(); // a result arrived -> stop/remove any "Thinking" indicator
     maybeNavigate(p);
     switch (p.kind) {
       case "step_change":
         renderStep(p);
+        if (p.current_step) speak(p.current_step.text);
         // A fresh protocol load pops the prep modal; a plain step advance does
         // not (the prep table is run-level, not per-step). If the modal is
         // already open, keep its availability numbers fresh.
@@ -2434,8 +2620,21 @@
           // A load (incl. voice) changes recency: refresh the dashboard panel.
           refreshRecent();
           _deductTriggeredForRun = false; // new protocol — allow one auto-deduct
-          openPrepModal(p.protocol_name);
+          try { sessionStorage.removeItem(DEDUCT_DONE_KEY); } catch (e) {}
+          openPrepModal(p.protocol_name, true);  // gate the run until prep confirmed
         } else if (prepModalOpen()) handlePrepCompute();
+        return;
+      case "prep_control":
+        // Hands-free reagent prep: "done"/"start protocol" -> close (run starts);
+        // "set samples to N" -> reflect the new count and re-scale.
+        if (p.action === "close") return closePrepModal();
+        if (p.action === "set_samples") {
+          const input = $("prep-samples");
+          if (input && p.sample_count != null) input.value = String(p.sample_count);
+          if (prepModalOpen()) handlePrepCompute();
+          else openPrepModal();
+          return;
+        }
         return;
       case "log_entry":
         return applyLogEntry(p);
@@ -2473,12 +2672,19 @@
         if (p && p.muted) clearTranscriptForMute();
         return window.LabVoice.onVoiceState(p);
       case "clarify":
-        return renderClarify(p.message);
+        renderClarify(p.message);
+        speak(p.message);
+        return;
       case "inventory_added":
         showToast(`"${p.name}" was added to inventory`);
         refreshInventory();
         return;
       case "inventory_result":
+        // Same-page: maybeNavigate didn't reload, so fill the box live.
+        // Cross-page: this no-ops ($("inventory-search") is absent on the
+        // originating page); the flag set in maybeNavigate drives the fill after
+        // reload + hydrate.
+        applyInventorySearch(p.name);
         return;
       case "navigate": // navigation handled in maybeNavigate; nothing to render
         return;
@@ -2487,6 +2693,7 @@
         // line so it's actually visible. maybeNavigate has no ask_result case, so
         // the user stays on the current page.
         appendFinalLine(p.answer, "ai");
+        speak(p.answer);
         return;
       default:
         return;
@@ -2502,6 +2709,7 @@
       case "timer_update":
         return onTimerUpdate(evt.payload);
       case "error":
+        clearPending();
         return window.LabVoice.onError(evt.payload);
     }
   }
@@ -2591,7 +2799,13 @@
       if ($("recent-protocols")) renderRecentProtocols(await fetchRecent());
     });
     await hydrateSection("inventory", async () => {
-      if ($("inventory-rows")) renderInventory(await fetchInventory());
+      if ($("inventory-rows")) {
+        renderInventory(await fetchInventory());
+        // A cross-page "where is X" stashed the resolved name; apply it now that
+        // the .inventory-row elements exist so the filter can match + collapse.
+        const term = consumeInventorySearchOnLoad();
+        if (term) applyInventorySearch(term);
+      }
     });
     await hydrateSection("log", async () => {
       if ($("log-rows") || $("log-preview")) {
@@ -2622,7 +2836,7 @@
         // Pop the prep modal once, right after a protocol load lands here.
         const active = st.step && st.step.current_index != null;
         if (active && $("prep-modal") && consumePrepOnLoad()) {
-          openPrepModal(st.step.protocol_name);
+          openPrepModal(st.step.protocol_name, true);  // gate the run until confirmed
         }
         // Arriving via the nav "Jump to guide" button or a "jump to guide" voice
         // command (#run): center the current step, then drop the hash so a later
@@ -2640,7 +2854,11 @@
         renderResumeRun((await fetchState()).step);
       }
     });
+    await hydrateSection("tts", async () => {
+      setTTSAvailable((await fetchState()).tts_available);
+    });
     renderTimers();
+    wireTTSMute();
     wirePrepModal();
     wireImportModal();
     wireEditProtocolModal();
@@ -2669,6 +2887,8 @@
     fetchLog,
     fetchState,
     fetchScale,
+    speak,
+    setTTSMuted,
     renderPrepTable,
     openPrepModal,
     closePrepModal,

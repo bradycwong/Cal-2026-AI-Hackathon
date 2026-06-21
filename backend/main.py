@@ -26,15 +26,17 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
-from .deepgram_stt import run_deepgram_session, set_custom_keywords
+from . import deepgram_tts
+from .deepgram_stt import run_deepgram_session, set_custom_keywords, set_inventory_keywords
 from .router import ROUTER_MODE, route
 from .protocol_import import import_protocol
 from .pdf_extract import PdfExtractError, extract_pdf_text, reflow_pdf_text
-from .scaling import apply_reagent_deductions, build_prep_table
+from .scaling import apply_reagent_deductions, build_prep_table, humanize_metric
 from .reproducibility import check as check_reproducibility
 from .schema import (
     Command,
@@ -106,6 +108,13 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+# Serializes the offloaded handle_command below. The threadpool frees the event
+# loop during the blocking `ask` LLM call, but two overlapping ingests could then
+# mutate the shared (non-thread-safe) SessionState from two worker threads. This
+# async lock keeps ingest-vs-ingest serialized WITHOUT re-blocking the loop: the
+# timer loop, other routes, and the WS keep running while it is held.
+ingest_lock = asyncio.Lock()
+
 
 async def ingest(
     transcript: str, *, echo_transcript: bool = True, do_route: bool = True
@@ -143,7 +152,14 @@ async def ingest(
                 span.set_attribute("lab.alias_trigger", text)
             cmd = route(route_text)
             span.set_attribute("lab.intent", str(cmd.intent))
-            events.extend(handle_command(cmd, state))
+            # handle_command stays synchronous + deterministic (the locked spine);
+            # we only change HOW it is invoked. The `ask` intent reaches a blocking
+            # Anthropic call, so run it off the event loop or it stalls EVERY client
+            # (timers, navigation, both WebSockets) for the whole 1-2s Haiku call.
+            # run_in_threadpool -> anyio.to_thread.run_sync copies the contextvars
+            # context, so the manual Arize chain/LLM span nesting is preserved.
+            async with ingest_lock:
+                events.extend(await run_in_threadpool(handle_command, cmd, state))
             span.set_output(cmd.intent)
     await manager.broadcast(events)
     return events
@@ -177,6 +193,7 @@ async def lifespan(app: FastAPI):
     # No-ops without ARIZE_* creds or under pytest, so the typed demo stays free.
     setup_tracing()
     state.load_files()
+    _sync_inventory_keywords()
     print(
         f"[lab] loaded {len(state.protocols)} protocol(s), "
         f"{len(state.inventory)} inventory item(s); router mode={ROUTER_MODE}; "
@@ -221,6 +238,16 @@ class AliasesIn(BaseModel):
 async def get_aliases() -> dict[str, Any]:
     """Current custom-command set the spine will expand (trigger -> phrase)."""
     return {"aliases": aliases.as_list()}
+
+
+def _sync_inventory_keywords() -> None:
+    """Push the current inventory names into the Deepgram keyword boost set.
+
+    Called on startup and after every inventory mutation (add/edit/delete/reset)
+    so the STT boost list always mirrors the live reagent names. Only takes
+    effect on the next Deepgram session — existing sessions keep their URL.
+    """
+    set_inventory_keywords([item.name for item in state.inventory])
 
 
 @app.post("/api/aliases")
@@ -410,6 +437,7 @@ async def demo_reset() -> dict[str, Any]:
     clears run state, wipes notes + every created notebook, and restores the
     inventory CSV and protocol library. Always wipes (no LAB_DEMO_MODE gate)."""
     state.restore_factory_state()
+    _sync_inventory_keywords()
     vs = voice.set_muted(False)
     event = reset_event(notes_cleared=True)
     await manager.broadcast([event, voice_state_event(vs.muted, vs.label)])
@@ -458,6 +486,39 @@ async def scale_protocol(body: ScaleIn) -> dict[str, Any]:
         "overage_percent": body.overage_percent,
         "reagents": rows,
     }
+
+
+class TTSIn(BaseModel):
+    text: str
+
+
+@app.post("/api/tts")
+async def api_tts(body: TTSIn) -> Response:
+    """AI text -> Deepgram Aura mp3. 204 when unavailable so the browser falls
+    back to its built-in speech."""
+    audio = await deepgram_tts.synthesize(body.text)
+    if not audio:
+        return Response(status_code=204)
+    return Response(content=audio, media_type="audio/mpeg")
+
+
+class PrepStateIn(BaseModel):
+    open: bool | None = None
+    sample_count: int | None = None
+
+
+@app.post("/api/prep/state")
+async def set_prep_state(body: PrepStateIn) -> dict[str, Any]:
+    """Mirror the reagent-prep modal's open/close + the operator's determined
+    sample count to the backend. The prep popup is a gate: the run does not start
+    until a count is set, so "start protocol"/"done" reads this state. Single-
+    operator session state like the rest of SessionState; no broadcast (the modal
+    is per-browser)."""
+    if body.open is not None:
+        state.prep_open = body.open
+    if body.sample_count is not None:
+        state.prep_sample_count = body.sample_count
+    return {"ok": True, "prep_open": state.prep_open, "sample_count": state.prep_sample_count}
 
 
 class ScaleWithPriorityIn(BaseModel):
@@ -662,6 +723,7 @@ async def get_state() -> dict[str, Any]:
             for t in state.timers
             if not t.expired
         ],
+        "tts_available": deepgram_tts.tts_available(),
     }
 
 
@@ -691,6 +753,7 @@ def _inventory_item_payload(item: Any) -> dict[str, Any]:
         "location": item.location,
         "amount": item.amount,
         "unit": item.unit,
+        "amount_display": humanize_metric(item.amount, item.unit),
         "quantity_approx": item.quantity_approx,
         "notes": item.notes,
         "date": item.date,
@@ -712,6 +775,7 @@ async def add_inventory(body: InventoryItemIn) -> dict[str, Any]:
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    _sync_inventory_keywords()
     return {
         "ok": True,
         "item": _inventory_item_payload(item),
@@ -735,6 +799,7 @@ async def edit_inventory(item_id: int, body: InventoryItemEdit) -> dict[str, Any
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    _sync_inventory_keywords()
     return {
         "ok": True,
         "item": _inventory_item_payload(item),
@@ -749,6 +814,7 @@ async def remove_inventory(item_id: int) -> dict[str, Any]:
         removed = state.delete_inventory_item(item_id)
     except IndexError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _sync_inventory_keywords()
     return {
         "ok": True,
         "removed": removed.name,

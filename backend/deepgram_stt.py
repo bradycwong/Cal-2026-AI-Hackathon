@@ -74,6 +74,53 @@ def set_custom_keywords(triggers: list[str]) -> None:
     global _custom_keywords
     _custom_keywords = out
 
+
+# Boost weight for inventory item names. Lower than routing keywords (3) because
+# mishearing a reagent name degrades find_inventory quality but doesn't break
+# routing entirely — the fuzzy matcher often recovers. Higher than generic lab
+# nouns (1) because item names are user-owned and unpredictable.
+_INVENTORY_BOOST = 2
+
+# Inventory item names, rebuilt on every inventory mutation (add/edit/delete/reset)
+# via set_inventory_keywords(). We boost the full name AND distinctive word tokens
+# (>3 chars, not already in the static list) so "Proteinase K" boosts both
+# "Proteinase K" as a phrase and "Proteinase" as a standalone term.
+_inventory_keywords: list[str] = []
+
+_STRIP_CHARS = ".,();%"
+_COMMON_SKIP = {"free", "with", "from", "into", "over", "stock", "water", "cells"}
+
+
+def set_inventory_keywords(names: list[str]) -> None:
+    """Rebuild the inventory keyword boost set from the current item names.
+
+    Called on startup and after any inventory mutation so the boost list always
+    mirrors the live inventory. Takes effect on the next Deepgram session
+    (_build_url reads _inventory_keywords at connect time).
+    """
+    static_seen = {kw.lower() for kw, _ in KEYWORDS}
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def _add(phrase: str) -> None:
+        key = phrase.lower()
+        if key and key not in static_seen and key not in seen:
+            seen.add(key)
+            out.append(phrase)
+
+    for name in names or []:
+        name = (name or "").strip()
+        if not name:
+            continue
+        _add(name)  # full name as a phrase (e.g. "Proteinase K")
+        for token in name.split():
+            tok = token.strip(_STRIP_CHARS).rstrip("0123456789").strip(_STRIP_CHARS)
+            if len(tok) > 3 and tok.lower() not in _COMMON_SKIP:
+                _add(tok)
+
+    global _inventory_keywords
+    _inventory_keywords = out
+
 OnText = Callable[[str], Awaitable[None]]
 OnControl = Callable[[dict[str, Any]], Awaitable[None]]
 
@@ -118,7 +165,11 @@ def _build_url() -> str:
         ("utterance_end_ms", "1000"),
         ("vad_events", "true"),
     ]
-    keywords = KEYWORDS + [(kw, _CUSTOM_BOOST) for kw in _custom_keywords]
+    keywords = (
+        KEYWORDS
+        + [(kw, _CUSTOM_BOOST) for kw in _custom_keywords]
+        + [(kw, _INVENTORY_BOOST) for kw in _inventory_keywords]
+    )
     if DEEPGRAM_MODEL.lower().startswith("nova-3"):
         # Nova-3 uses keyterm prompting (no per-term boost weight); it rejects
         # the legacy `keywords` param with HTTP 400.
