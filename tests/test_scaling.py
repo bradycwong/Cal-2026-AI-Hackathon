@@ -3,6 +3,7 @@ from backend.scaling import (
     aggregate_reagents,
     build_prep_table,
     convert_volume,
+    protocol_ingredients,
     scale_reagents,
 )
 from backend.state import Protocol, Step
@@ -35,6 +36,24 @@ def test_aggregate_reagents_sums_repeated_reagent():
     )
 
     assert aggregate_reagents(proto) == {"buffer": 250.0, "water": 10.5}
+
+
+def test_protocol_ingredients_lists_name_and_display_amount():
+    proto = protocol_with_steps(
+        Step(id=1, text="add buffer", parameters={"reagent": "buffer", "volume_ul": 200}),
+        Step(id=2, text="add buffer again", parameters={"reagent": "buffer", "volume_ul": 50}),
+        Step(id=3, text="spin", parameters={"speed_g": 13000}),
+        Step(id=4, text="add ethanol", parameters={"reagent": "ethanol", "volume_ul": 2000}),
+    )
+    assert protocol_ingredients(proto) == [
+        {"reagent": "buffer", "volume_ul": 250, "display": "250 uL"},
+        {"reagent": "ethanol", "volume_ul": 2000, "display": "2 mL"},
+    ]
+
+
+def test_protocol_ingredients_empty_when_no_volumes():
+    proto = protocol_with_steps(Step(id=1, text="mix", parameters={}))
+    assert protocol_ingredients(proto) == []
 
 
 def test_aggregate_reagents_ignores_missing_or_non_numeric_values():

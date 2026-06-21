@@ -75,6 +75,16 @@ def test_app_wires_pdf_import():
     assert "FormData" in js
 
 
+def test_protocol_card_renders_ingredient_amounts():
+    # The card shows ingredient name + amount (from `ingredients`), falling back
+    # to plain `reagents` name pills when amounts are absent.
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert "p.ingredients" in js
+    assert "ing.reagent" in js
+    assert "ing.display" in js
+    assert "p.reagents" in js  # name-only fallback preserved
+
+
 def test_app_renders_reproducibility_flag():
     js = (FT / "app.js").read_text(encoding="utf-8")
     assert "renderLogFlag" in js
@@ -160,6 +170,15 @@ def test_every_page_has_voice_controls():
         assert 'id="voice-toggle"' in html, f"{page} missing voice toggle"
         assert 'id="voice-mute"' in html, f"{page} missing voice mute"
         assert 'id="live-transcript"' in html, f"{page} missing transcript area"
+
+
+def test_voice_dock_is_click_through():
+    # The fixed voice dock / live transcript must not intercept clicks meant for
+    # buttons beneath it; only the mic/control bar stays interactive.
+    css = (FT / "shared.css").read_text(encoding="utf-8")
+    assert "#voice-dock" in css and "pointer-events: none" in css
+    assert "#voice-dock > div:not(#live-transcript)" in css
+    assert "pointer-events: auto" in css
 
 
 def test_app_wires_voice_pipeline():

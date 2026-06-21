@@ -26,6 +26,15 @@
   color: #FFFFFF;
 }
 
+/* The voice dock is a fixed, 320px-wide box pinned to the bottom-right of every
+   page. Its empty area — and the display-only live transcript, which can grow to
+   overlay page content — must not intercept clicks meant for buttons beneath them.
+   Make the dock click-through and re-enable only the mic/control bar (the one
+   non-transcript child). The transcript stays readable and auto-scrolls
+   (app.js onTranscript), it just no longer steals clicks. */
+#voice-dock { pointer-events: none; }
+#voice-dock > div:not(#live-transcript) { pointer-events: auto; }
+
 /* Live transcript lines in the voice dock. */
 .transcript-line { padding: 2px 0; }
 .transcript-interim { opacity: 0.6; font-style: italic; }

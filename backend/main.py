@@ -33,7 +33,7 @@ from pydantic import BaseModel
 from .deepgram_stt import run_deepgram_session
 from .router import ROUTER_MODE, route
 from .protocol_import import import_protocol
-from .pdf_extract import PdfExtractError, extract_pdf_text
+from .pdf_extract import PdfExtractError, extract_pdf_text, reflow_pdf_text
 from .scaling import build_prep_table
 from .reproducibility import check as check_reproducibility
 from .schema import (
@@ -334,7 +334,7 @@ async def import_protocol_file_endpoint(
     if not raw.startswith(b"%PDF"):
         raise HTTPException(status_code=422, detail="expected a PDF file")
     try:
-        text = extract_pdf_text(raw)
+        text = reflow_pdf_text(extract_pdf_text(raw))
     except PdfExtractError as exc:
         return await _import_failed(f"Couldn't read this PDF ({exc}).")
     if not text.strip():
@@ -671,14 +671,12 @@ async def ws_audio(ws: WebSocket) -> None:
 
     async def on_interim(text: str) -> None:
         if voice.muted:
-            # Watch for the resume word so "unmute" takes effect the instant it's
-            # heard; otherwise still display the interim so the transcript stays
-            # visible for debugging while muted (display-only — never routed).
+            # Watch only for the resume word so "unmute" takes effect the instant
+            # it's heard. Every other interim is dropped (never broadcast), so the
+            # transcript box shows nothing while muted.
             state = voice.process_interim(text)
             if state is not None:
                 await manager.broadcast([voice_state_event(state.muted, state.label)])
-                return
-            await manager.broadcast([transcript_update_event(text, is_final=False)])
             return
         await manager.broadcast([transcript_update_event(text, is_final=False)])
 

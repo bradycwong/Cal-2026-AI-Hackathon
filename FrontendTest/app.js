@@ -642,14 +642,16 @@
     host.innerHTML = protocols
       .map((p) => {
         const badge = STATUS_BADGE[p.status] || STATUS_BADGE.READY;
-        const reagents = (p.reagents || [])
-          .map(
-            (r) =>
-              `<span class="text-[12px] bg-surface-variant px-2 py-1 rounded border border-outline-variant">${escapeHtml(
-                r
-              )}</span>`
-          )
-          .join("");
+        const pill = (label) =>
+          `<span class="text-[12px] bg-surface-variant px-2 py-1 rounded border border-outline-variant">${escapeHtml(
+            label
+          )}</span>`;
+        // Prefer name + amount ("lysis buffer · 200 uL"); fall back to plain
+        // reagent-name pills when a protocol has no extractable volumes.
+        const reagents =
+          p.ingredients && p.ingredients.length
+            ? p.ingredients.map((ing) => pill(`${ing.reagent} · ${ing.display}`)).join("")
+            : (p.reagents || []).map((r) => pill(r)).join("");
         const archived = p.status === "ARCHIVED";
         const button = archived
           ? `<button class="w-full border border-outline text-on-surface py-3 rounded-lg font-bold flex items-center justify-center gap-2" disabled><span class="material-symbols-outlined">history</span>Archived</button>`
@@ -1260,38 +1262,73 @@
       const skipped = new Set(
         Array.isArray(step.skipped_indices) ? step.skipped_indices : []
       );
-      tracker.innerHTML = step.all_steps
-        .map((s, i) => {
-          let icon = "circle";
-          let cls = "border-outline-variant opacity-50";
-          let label = "Pending";
-          let labelCls = "text-on-surface-variant";
-          // Once finished there is no "In Progress" row: every step reads as
-          // Completed, except ones the user skipped, which stay yellow.
-          if (!finished && i === idx) {
-            icon = "pending";
-            cls = "border-primary";
-            label = "In Progress";
-            labelCls = "text-primary";
-          } else if (skipped.has(i)) {
-            icon = "skip_next";
-            cls = "border-tertiary";
-            label = "Skipped";
-            labelCls = "text-tertiary";
-          } else if (finished || i < idx) {
-            icon = "check_circle";
-            cls = "border-secondary";
-            label = "Completed";
-            labelCls = "text-secondary";
-          }
-          return `<div class="flex items-center gap-3 p-3 bg-surface-container-low rounded-lg border-l-4 ${cls}">
+      // Window the tracker to past-2 / current / next-2 (<=5 rows). The right
+      // sidebar is fixed and can't scroll, so a long protocol's full step list
+      // would push the timer off-screen — and scrolling needs hands, the opposite
+      // of the voice-first goal. The window keeps the timer always visible.
+      const center = idx < 0 ? 0 : idx; // finished already pins idx to the last step
+      const start = Math.max(0, center - 2);
+      const end = Math.min(total - 1, center + 2);
+      let html = "";
+      if (start > 0)
+        html += ghostRow(`${start} earlier step${start > 1 ? "s" : ""}`, "expand_less");
+      for (let i = start; i <= end; i++) {
+        const s = step.all_steps[i];
+        let icon = "circle";
+        let cls = "border-outline-variant opacity-50";
+        let label = "Pending";
+        let labelCls = "text-on-surface-variant";
+        // Once finished there is no "In Progress" row: every step reads as
+        // Completed, except ones the user skipped, which stay yellow.
+        if (!finished && i === idx) {
+          icon = "pending";
+          cls = "border-primary";
+          label = "In Progress";
+          labelCls = "text-primary";
+        } else if (skipped.has(i)) {
+          icon = "skip_next";
+          cls = "border-tertiary";
+          label = "Skipped";
+          labelCls = "text-tertiary";
+        } else if (finished || i < idx) {
+          icon = "check_circle";
+          cls = "border-secondary";
+          label = "Completed";
+          labelCls = "text-secondary";
+        }
+        html += `<div class="flex items-center gap-3 p-3 bg-surface-container-low rounded-lg border-l-4 ${cls}">
         <span class="material-symbols-outlined text-sm">${icon}</span>
         <div class="flex flex-col"><span class="text-xs font-bold text-on-surface">${escapeHtml(
           s.text
         )}</span><span class="text-[10px] uppercase ${labelCls}">${label}</span></div></div>`;
-        })
-        .join("");
+      }
+      const later = total - 1 - end;
+      if (later > 0)
+        html += ghostRow(`${later} more step${later > 1 ? "s" : ""}`, "expand_more");
+      tracker.innerHTML = html;
     }
+    renderResumeRun(step);
+  }
+
+  // A muted, non-interactive hint row marking how many steps the window hides
+  // above/below. Lets the user see the tracker is windowed without scrolling.
+  function ghostRow(text, icon) {
+    return `<div class="flex items-center justify-center gap-1 py-1 text-[10px] uppercase tracking-wider text-on-surface-variant opacity-70">
+        <span class="material-symbols-outlined text-sm">${icon}</span>${escapeHtml(text)}</div>`;
+  }
+
+  // Top-left nav shortcut back to the live run. Shown on every page only while a
+  // protocol is loaded; clicking it lands on the Guide (via the #run hash, which
+  // centers the current step). Kept live by renderStep (Guide + WS step_change)
+  // and by the "active run" hydrate section on non-Guide pages.
+  function renderResumeRun(step) {
+    const el = $("resume-run");
+    if (!el) return;
+    const active =
+      !!step && step.current_index != null && step.current_index >= 0;
+    el.classList.toggle("hidden", !active);
+    const nm = $("resume-run-name");
+    if (nm && active && step.protocol_name) nm.textContent = step.protocol_name;
   }
 
   // --- timers (driven by the outer timer_update event) ----------------------
@@ -1377,6 +1414,18 @@
       el.innerHTML = "";
       el.classList.add("hidden");
     }
+  }
+
+  // Muting hides the transcript: drop any in-flight interim and wipe the box so no
+  // spoken text lingers while muted. Dock-style panels (hidden-when-empty) re-hide;
+  // the Guide's always-on panel (data-persistent) stays visible at its reserved
+  // min-height so the layout doesn't jump.
+  function clearTranscriptForMute() {
+    clearInterim();
+    const el = $("live-transcript");
+    if (!el) return;
+    el.innerHTML = "";
+    if (!el.dataset.persistent) el.classList.add("hidden");
   }
 
   function renderClarify(message) {
@@ -1579,6 +1628,10 @@
         clearTransientState({ notesCleared: p.notes_cleared });
         return hydrate();
       case "voice_state":
+        // Muting wipes the transcript so no spoken text shows while muted; the
+        // backend also stops broadcasting muted transcripts, so this just clears
+        // anything already on screen at the moment of muting.
+        if (p && p.muted) clearTranscriptForMute();
         return window.LabVoice.onVoiceState(p);
       case "clarify":
         return renderClarify(p.message);
@@ -1725,6 +1778,19 @@
         if (active && $("prep-modal") && consumePrepOnLoad()) {
           openPrepModal(st.step.protocol_name);
         }
+        // Arriving via the nav "Jump to run" button (#run): center the current
+        // step, then drop the hash so a later refresh doesn't re-scroll.
+        if (location.hash === "#run" && $("step-current")) {
+          $("step-current").scrollIntoView({ behavior: "smooth", block: "center" });
+          history.replaceState(null, "", location.pathname);
+        }
+      }
+    });
+    // Light the "Jump to run" nav button on non-Guide pages (the Guide already
+    // does this via renderStep above). Guarded so the Guide doesn't double-fetch.
+    await hydrateSection("active run", async () => {
+      if ($("resume-run") && !($("step-tracker") || $("step-current"))) {
+        renderResumeRun((await fetchState()).step);
       }
     });
     renderTimers();

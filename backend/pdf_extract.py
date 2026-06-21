@@ -11,7 +11,15 @@ optional dependency — only an actual PDF upload exercises it.
 
 from __future__ import annotations
 
+import re
 from io import BytesIO
+
+# A numbered/bulleted step marker at the start of a line. The lookahead requires a
+# space or end-of-line after the marker so a decimal like "1.5 mL" is NOT mistaken
+# for step marker "1.".
+_MARKER_RE = re.compile(r"^\s*(?:\d+[.)]|[-*•])(?=\s|$)")
+# Sentence boundary: terminal punctuation + space + a capital/digit starting the next.
+_SENTENCE_RE = re.compile(r"(?<=[.;:])\s+(?=[A-Z0-9])")
 
 
 class PdfExtractError(ValueError):
@@ -34,3 +42,41 @@ def extract_pdf_text(data: bytes) -> str:
     except (PyPdfError, OSError, ValueError) as exc:
         raise PdfExtractError(str(exc)) from exc
     return "\n".join(pages).strip()
+
+
+def reflow_pdf_text(text: str) -> str:
+    """Re-segment messy PDF-extracted text into one logical step per line.
+
+    ``pypdf.extract_text`` inserts a newline at every PDF *layout* wrap, so a
+    wrapped sentence fragments and a word-per-line layout explodes. The downstream
+    parsers split on newlines, so we rebuild real step boundaries here:
+
+    * If numbered/bulleted markers are present, accumulate each wrapped continuation
+      line under the current marker and emit one step per marker.
+    * Otherwise, collapse all whitespace and split on sentence boundaries.
+
+    Applied to PDF text only; pasted text (whose newlines are intentional) is
+    untouched.
+    """
+    lines = [ln.strip() for ln in text.splitlines()]
+    lines = [ln for ln in lines if ln]
+    if not lines:
+        return ""
+
+    if any(_MARKER_RE.match(ln) for ln in lines):
+        steps: list[str] = []
+        current: list[str] = []
+        for ln in lines:
+            if _MARKER_RE.match(ln):
+                if current:
+                    steps.append(" ".join(current))
+                current = [_MARKER_RE.sub("", ln).strip()]
+            else:
+                current.append(ln)  # wrapped continuation of the current step
+        if current:
+            steps.append(" ".join(current))
+        return "\n".join(s.strip() for s in steps if s.strip())
+
+    blob = re.sub(r"\s+", " ", " ".join(lines)).strip()
+    parts = (p.strip() for p in _SENTENCE_RE.split(blob))
+    return "\n".join(p for p in parts if p)

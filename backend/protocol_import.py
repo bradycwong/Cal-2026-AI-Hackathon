@@ -19,7 +19,7 @@ from typing import Any, Optional
 import yaml
 from pydantic import BaseModel, Field
 
-from . import router
+from . import router, scaling
 from .instrumentation import llm_span
 from .state import Protocol, SessionState, load_protocol_file
 
@@ -71,11 +71,51 @@ def _import_mode() -> str:
 
 # --- deterministic fallback -------------------------------------------------
 _NUM_MARKER = re.compile(r"^\s*(?:\d+[.)]|[-*\u2022])\s*")
+# Cut a reagent phrase at the first clause boundary so we keep just the name.
+_REAGENT_STOP_RE = re.compile(
+    r"\b(?:and|then|to|at|for|into|by|with|on|in|until|over)\b|[,.;:]", re.IGNORECASE
+)
+_TEMP_RE = re.compile(r"(\d+)\s*degrees C\b")
+
+
+def _reagent_after(text: str, start: int) -> str:
+    """The reagent name following a volume match (drop a leading 'of', stop at a clause)."""
+    tail = text[start:].lstrip()
+    if tail[:3].lower() == "of ":
+        tail = tail[3:]
+    stop = _REAGENT_STOP_RE.search(tail)
+    reagent = tail[: stop.start()] if stop else tail
+    return reagent.strip(" .,:;-")
+
+
+def _step_params(text: str) -> dict[str, Any]:
+    """Best-effort deterministic extraction of the FIRST volume/reagent pair plus
+    temperature, so offline (paste + PDF) imports still populate ingredients.
+
+    Returns ``{}`` when nothing explicit is present. Richer multi-reagent
+    extraction is the LLM path's job (it is prompted for all parameter keys).
+    """
+    params: dict[str, Any] = {}
+    vol = router._INV_UNIT_RE.search(text)
+    if vol:
+        unit = router._canon_unit(vol.group(2).lower())
+        if unit in scaling.FACTORS_TO_UL:  # volume units only
+            params["volume_ul"] = scaling._round_number(
+                float(vol.group(1)) * scaling.FACTORS_TO_UL[unit]
+            )
+            reagent = _reagent_after(text, vol.end())
+            if reagent:
+                params["reagent"] = reagent
+    temp = _TEMP_RE.search(text)
+    if temp:
+        params["temp_c"] = int(temp.group(1))
+    return params
 
 
 def _fallback_parse(text: str, name: Optional[str]) -> ParsedProtocol:
     # Split on lines first: normalize_ascii() collapses newlines into spaces, so
-    # normalizing the whole blob up front would fuse every step into one.
+    # normalizing the whole blob up front would fuse every step into one. (PDF text
+    # is reflowed upstream into one logical step per line before it reaches here.)
     steps: list[ParsedStep] = []
     for raw_line in text.splitlines():
         line = router.normalize_ascii(_NUM_MARKER.sub("", raw_line).strip())
@@ -83,7 +123,14 @@ def _fallback_parse(text: str, name: Optional[str]) -> ParsedProtocol:
             continue
         duration = router._parse_duration(line)
         timer_label = "timer" if duration else None
-        steps.append(ParsedStep(text=line, duration_s=duration, timer_label=timer_label))
+        steps.append(
+            ParsedStep(
+                text=line,
+                duration_s=duration,
+                timer_label=timer_label,
+                parameters=_step_params(line),
+            )
+        )
     final_name = (name or "").strip()
     if not final_name:
         final_name = steps[0].text if steps else "Imported Protocol"
@@ -160,7 +207,7 @@ def _llm_parse(text: str, name: Optional[str]) -> ParsedProtocol:
     ) as span:
         resp = client.messages.create(
             model=model,
-            max_tokens=1800,
+            max_tokens=4096,  # headroom so longer protocols' JSON isn't truncated
             system=IMPORT_SYSTEM_PROMPT,
             messages=messages,
         )
@@ -181,7 +228,10 @@ def _parse(text: str, name: Optional[str]) -> ParsedProtocol:
     if os.getenv("ANTHROPIC_API_KEY"):
         try:
             return _llm_parse(text, name)
-        except Exception:
+        except Exception as exc:
+            # Log (don't swallow silently) so a bad key / truncated JSON is visible
+            # instead of masquerading as a poor-quality deterministic split.
+            print(f"[import] LLM parse failed ({exc}); using deterministic fallback")
             return _fallback_parse(text, name)
     return _fallback_parse(text, name)
 

@@ -276,6 +276,10 @@ class SessionState:
     # --- snapshot helpers (read-only views for the REST endpoints) ---------
     def protocol_catalog(self) -> list[dict[str, Any]]:
         """Read-only summary of every loaded protocol for ``GET /api/protocols``."""
+        # Lazy import: scaling depends on router/inventory; importing it at module
+        # load would risk an import cycle through state.
+        from .scaling import protocol_ingredients
+
         catalog: list[dict[str, Any]] = []
         for proto in self.protocols.values():
             est_min = proto.est_duration_min
@@ -296,6 +300,7 @@ class SessionState:
                     "duration_label": _duration_label(duration_s),
                     "step_count": len(proto.steps),
                     "reagents": reagents,
+                    "ingredients": protocol_ingredients(proto),
                     "aliases": proto.aliases,
                 }
             )

@@ -7,6 +7,7 @@ import pytest
 
 from backend.protocol_import import (
     _extract_json,
+    _step_params,
     _validate_parsed,
     import_protocol,
 )
@@ -99,6 +100,40 @@ def test_imported_yaml_round_trips_through_loader(tmp_path, monkeypatch):
     assert reloaded.id == proto.id
     assert [s.text for s in reloaded.steps] == [s.text for s in proto.steps]
     assert reloaded.steps[1].duration_s == 120
+
+
+# --- deterministic parameter extraction (so offline imports list ingredients) -
+
+def test_step_params_extracts_volume_and_reagent():
+    p = _step_params("Add 200 uL lysis buffer to the tube")
+    assert p["volume_ul"] == 200
+    assert p["reagent"] == "lysis buffer"
+
+
+def test_step_params_converts_ml_to_ul():
+    p = _step_params("Add 1.5 mL of ethanol and mix by inversion")
+    assert p["volume_ul"] == 1500
+    assert p["reagent"] == "ethanol"
+
+
+def test_step_params_extracts_temperature():
+    assert _step_params("Incubate at 30 degrees C for 10 minutes")["temp_c"] == 30
+
+
+def test_step_params_empty_when_nothing_explicit():
+    assert _step_params("Mix gently and proceed") == {}
+
+
+def test_deterministic_import_populates_reagents(tmp_path, monkeypatch):
+    monkeypatch.setenv("IMPORT_MODE", "deterministic")
+    state = _state(tmp_path)
+    proto, _ = import_protocol(
+        "1. Add 200 uL lysis buffer\n2. Add 50 uL ethanol\n3. Incubate 10 minutes",
+        "Reagent Demo",
+        state,
+    )
+    assert proto.reagents == ["lysis buffer", "ethanol"]
+    assert proto.steps[0].parameters.get("volume_ul") == 200
 
 
 # --- LLM JSON parsing (the messages.create path), exercised offline ----------

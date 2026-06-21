@@ -26,6 +26,31 @@ def fresh_state(tmp_path) -> SessionState:
     return state
 
 
+INGREDIENT_PROTOCOL = """\
+protocol:
+  id: ing_demo
+  name: Ing Demo
+  steps:
+    - id: 1
+      text: "Add 200 uL lysis buffer."
+      parameters: { volume_ul: 200, reagent: "lysis buffer" }
+    - id: 2
+      text: "Incubate 10 minutes."
+      duration_s: 600
+"""
+
+
+def test_protocol_catalog_includes_ingredient_amounts(tmp_path):
+    state = fresh_state(tmp_path)
+    state.add_protocol_from_text(INGREDIENT_PROTOCOL)
+    entry = next(p for p in state.protocol_catalog() if p["id"] == "ing_demo")
+    # Additive field: names stay in `reagents`, name+amount lands in `ingredients`.
+    assert entry["reagents"] == ["lysis buffer"]
+    assert entry["ingredients"] == [
+        {"reagent": "lysis buffer", "volume_ul": 200, "display": "200 uL"}
+    ]
+
+
 def test_add_inventory_item_persists_and_is_in_memory(tmp_path):
     state = fresh_state(tmp_path)
     item = state.add_inventory_item("Agarose", "Cabinet 2", "~500 g", "mol bio grade")

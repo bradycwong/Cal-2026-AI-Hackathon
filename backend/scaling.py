@@ -76,6 +76,22 @@ def aggregate_reagents(protocol: Any) -> dict[str, float]:
     return totals
 
 
+def protocol_ingredients(protocol: Any) -> list[dict[str, Any]]:
+    """Per-sample reagent amounts as written in the protocol (name + display).
+
+    The base amounts shown before a run is configured — no sample scaling. Used by
+    ``protocol_catalog`` so the protocol card can list ingredients before load.
+    """
+    return [
+        {
+            "reagent": reagent,
+            "volume_ul": _round_number(volume_ul),
+            "display": _display_volume(volume_ul),
+        }
+        for reagent, volume_ul in aggregate_reagents(protocol).items()
+    ]
+
+
 def scale_reagents(
     protocol: Any, n_samples: int, overage_pct: float
 ) -> list[dict[str, Any]]:

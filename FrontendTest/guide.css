@@ -11,3 +11,10 @@
     background: #253050;
     border-radius: 10px;
 }
+/* The Live Transcription panel is always visible on the Guide (no `hidden`
+   class), so reserve a stable minimum height: it must not collapse to nothing
+   when empty -- e.g. while muted, when no text is shown. It still grows up to
+   max-h-40 (10rem) and then scrolls. */
+#live-transcript {
+    min-height: 7rem;
+}
