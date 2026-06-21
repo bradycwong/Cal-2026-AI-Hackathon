@@ -278,6 +278,7 @@ def build_prep_table(
         row.update(
             {
                 "match_name": None,
+                "location": None,
                 "match_count": 0,
                 "sources": [],
                 "available": None,
@@ -290,6 +291,11 @@ def build_prep_table(
         )
         if anchor is None:
             continue
+
+        # Surface the anchor (best-match) bottle's location at the row level so the
+        # prep table can show where to grab the reagent. Empty location -> None
+        # (nothing to show); unmatched rows keep the None default set above.
+        row["location"] = anchor.location or None
 
         # Pool every bottle of this reagent: a protocol's need is met if the
         # COMBINED volume across bottles covers it, even when no single bottle
