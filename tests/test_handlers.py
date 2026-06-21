@@ -292,3 +292,38 @@ def test_correct_log_on_empty_log_clarifies():
 
     assert events[0]["payload"]["kind"] == "clarify"
     assert "nothing to correct" in events[0]["payload"]["message"].lower()
+
+
+def test_ask_without_question_clarifies():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+
+    events = handle_command(Command(intent="ask"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert "what would you like to ask" in events[0]["payload"]["message"].lower()
+
+
+def test_ask_without_protocol_clarifies():
+    state = fresh_state()
+
+    events = handle_command(Command(intent="ask", question="How much lysis buffer?"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert "load a protocol first" in events[0]["payload"]["message"].lower()
+
+
+def test_ask_returns_answer(monkeypatch):
+    from backend import router
+
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    monkeypatch.setattr(router, "answer_question", lambda q, p: "Use 200 uL.")
+
+    events = handle_command(Command(intent="ask", question="How much lysis buffer?"), state)
+
+    assert events[0]["payload"] == {
+        "kind": "ask_result",
+        "question": "How much lysis buffer?",
+        "answer": "Use 200 uL.",
+    }

@@ -13,8 +13,10 @@ import difflib
 import os
 from typing import Any
 
+from . import router
 from .schema import (
     Command,
+    ask_result_event,
     clarify_event,
     inventory_result_event,
     log_entry_event,
@@ -152,6 +154,15 @@ def _handle_find_inventory(cmd: Command, state: SessionState) -> list[dict[str, 
     return [inventory_result_event(item.name, item.location, item.quantity_approx)]
 
 
+def _handle_ask(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    if not cmd.question:
+        return [clarify_event("What would you like to ask about the protocol?")]
+    if not state.active_protocol:
+        return [clarify_event("Load a protocol first, then ask about it.")]
+    answer = router.answer_question(cmd.question, state.active_protocol)
+    return [ask_result_event(cmd.question, answer)]
+
+
 def _handle_unknown(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
     msg = cmd.clarify_prompt or "Sorry, I didn't understand that."
     return [clarify_event(msg)]
@@ -167,6 +178,7 @@ _DISPATCH = {
     "correct_log": _handle_correct_log,
     "start_timer": _handle_start_timer,
     "find_inventory": _handle_find_inventory,
+    "ask": _handle_ask,
     "unknown": _handle_unknown,
 }
 

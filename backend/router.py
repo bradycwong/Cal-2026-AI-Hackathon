@@ -268,6 +268,82 @@ def _llm_available() -> bool:
     return True
 
 
+def _step_context(protocol) -> str:
+    rows: list[str] = []
+    for step in protocol.steps:
+        params = ""
+        if step.parameters:
+            pairs = [f"{key}={value}" for key, value in sorted(step.parameters.items())]
+            params = " Parameters: " + ", ".join(pairs)
+        rows.append(f"Step {step.id}: {step.text}{params}")
+    return "\n".join(rows)
+
+
+def _question_tokens(text: str) -> set[str]:
+    stop = {
+        "a", "an", "and", "are", "can", "does", "how", "i", "in", "is", "it",
+        "much", "of", "on", "or", "step", "the", "to", "what", "when",
+        "where", "which", "why",
+    }
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", normalize_ascii(text).lower())
+        if token not in stop and len(token) > 1
+    }
+
+
+def _fallback_answer_question(question: str, protocol) -> str:
+    q_tokens = _question_tokens(question)
+    best_step = None
+    best_score = 0
+    for step in protocol.steps:
+        haystack = f"{step.id} {step.text}"
+        if step.parameters:
+            haystack += " " + " ".join(str(v) for v in step.parameters.values())
+        score = len(q_tokens & _question_tokens(haystack))
+        if score > best_score:
+            best_score = score
+            best_step = step
+    if best_step and best_score > 0:
+        return f"Step {best_step.id}: {best_step.text}"
+    return "I can only answer detailed questions when the AI model is connected."
+
+
+def answer_question(question: str, protocol) -> str:
+    """Answer a read-only protocol question.
+
+    This is a second model call, but it is gated behind an explicit `ask` command.
+    With no key, missing SDK, or provider error, it falls back to deterministic
+    step matching and stays free.
+    """
+    clean_question = normalize_ascii(question)
+    if not _llm_available():
+        return _fallback_answer_question(clean_question, protocol)
+    try:
+        import anthropic
+
+        client = anthropic.Anthropic()
+        resp = client.messages.create(
+            model=LAB_MODEL,
+            max_tokens=160,
+            system=(
+                "Answer ONLY from the protocol steps below in 1-2 sentences. "
+                "If the answer is not in the steps, say you do not see it.\n\n"
+                f"{_step_context(protocol)}"
+            ),
+            messages=[{"role": "user", "content": clean_question}],
+        )
+        parts: list[str] = []
+        for block in getattr(resp, "content", []):
+            text = getattr(block, "text", None)
+            if text:
+                parts.append(text)
+        answer = normalize_ascii(" ".join(parts))
+        return answer or _fallback_answer_question(clean_question, protocol)
+    except Exception:
+        return _fallback_answer_question(clean_question, protocol)
+
+
 def route(transcript: str) -> Command:
     """transcript -> Command. LLM primary, deterministic fallback. Never raises."""
     mode = ROUTER_MODE

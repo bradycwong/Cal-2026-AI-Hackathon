@@ -110,6 +110,10 @@ def log_update_event(id: int, text: str) -> dict[str, Any]:
     return command_result("log_update", id=id, text=text)
 
 
+def ask_result_event(question: str, answer: str) -> dict[str, Any]:
+    return command_result("ask_result", question=question, answer=answer)
+
+
 def inventory_result_event(
     name: str, location: str, quantity_approx: str
 ) -> dict[str, Any]:

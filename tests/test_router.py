@@ -125,3 +125,19 @@ def test_broadened_log_phrasing_routes_to_log_entry():
 
 def test_existing_next_step_still_wins_over_ask():
     assert route("What's next?").intent == "next_step"
+
+
+def test_answer_question_fallback_matches_protocol_step(monkeypatch):
+    from backend import router
+    from backend.state import SessionState
+
+    monkeypatch.setattr(router, "_llm_available", lambda: False)
+    state = SessionState()
+    state.load_files()
+    protocol = state.find_protocol("DNA Extraction")
+    assert protocol is not None
+
+    answer = router.answer_question("How much lysis buffer in step 1?", protocol)
+
+    assert "Step 1:" in answer
+    assert "lysis buffer" in answer.lower()
