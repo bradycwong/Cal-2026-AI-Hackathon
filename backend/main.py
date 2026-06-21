@@ -15,7 +15,7 @@ import asyncio
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
@@ -334,6 +334,31 @@ class InventoryItemIn(BaseModel):
     notes: str = ""
     date: str = ""
     expiration: str = ""
+    amount: str = ""
+    unit: str = ""
+
+
+class InventoryItemEdit(BaseModel):
+    """Partial edit — only provided (non-None) fields are changed."""
+    name: Optional[str] = None
+    location: Optional[str] = None
+    amount: Optional[str] = None
+    unit: Optional[str] = None
+    date: Optional[str] = None
+    expiration: Optional[str] = None
+
+
+def _inventory_item_payload(item: Any) -> dict[str, Any]:
+    return {
+        "name": item.name,
+        "location": item.location,
+        "amount": item.amount,
+        "unit": item.unit,
+        "quantity_approx": item.quantity_approx,
+        "notes": item.notes,
+        "date": item.date,
+        "expiration": item.expiration,
+    }
 
 
 @app.post("/api/inventory", status_code=201)
@@ -346,20 +371,56 @@ async def add_inventory(body: InventoryItemIn) -> dict[str, Any]:
             body.quantity_approx,
             body.notes,
             date=body.date,
-            expiration=(body.expiration.strip() or "unknown"),
+            expiration=(body.expiration.strip() or "N/A"),
+            amount=body.amount,
+            unit=body.unit,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {
         "ok": True,
-        "item": {
-            "name": item.name,
-            "location": item.location,
-            "quantity_approx": item.quantity_approx,
-            "notes": item.notes,
-            "date": item.date,
-            "expiration": item.expiration,
-        },
+        "item": _inventory_item_payload(item),
+        "inventory_count": len(state.inventory),
+    }
+
+
+@app.put("/api/inventory/{index}")
+async def edit_inventory(index: int, body: InventoryItemEdit) -> dict[str, Any]:
+    """Edit fields of the inventory item at ``index`` (by list position)."""
+    expiration = body.expiration
+    if expiration is not None:
+        expiration = expiration.strip() or "N/A"
+    try:
+        item = state.update_inventory_item(
+            index,
+            name=body.name,
+            location=body.location,
+            amount=body.amount,
+            unit=body.unit,
+            date=body.date,
+            expiration=expiration,
+        )
+    except IndexError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "ok": True,
+        "item": _inventory_item_payload(item),
+        "inventory_count": len(state.inventory),
+    }
+
+
+@app.delete("/api/inventory/{index}")
+async def remove_inventory(index: int) -> dict[str, Any]:
+    """Delete the inventory item at ``index`` (by list position)."""
+    try:
+        removed = state.delete_inventory_item(index)
+    except IndexError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {
+        "ok": True,
+        "removed": removed.name,
         "inventory_count": len(state.inventory),
     }
 

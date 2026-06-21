@@ -143,7 +143,10 @@
       });
   }
 
-  // --- inventory add-item ---------------------------------------------------
+  // --- inventory add / edit / delete ----------------------------------------
+  let inventoryCache = []; // last-rendered items, for edit prefill (index-based)
+  let editingIndex = null; // null = add mode; number = editing that row index
+
   async function refreshInventory() {
     if ($("inventory-rows")) renderInventory(await fetchInventory());
   }
@@ -159,28 +162,124 @@
     return data;
   }
 
-  function openAddItemModal() {
-    const m = $("additem-modal");
-    if (!m) return;
-    // Clear any stale status message from a previous open.
+  async function updateInventoryItem(index, payload) {
+    const r = await fetch(`${API}/api/inventory/${index}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || `update failed (${r.status})`);
+    return data;
+  }
+
+  async function deleteInventoryItem(index) {
+    const r = await fetch(`${API}/api/inventory/${index}`, { method: "DELETE" });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || `delete failed (${r.status})`);
+    return data;
+  }
+
+  // <input type=date> only accepts YYYY-MM-DD; ignore anything else (e.g. "N/A").
+  const asDateInputValue = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v : "");
+
+  function setModalMode(mode) {
+    const title = $("additem-title");
+    const submit = $("additem-submit");
+    if (mode === "edit") {
+      if (title) title.textContent = "Edit Inventory Item";
+      if (submit) submit.textContent = "Save";
+    } else {
+      if (title) title.textContent = "Add Inventory Item";
+      if (submit) submit.textContent = "Add Item";
+    }
+  }
+
+  function clearAddItemForm() {
+    ["additem-name", "additem-amount", "additem-unit", "additem-location", "additem-date", "additem-expiration"].forEach(
+      (id) => {
+        const el = $(id);
+        if (el) el.value = "";
+      }
+    );
     const res = $("additem-result");
     if (res) {
       res.textContent = "";
       res.className = "text-sm mb-4 min-h-[1.25rem]";
     }
+  }
+
+  function openAddItemModal() {
+    const m = $("additem-modal");
+    if (!m) return;
+    editingIndex = null;
+    setModalMode("add");
+    clearAddItemForm();
     // Default "Date Created" to today for convenience.
     const dc = $("additem-date");
-    if (dc && !dc.value) dc.value = new Date().toISOString().slice(0, 10);
+    if (dc) dc.value = new Date().toISOString().slice(0, 10);
     m.classList.remove("hidden");
     const name = $("additem-name");
     if (name) name.focus();
   }
+
+  function openEditItemModal(index) {
+    const m = $("additem-modal");
+    const it = inventoryCache[index];
+    if (!m || !it) return;
+    editingIndex = index;
+    setModalMode("edit");
+    clearAddItemForm();
+    const set = (id, val) => {
+      const el = $(id);
+      if (el) el.value = val || "";
+    };
+    set("additem-name", it.name);
+    set("additem-amount", it.amount);
+    set("additem-unit", it.unit);
+    set("additem-location", it.location);
+    set("additem-date", asDateInputValue(it.date));
+    set("additem-expiration", asDateInputValue(it.expiration));
+    m.classList.remove("hidden");
+    const name = $("additem-name");
+    if (name) name.focus();
+  }
+
   function closeAddItemModal() {
     const m = $("additem-modal");
     if (m) m.classList.add("hidden");
   }
 
-  async function handleAddItem() {
+  // Lightweight transient toast (top-center). Message set via textContent.
+  function showToast(message) {
+    let hostEl = $("toast-host");
+    if (!hostEl) {
+      hostEl = document.createElement("div");
+      hostEl.id = "toast-host";
+      hostEl.className =
+        "fixed top-6 left-1/2 -translate-x-1/2 z-[80] flex flex-col items-center gap-2 pointer-events-none";
+      document.body.appendChild(hostEl);
+    }
+    const toast = document.createElement("div");
+    toast.className =
+      "pointer-events-auto bg-surface-container-high border border-outline-variant text-on-surface px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 text-sm transition-all duration-300 opacity-0 -translate-y-2";
+    const icon = document.createElement("span");
+    icon.className = "material-symbols-outlined text-secondary";
+    icon.textContent = "check_circle";
+    const label = document.createElement("span");
+    label.textContent = message;
+    toast.append(icon, label);
+    hostEl.appendChild(toast);
+    requestAnimationFrame(() =>
+      toast.classList.remove("opacity-0", "-translate-y-2")
+    );
+    setTimeout(() => {
+      toast.classList.add("opacity-0", "-translate-y-2");
+      setTimeout(() => toast.remove(), 350);
+    }, 2600);
+  }
+
+  async function handleSubmitItem() {
     const result = $("additem-result");
     const setMsg = (msg, cls) => {
       if (result) {
@@ -189,6 +288,8 @@
       }
     };
     const name = (($("additem-name") || {}).value || "").trim();
+    const amount = (($("additem-amount") || {}).value || "").trim();
+    const unit = (($("additem-unit") || {}).value || "").trim();
     const location = (($("additem-location") || {}).value || "").trim();
     const date = (($("additem-date") || {}).value || "").trim();
     const expiration = (($("additem-expiration") || {}).value || "").trim();
@@ -197,20 +298,33 @@
       return;
     }
     setMsg("Saving...", "text-on-surface-variant");
+    const isEdit = editingIndex !== null;
     try {
-      await addInventoryItem({ name, location, date, expiration });
+      if (isEdit) {
+        await updateInventoryItem(editingIndex, { name, amount, unit, location, date, expiration });
+      } else {
+        await addInventoryItem({ name, amount, unit, location, date, expiration });
+      }
       await refreshInventory();
-      ["additem-name", "additem-location", "additem-date", "additem-expiration"].forEach(
-        (id) => {
-          const el = $(id);
-          if (el) el.value = "";
-        }
-      );
-      // Close immediately on success and stay closed; the new table row is the
-      // confirmation. (No delayed/auto re-open.)
+      clearAddItemForm();
+      // Close immediately on success and stay closed; a toast confirms it.
       closeAddItemModal();
+      showToast(`"${name}" was ${isEdit ? "updated" : "added"}`);
     } catch (e) {
-      setMsg("Could not add item: " + e.message, "text-tertiary");
+      setMsg(`Could not ${isEdit ? "update" : "add"} item: ` + e.message, "text-tertiary");
+    }
+  }
+
+  async function handleDeleteItem(index) {
+    const it = inventoryCache[index];
+    const name = it ? it.name : "this item";
+    if (!window.confirm(`Delete "${name}" from inventory?`)) return;
+    try {
+      await deleteInventoryItem(index);
+      await refreshInventory();
+      showToast(`"${name}" was deleted`);
+    } catch (e) {
+      showToast("Could not delete: " + e.message);
     }
   }
 
@@ -223,11 +337,21 @@
       if (b) b.addEventListener("click", closeAddItemModal);
     });
     const submit = $("additem-submit");
-    if (submit) submit.addEventListener("click", handleAddItem);
+    if (submit) submit.addEventListener("click", handleSubmitItem);
     const modal = $("additem-modal");
     if (modal)
       modal.addEventListener("click", (e) => {
         if (e.target === modal) closeAddItemModal();
+      });
+    // Edit/delete are delegated on the (persistent) rows container, since its
+    // innerHTML is replaced on every render.
+    const rowsHost = $("inventory-rows");
+    if (rowsHost)
+      rowsHost.addEventListener("click", (e) => {
+        const editBtn = e.target.closest(".inv-edit");
+        const delBtn = e.target.closest(".inv-delete");
+        if (editBtn) openEditItemModal(parseInt(editBtn.dataset.index, 10));
+        else if (delBtn) handleDeleteItem(parseInt(delBtn.dataset.index, 10));
       });
   }
 
@@ -307,27 +431,42 @@
   function renderInventory(items) {
     const host = $("inventory-rows");
     if (!host) return;
+    inventoryCache = items;
     const header = `<div class="grid grid-cols-12 gap-4 px-6 py-3 bg-surface-container-low text-on-surface-variant text-xs font-bold uppercase tracking-wider border-b border-outline-variant sticky top-0 z-10">
-      <div class="col-span-3">Reagent Name</div><div class="col-span-3">Location</div><div class="col-span-2">Date Created</div><div class="col-span-2">Expiration</div><div class="col-span-2">Status</div></div>`;
+      <div class="col-span-3">Reagent Name</div><div class="col-span-2">Amount</div><div class="col-span-2">Location</div><div class="col-span-2">Date Created</div><div class="col-span-2">Expiration</div><div class="col-span-1 text-right">Actions</div></div>`;
     const rows = items
-      .map(
-        (it) => `<div class="inventory-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors">
+      .map((it, i) => {
+        const amtRaw = (it.amount == null ? "" : String(it.amount)).trim();
+        const unit = (it.unit == null ? "" : String(it.unit)).trim();
+        const amtNum = parseFloat(amtRaw);
+        const isZero = amtRaw !== "" && !isNaN(amtNum) && amtNum === 0;
+        const rowTint = isZero ? "bg-error-container/10" : "";
+        const amtCls = isZero ? "text-error font-bold" : "text-on-surface";
+        const amtText = amtRaw === "" ? "—" : escapeHtml(amtRaw);
+        const unitText = amtRaw !== "" && unit
+          ? ` <span class="text-on-surface-variant text-xs">${escapeHtml(unit)}</span>`
+          : "";
+        return `<div class="inventory-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors group ${rowTint}">
       <div class="col-span-3 flex items-center gap-3">
         <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary"><span class="material-symbols-outlined text-lg">science</span></div>
         <div><p class="font-bold text-on-surface">${escapeHtml(it.name)}</p><p class="text-[10px] font-data-label text-outline">${escapeHtml(
           it.code || ""
         )}</p></div>
       </div>
-      <div class="col-span-3"><p class="text-on-surface text-sm">${escapeHtml(it.location)}</p></div>
+      <div class="col-span-2"><span class="text-sm font-data-label ${amtCls}">${amtText}</span>${unitText}</div>
+      <div class="col-span-2"><p class="text-on-surface text-sm">${escapeHtml(it.location)}</p></div>
       <div class="col-span-2"><p class="font-data-label text-on-surface-variant text-sm">${escapeHtml(
         it.date || "—"
       )}</p></div>
       <div class="col-span-2"><p class="font-data-label text-on-surface-variant text-sm">${escapeHtml(
-        it.expiration || "unknown"
+        it.expiration || "N/A"
       )}</p></div>
-      <div class="col-span-2"><span class="text-xs font-bold uppercase">${escapeHtml(it.status)}</span></div>
-    </div>`
-      )
+      <div class="col-span-1 flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+        <button type="button" class="inv-edit text-on-surface-variant hover:text-primary" data-index="${i}" title="Edit"><span class="material-symbols-outlined text-base">edit</span></button>
+        <button type="button" class="inv-delete text-on-surface-variant hover:text-error" data-index="${i}" title="Delete"><span class="material-symbols-outlined text-base">delete</span></button>
+      </div>
+    </div>`;
+      })
       .join("");
     host.innerHTML = header + (rows || `<div class="p-12 text-center opacity-40">Inventory is empty.</div>`);
   }
