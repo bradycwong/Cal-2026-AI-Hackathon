@@ -32,7 +32,7 @@ Use this as the current baseline before edits:
 - `backend/router.py` owns `route()`, `_llm_route()`, `_llm_available()`, `deterministic_route()`, and `normalize_ascii()`.
 - `frontend/app.js` dispatches only inside `onCommandResult(p)` by `p.kind`.
 - `frontend/index.html` already contains an empty `<datalist id="demo-lines"></datalist>`, but the composer input is not wired to it.
-- Existing tests use `fresh_state()`, direct `Command(...)` construction, and `ROUTER_MODE=deterministic`.
+- Existing tests use `fresh_state()`, direct `Command` object construction, and `ROUTER_MODE=deterministic`.
 
 ## Task 0: Baseline Guardrail
 
@@ -61,15 +61,6 @@ python -m pytest tests/ -q
 ```
 
 Expected: all current tests pass before this feature work. If they fail, capture the exact failing test names and fix only if the failure is clearly caused by this plan's target files.
-
-- [ ] **Step 3: Commit only if you changed files while fixing baseline**
-
-If no files changed, skip the commit. If a baseline fix was required:
-
-```bash
-git add <changed-files>
-git commit -m "test: restore baseline"
-```
 
 ## Task 1: Extend the Command Schema and Deterministic Router
 
@@ -205,7 +196,7 @@ SYSTEM_PROMPT = (
 In `deterministic_route()`, replace the current log regex block with this block. Keep it before timer/find/navigation parsing.
 
 ```python
-    # log_entry - "log: ...", "note: ...", "record ...", "make a note that ..."
+    # log_entry - "log X", "note X", "record X", "make a note that X"
     m = re.match(
         r"^\s*(?:"
         r"log|note|record|remark|write down|note down|"
@@ -274,18 +265,6 @@ Place this block after load-protocol parsing and before the final `unknown` comm
 ```python
     # ask - last-resort question catch. Earlier command patterns win first.
     if re.match(r"^\s*(how|what|why|which|when|does|is|are|can)\b", t):
-        return Command(intent="ask", question=raw.rstrip("?.") + ("?" if raw.endswith("?") else ""))
-```
-
-If this changes `"How much lysis buffer in step 1?"` to drop the question mark, adjust to preserve the exact normalized raw string:
-
-```python
-        return Command(intent="ask", question=raw)
-```
-
-The test in Step 1 expects the exact text with `?`, so the simplest correct line is:
-
-```python
         return Command(intent="ask", question=raw)
 ```
 
@@ -753,7 +732,7 @@ git commit -m "feat: amend lab notes"
 **Interfaces:**
 - Produces `ask_result_event(question: str, answer: str) -> dict`.
 - Produces `router.answer_question(question: str, protocol: Protocol) -> str`.
-- Handler must call `router.answer_question(...)` through the router module, not a directly imported function, so tests can monkeypatch it.
+- Handler must call `router.answer_question(cmd.question, state.active_protocol)` through the router module, not a directly imported function, so tests can monkeypatch it.
 
 **Steps:**
 
@@ -810,6 +789,7 @@ def test_answer_question_fallback_matches_protocol_step(monkeypatch):
     state = SessionState()
     state.load_files()
     protocol = state.find_protocol("DNA Extraction")
+    assert protocol is not None
 
     answer = router.answer_question("How much lysis buffer in step 1?", protocol)
 
@@ -872,7 +852,7 @@ def _fallback_answer_question(question: str, protocol) -> str:
     best_step = None
     best_score = 0
     for step in protocol.steps:
-        haystack = step.text
+        haystack = f"{step.id} {step.text}"
         if step.parameters:
             haystack += " " + " ".join(str(v) for v in step.parameters.values())
         score = len(q_tokens & _question_tokens(haystack))
@@ -1049,7 +1029,7 @@ Replace the composer input with:
 
 - [ ] **Step 4: Add demo line data in `app.js`**
 
-Add this near the top of `frontend/app.js` after `const els = { ... };`:
+Add this near the top of `frontend/app.js` after the closing `};` of the `const els` object:
 
 ```javascript
 const DEMO_LINES = [
@@ -1131,7 +1111,7 @@ Add these functions after `onLogEntry(p)`:
 
 ```javascript
 function onLogRemoved(p) {
-  const li = els.log.querySelector(`[data-log-id="${CSS.escape(String(p.id))}"]`);
+  const li = els.log.querySelector(`[data-log-id="${String(p.id)}"]`);
   if (li) li.remove();
   ensureLogEmptyState();
   clearClarify();
@@ -1140,7 +1120,7 @@ function onLogRemoved(p) {
 }
 
 function onLogUpdate(p) {
-  const li = els.log.querySelector(`[data-log-id="${CSS.escape(String(p.id))}"]`);
+  const li = els.log.querySelector(`[data-log-id="${String(p.id)}"]`);
   const text = li ? li.querySelector(".log-text") : null;
   if (text) text.textContent = p.text;
   clearClarify();
@@ -1155,14 +1135,6 @@ function onAskResult(p) {
   setState("done", "chip-ok");
 }
 ```
-
-If target browser support for `CSS.escape` is a concern, avoid it because ids are numeric:
-
-```javascript
-  const li = els.log.querySelector(`[data-log-id="${String(p.id)}"]`);
-```
-
-Use the numeric-id version if you want zero dependency on `CSS.escape`.
 
 - [ ] **Step 9: Prevent hydrate from showing the empty state when persisted logs exist**
 
@@ -1296,7 +1268,7 @@ git commit -m "docs: update control demo"
 ## Risk Notes for Devin
 
 - Import `router` as a module in `backend/handlers.py`. Do not use `from .router import answer_question`; the handler test monkeypatches `backend.router.answer_question`.
-- Keep `undo_log` and `correct_log` parsing before generic `ask`, but after `log_entry`. This avoids treating "change that to ..." as a protocol question.
+- Keep `undo_log` and `correct_log` parsing before generic `ask`, but after `log_entry`. This avoids treating commands like "change that to added 300 uL" as protocol questions.
 - Keep `ask` parsing last. "What's next?" must remain `next_step`, and "Where's the proteinase K?" must remain `find_inventory`.
 - Do not decrement `_log_seq` after undo. SQLite `AUTOINCREMENT` does not reuse deleted ids, and in-memory behavior should stay monotonic.
 - `repeat_step` intentionally emits the same `step_change` again; that causes the existing screen-reader live region to announce the current step.
