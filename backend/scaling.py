@@ -7,12 +7,24 @@ the arithmetic and inventory comparison deterministically.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Optional
 
 from .inventory import InventoryItem, find_inventory_match
 from .router import _canon_unit, normalize_ascii
 
 FACTORS_TO_UL = {"uL": 1.0, "mL": 1000.0, "L": 1_000_000.0}
+
+# Status precedence when several bottles of the same reagent disagree: the most
+# alarming one wins so the prep verdict never looks rosier than the worst stock.
+_STATUS_RANK = {"ok": 0, "low": 1, "expiring": 2, "critical": 3}
+
+# Aliases declared inline in the inventory ``notes`` (e.g. the shipped EDTA row
+# carries "see also: Ethylenediaminetetraacetic acid"). Lets two bottles that
+# spell the same reagent differently still group and pool their volumes.
+_ALIAS_NOTE_RE = re.compile(
+    r"(?:see also|aka|also known as|alias(?:es)?)\s*:?\s*(.+)", re.IGNORECASE
+)
 
 # Prep tables need precision over recall: a wrong reagent match (e.g. "lysis
 # buffer" -> "Elution buffer") would misreport availability. Match stricter than
@@ -118,6 +130,70 @@ def scale_reagents(
     return rows
 
 
+def _canonical_reagent_key(name: str) -> str:
+    """Collapse a reagent name to a comparison key for grouping bottles.
+
+    Strips concentration/grade noise that varies between bottles of the same
+    reagent ("EDTA 0.5 M", "Ethanol 70%", "2X master mix") so they map to one
+    key. Deliberately conservative: it normalizes formatting, not chemistry —
+    distinct reagents that merely share a word ("Elution buffer" vs
+    "Resuspension buffer") keep different keys.
+    """
+    s = normalize_ascii(name or "").lower()
+    s = re.sub(r"\([^)]*\)", " ", s)  # drop parenthetical qualifiers
+    # drop concentration-like tokens: a number with an optional unit suffix.
+    s = re.sub(
+        r"\b\d+(?:\.\d+)?\s*(?:%|x|m|mm|um|nm|mg/ml|mg|ml|ul|l|u/ul|units?)?\b",
+        " ",
+        s,
+    )
+    s = re.sub(r"[^a-z0-9 ]", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _reagent_keys(item: InventoryItem) -> set[str]:
+    """All canonical keys a bottle answers to: its name plus any note aliases."""
+    keys = {_canonical_reagent_key(item.name)}
+    match = _ALIAS_NOTE_RE.search(getattr(item, "notes", "") or "")
+    if match:
+        for part in re.split(r"[;,/]", match.group(1)):
+            key = _canonical_reagent_key(part)
+            if key:
+                keys.add(key)
+    keys.discard("")
+    return keys
+
+
+def find_inventory_group(
+    reagent_name: str, items: list[InventoryItem], *, cutoff: float
+) -> tuple[Optional[InventoryItem], list[InventoryItem]]:
+    """Find every bottle that is the same reagent as ``reagent_name``.
+
+    Anchors on the single best fuzzy/substring match (so precision matches the
+    voice/prep behavior), then expands to all bottles whose canonical key (or a
+    note alias) intersects the anchor's. Returns ``(anchor, group)``; ``group``
+    leads with the anchor. ``(None, [])`` when nothing matches.
+    """
+    anchor = find_inventory_match(reagent_name, items, cutoff=cutoff)
+    if anchor is None:
+        return None, []
+    target_keys = _reagent_keys(anchor)
+    query_key = _canonical_reagent_key(reagent_name)
+    if query_key:
+        target_keys.add(query_key)
+    group = [item for item in items if _reagent_keys(item) & target_keys]
+    group.sort(key=lambda item: item is not anchor)  # anchor first, stable order
+    return anchor, group
+
+
+def _worst_status(statuses: list[str]) -> str:
+    return max(
+        (s for s in statuses if s),
+        key=lambda s: _STATUS_RANK.get(s, 0),
+        default="ok",
+    )
+
+
 def _inventory_amount(item: InventoryItem) -> tuple[Optional[float], str]:
     try:
         amount = float(str(item.amount).strip())
@@ -135,12 +211,14 @@ def build_prep_table(
     """Attach inventory availability verdicts to scaled reagent rows."""
     rows = scale_reagents(protocol, n_samples, overage_pct)
     for row in rows:
-        item = find_inventory_match(
+        anchor, group = find_inventory_group(
             str(row["reagent"]), inventory, cutoff=_PREP_MATCH_CUTOFF
         )
         row.update(
             {
                 "match_name": None,
+                "match_count": 0,
+                "sources": [],
                 "available": None,
                 "available_unit": None,
                 "available_display": None,
@@ -149,34 +227,57 @@ def build_prep_table(
                 "shortage_ul": None,
             }
         )
-        if item is None:
+        if anchor is None:
             continue
 
-        amount, unit = _inventory_amount(item)
-        row["match_name"] = item.name
-        row["available"] = _round_number(amount) if amount is not None else None
-        row["available_unit"] = unit
-        row["available_display"] = (
-            f"{row['available']} {unit}" if amount is not None and unit else None
+        # Pool every bottle of this reagent: a protocol's need is met if the
+        # COMBINED volume across bottles covers it, even when no single bottle
+        # does. Only volume-unit bottles contribute to the sum.
+        total_ul = 0.0
+        has_volume = False
+        nonvolume_unit = ""
+        for item in group:
+            amount, unit = _inventory_amount(item)
+            if amount is None:
+                continue
+            converted = (
+                convert_volume(amount, unit, "uL")
+                if _volume_unit(unit) is not None
+                else None
+            )
+            if converted is None:
+                nonvolume_unit = nonvolume_unit or unit
+                continue
+            total_ul += converted
+            has_volume = True
+
+        row["match_count"] = len(group)
+        row["sources"] = [item.name for item in group]
+        row["match_name"] = (
+            anchor.name
+            if len(group) == 1
+            else f"{anchor.name} (+{len(group) - 1} more, pooled)"
         )
-        row["status"] = item.status
+        row["status"] = _worst_status(
+            [(item.status or "ok").strip().lower() for item in group]
+        )
 
-        if amount is None or _volume_unit(unit) is None:
+        if not has_volume:
+            row["available_unit"] = nonvolume_unit or None
             row["verdict"] = "unknown_unit"
             continue
 
-        available_ul = convert_volume(amount, unit, "uL")
-        if available_ul is None:
-            row["verdict"] = "unknown_unit"
-            continue
+        row["available"] = _round_number(total_ul)
+        row["available_unit"] = "uL"
+        row["available_display"] = _display_volume(total_ul)
 
         need_ul = float(row["total_ul"])
-        if available_ul < need_ul:
+        if total_ul < need_ul:
             row["verdict"] = "insufficient"
-            row["shortage_ul"] = _round_number(need_ul - available_ul)
+            row["shortage_ul"] = _round_number(need_ul - total_ul)
             continue
 
-        status = (item.status or "ok").strip().lower()
+        status = row["status"]
         row["verdict"] = status if status in {"low", "expiring", "critical"} else "in_stock"
 
     return rows

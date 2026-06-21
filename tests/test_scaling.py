@@ -3,6 +3,7 @@ from backend.scaling import (
     aggregate_reagents,
     build_prep_table,
     convert_volume,
+    find_inventory_group,
     protocol_ingredients,
     scale_reagents,
 )
@@ -140,3 +141,55 @@ def test_build_prep_table_inventory_verdicts():
     assert by_name["lysis buffer"]["match_name"] is None
 
     assert by_name["SOC medium"]["verdict"] == "critical"
+
+
+def test_build_prep_table_pools_multiple_bottles_of_same_reagent():
+    # No single EDTA bottle covers the need, but the three pooled together do.
+    proto = protocol_with_steps(
+        Step(id=1, text="edta", parameters={"reagent": "EDTA", "volume_ul": 30000}),
+    )
+    inventory = [
+        InventoryItem(name="EDTA", amount="20", unit="mL", location="A", quantity_approx="", status="ok"),
+        InventoryItem(name="EDTA 0.5 M", amount="10", unit="mL", location="B", quantity_approx="", status="low"),
+        InventoryItem(name="EDTA (stock)", amount="5", unit="mL", location="C", quantity_approx="", status="ok"),
+    ]
+
+    rows = build_prep_table(proto, n_samples=1, overage_pct=0, inventory=inventory)
+    row = rows[0]
+
+    assert row["verdict"] == "low"  # 35 mL pooled covers 30 mL; worst status wins
+    assert row["available"] == 35000  # 20 + 10 + 5 mL, in uL
+    assert row["match_count"] == 3
+    assert set(row["sources"]) == {"EDTA", "EDTA 0.5 M", "EDTA (stock)"}
+
+
+def test_build_prep_table_pooled_still_insufficient_reports_shortage():
+    proto = protocol_with_steps(
+        Step(id=1, text="edta", parameters={"reagent": "EDTA", "volume_ul": 50000}),
+    )
+    inventory = [
+        InventoryItem(name="EDTA", amount="20", unit="mL", location="A", quantity_approx="", status="ok"),
+        InventoryItem(name="EDTA 0.5 M", amount="10", unit="mL", location="B", quantity_approx="", status="ok"),
+    ]
+
+    row = build_prep_table(proto, n_samples=1, overage_pct=0, inventory=inventory)[0]
+
+    assert row["verdict"] == "insufficient"
+    assert row["shortage_ul"] == 20000  # need 50 mL, have 30 mL pooled
+
+
+def test_find_inventory_group_uses_see_also_alias():
+    # The shipped EDTA row carries "see also: Ethylenediaminetetraacetic acid".
+    inventory = [
+        InventoryItem(name="EDTA", amount="20", unit="mL", location="A", quantity_approx="",
+                      notes="see also: Ethylenediaminetetraacetic acid", status="ok"),
+        InventoryItem(name="Ethylenediaminetetraacetic acid", amount="10", unit="mL",
+                      location="B", quantity_approx="", status="ok"),
+        InventoryItem(name="Ethanol 70%", amount="1000", unit="mL", location="C",
+                      quantity_approx="", status="ok"),
+    ]
+
+    anchor, group = find_inventory_group("EDTA", inventory, cutoff=0.75)
+
+    assert anchor.name == "EDTA"
+    assert {item.name for item in group} == {"EDTA", "Ethylenediaminetetraacetic acid"}
