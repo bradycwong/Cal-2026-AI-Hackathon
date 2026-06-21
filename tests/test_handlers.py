@@ -174,3 +174,71 @@ def test_find_inventory_miss_clarifies():
     events = handle_command(Command(intent="find_inventory", reagent_name="unobtainium"), state)
     assert events[0]["payload"]["kind"] == "clarify"
     assert "don't have a record" in events[0]["payload"]["message"]
+
+
+def test_prev_step_goes_back():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    handle_command(Command(intent="next_step"), state)
+
+    events = handle_command(Command(intent="prev_step"), state)
+
+    assert len(events) == 1
+    assert events[0]["payload"]["kind"] == "step_change"
+    assert events[0]["payload"]["current_step"]["id"] == 1
+    assert state.current_step_index == 0
+
+
+def test_prev_step_at_first_step_clarifies():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+
+    events = handle_command(Command(intent="prev_step"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert "first step" in events[0]["payload"]["message"]
+    assert state.current_step_index == 0
+
+
+def test_prev_step_without_protocol_clarifies():
+    state = fresh_state()
+
+    events = handle_command(Command(intent="prev_step"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+
+
+def test_repeat_step_reemits_current_step_without_advancing():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+
+    events = handle_command(Command(intent="repeat_step"), state)
+
+    assert len(events) == 1
+    assert events[0]["payload"]["kind"] == "step_change"
+    assert events[0]["payload"]["current_step"]["id"] == 1
+    assert state.current_step_index == 0
+
+
+def test_repeat_step_without_protocol_clarifies():
+    state = fresh_state()
+
+    events = handle_command(Command(intent="repeat_step"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+
+
+def test_prev_onto_timed_step_does_not_start_duplicate_timer(monkeypatch):
+    monkeypatch.setattr(handlers, "AUTO_TIMERS", True)
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    handle_command(Command(intent="next_step"), state)
+    handle_command(Command(intent="next_step"), state)
+    timer_count = len(state.timers)
+
+    events = handle_command(Command(intent="prev_step"), state)
+
+    assert events[0]["payload"]["kind"] == "step_change"
+    assert events[0]["payload"]["current_step"]["id"] == 2
+    assert all(e["type"] != "timer_update" for e in events)
+    assert len(state.timers) == timer_count

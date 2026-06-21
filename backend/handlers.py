@@ -28,8 +28,8 @@ from .state import SessionState
 AUTO_TIMERS = os.getenv("LAB_AUTO_TIMERS", "false").lower() in {"true", "1", "yes"}
 
 
-def _step_change_events(state: SessionState) -> list[dict[str, Any]]:
-    """step_change for the new cursor; an auto-timer too only if AUTO_TIMERS is on."""
+def _step_change_events(state: SessionState, auto_timer: bool = True) -> list[dict[str, Any]]:
+    """step_change for the new cursor, plus an auto-timer if requested and timed."""
     idx = state.current_step_index
     prev = state.step_at(idx - 1)
     cur = state.step_at(idx)
@@ -41,7 +41,7 @@ def _step_change_events(state: SessionState) -> list[dict[str, Any]]:
             next_step=nxt.as_event() if nxt else None,
         )
     ]
-    if AUTO_TIMERS and cur and cur.duration_s:
+    if auto_timer and AUTO_TIMERS and cur and cur.duration_s:
         label = cur.timer_label or f"step {cur.id}"
         timer = state.add_timer(cur.duration_s, label)
         events.append(
@@ -75,6 +75,21 @@ def _handle_next_step(cmd: Command, state: SessionState) -> list[dict[str, Any]]
         return [clarify_event(f"You're on the last step of {state.active_protocol.name}.")]
     state.current_step_index += 1
     return _step_change_events(state)
+
+
+def _handle_prev_step(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    if not state.active_protocol:
+        return [clarify_event("No protocol is loaded. Say 'load DNA extraction protocol' first.")]
+    if state.current_step_index <= 0:
+        return [clarify_event(f"You're on the first step of {state.active_protocol.name}.")]
+    state.current_step_index -= 1
+    return _step_change_events(state, auto_timer=False)
+
+
+def _handle_repeat_step(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    if not state.active_protocol:
+        return [clarify_event("No protocol is loaded. Say 'load DNA extraction protocol' first.")]
+    return _step_change_events(state, auto_timer=False)
 
 
 def _handle_log_entry(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
@@ -127,6 +142,8 @@ def _handle_unknown(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
 _DISPATCH = {
     "load_protocol": _handle_load_protocol,
     "next_step": _handle_next_step,
+    "prev_step": _handle_prev_step,
+    "repeat_step": _handle_repeat_step,
     "log_entry": _handle_log_entry,
     "start_timer": _handle_start_timer,
     "find_inventory": _handle_find_inventory,
