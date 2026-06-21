@@ -69,6 +69,14 @@ def test_app_renders_reproducibility_flag():
     assert 'flag.status === "ok"' in js
 
 
+def test_app_renders_skipped_step_status():
+    # A skipped step renders a yellow "Skipped" label driven by skipped_indices.
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert "skipped_indices" in js
+    assert '"Skipped"' in js
+    assert "border-tertiary" in js  # yellow accent for the skipped tracker row
+
+
 def test_notebook_css_has_flag_classes():
     css = (FT / "notebook.css").read_text(encoding="utf-8")
     assert ".log-flag" in css
@@ -116,19 +124,28 @@ def test_every_page_has_voice_controls():
 
 
 def test_app_wires_voice_pipeline():
+    # P2b: the mic/transport subsystem moved to voice.js; app.js keeps the
+    # integration seams (forwards WS events + wires the dock via window.LabVoice).
     js = (FT / "app.js").read_text(encoding="utf-8")
+    for token in ("startMic", "stopMic", "onTranscript", "is_final", "wireNav", "LabVoice"):
+        assert token in js, f"app.js missing {token}"
+    voice = (FT / "voice.js").read_text(encoding="utf-8")
     for token in (
         "/ws/audio",
         "getUserMedia",
         "MediaRecorder",
+        "set_muted",
         "startMic",
         "stopMic",
-        "onTranscript",
-        "is_final",
-        "set_muted",
-        "wireNav",
+        "window.LabVoice",
     ):
-        assert token in js, f"app.js missing {token}"
+        assert token in voice, f"voice.js missing {token}"
+
+
+def test_every_page_loads_voice_module():
+    for page in PAGES:
+        html = (FT / page).read_text(encoding="utf-8")
+        assert '<script src="voice.js" defer></script>' in html, f"{page} missing voice.js"
 
 
 def test_pages_expose_live_hooks():
@@ -183,6 +200,14 @@ def test_inventory_add_item_collects_structured_amount():
     assert 'id="additem-unit"' in inventory
     assert 'for="additem-amount">Amount' in inventory
     assert 'for="additem-unit">Unit' in inventory
+
+
+def test_inventory_has_no_expiration_field():
+    # Expiration removed end to end: no modal input, no table column.
+    inventory = (FT / "inventory.html").read_text(encoding="utf-8")
+    assert "additem-expiration" not in inventory
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert ">Expiration</div>" not in js
 
 
 def test_inventory_renderer_uses_structured_amount():

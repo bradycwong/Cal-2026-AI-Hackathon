@@ -184,6 +184,10 @@ class SessionState:
         self.active_protocol: Optional[Protocol] = None
         self.current_step_index: int = -1
         self.protocol_complete: bool = False
+        # Indices of steps the user skipped (advanced past without confirming).
+        # In-memory like the cursor; surfaced on step_change so the tracker can
+        # render them yellow instead of green.
+        self.skipped_steps: set[int] = set()
         self.log: list[dict[str, Any]] = []
         self.timers: list[Timer] = []
         self._log_seq = 0
@@ -264,7 +268,6 @@ class SessionState:
         code: str = "",
         category: str = "General",
         date: str = "",
-        expiration: str = "",
         status: str = "ok",
         amount: str = "",
         unit: str = "",
@@ -278,7 +281,6 @@ class SessionState:
             code,
             category,
             date,
-            expiration,
             status,
             amount,
             unit,
@@ -292,7 +294,6 @@ class SessionState:
         amount: Optional[str] = None,
         unit: Optional[str] = None,
         date: Optional[str] = None,
-        expiration: Optional[str] = None,
     ) -> InventoryItem:
         """Edit an item by stable id (delegates to the InventoryStore)."""
         return self._inventory.update(
@@ -302,7 +303,6 @@ class SessionState:
             amount=amount,
             unit=unit,
             date=date,
-            expiration=expiration,
         )
 
     def delete_inventory_item(self, item_id: int) -> InventoryItem:
@@ -502,6 +502,7 @@ class SessionState:
         self.active_protocol = None
         self.current_step_index = -1
         self.protocol_complete = False
+        self.skipped_steps.clear()
         self.clear_timers()
         self._timer_seq = 0
 

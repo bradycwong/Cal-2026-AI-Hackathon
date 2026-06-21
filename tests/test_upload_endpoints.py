@@ -56,11 +56,11 @@ def test_add_inventory_item_blank_name_422(client):
     assert r.status_code == 422
 
 
-def test_add_inventory_item_blank_expiration_is_na(client):
+def test_add_inventory_item_response_has_no_expiration(client):
     r = client.post("/api/inventory", json={"name": "Tris", "amount": "5", "unit": "mL"})
     assert r.status_code == 201
     body = r.json()
-    assert body["item"]["expiration"] == "N/A"
+    assert "expiration" not in body["item"]
     assert body["item"]["amount"] == "5"
     assert body["item"]["unit"] == "mL"
 
@@ -75,6 +75,7 @@ def test_edit_inventory_item(client):
     assert body["item"]["name"] == "Agarose LE"
     assert body["item"]["amount"] == "0"
     assert body["item"]["unit"] == "g"
+    assert "expiration" not in body["item"]
     # Edit persists in memory (and would survive a reload from the CSV).
     assert main.state.inventory[0].name == "Agarose LE"
     assert main.state.inventory[0].amount == "0"

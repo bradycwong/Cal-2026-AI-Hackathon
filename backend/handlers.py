@@ -53,6 +53,7 @@ def _step_change_events(
             all_steps=all_steps,
             current_index=current_index,
             protocol_name=protocol_name,
+            skipped_indices=sorted(state.skipped_steps) if proto else [],
             loaded=loaded,
             finished=finished,
         )
@@ -85,12 +86,13 @@ def _handle_load_protocol(cmd: Command, state: SessionState) -> list[dict[str, A
     state.active_protocol = proto
     state.current_step_index = 0
     state.protocol_complete = False
+    state.skipped_steps.clear()
     state.clear_timers()
     return _step_change_events(state, loaded=True)
 
 
 def _handle_next_step(
-    cmd: Command, state: SessionState, *, log_event: bool = True
+    cmd: Command, state: SessionState, *, completed: bool = True
 ) -> list[dict[str, Any]]:
     if not state.active_protocol:
         return [clarify_event("No protocol is loaded. Say 'load DNA extraction protocol' first.")]
@@ -105,43 +107,57 @@ def _handle_next_step(
             # and must not duplicate the final log entry.
             return _step_change_events(state, auto_timer=False, finished=True)
         events: list[dict[str, Any]] = []
-        if log_event:
-            completed = state.current_step()
-            if completed is not None:
-                category = state.active_protocol.name
-                entry = state.append_log(
-                    f"Completed step {completed.id}: {completed.text}", None, category, None
-                )
-                events.append(log_entry_event(**entry, step_log=True))
+        leaving = state.current_step()
+        if leaving is not None:
+            # Same Confirm/Skip logging convention as a normal advance: Confirm /
+            # "next step" logs it Completed; Skip logs it Skipped and marks the row.
+            category = state.active_protocol.name
+            if completed:
+                state.skipped_steps.discard(state.current_step_index)
+                verb = "Completed"
+            else:
+                state.skipped_steps.add(state.current_step_index)
+                verb = "Skipped"
+            entry = state.append_log(
+                f"{verb} step {leaving.id}: {leaving.text}", None, category, None
+            )
+            events.append(log_entry_event(**entry, step_log=True))
         state.protocol_complete = True
         events.extend(_step_change_events(state, auto_timer=False, finished=True))
         return events
-    # Record completing the step we're leaving BEFORE advancing, so the note's
-    # step_ref points at the finished step (and lands in the active notebook).
-    # The "skip" button advances with log_event=False to move on without a note.
-    events = []
-    if log_event:
-        completed = state.current_step()
-        if completed is not None:
-            category = state.active_protocol.name if state.active_protocol else None
-            entry = state.append_log(
-                f"Completed step {completed.id}: {completed.text}", None, category, None
-            )
-            # step_log=True so the frontend logs it without leaving the guide page.
-            events.append(log_entry_event(**entry, step_log=True))
+    # Record leaving the current step BEFORE advancing, so the note's step_ref
+    # points at the step we just left (and lands in the active notebook).
+    # Confirm / "next step" logs it Completed; Skip logs it Skipped and marks the
+    # step index so the tracker renders that row yellow instead of green.
+    events: list[dict[str, Any]] = []
+    leaving = state.current_step()
+    if leaving is not None:
+        category = state.active_protocol.name
+        if completed:
+            state.skipped_steps.discard(state.current_step_index)
+            verb = "Completed"
+        else:
+            state.skipped_steps.add(state.current_step_index)
+            verb = "Skipped"
+        entry = state.append_log(
+            f"{verb} step {leaving.id}: {leaving.text}", None, category, None
+        )
+        # step_log=True so the frontend logs it without leaving the guide page.
+        events.append(log_entry_event(**entry, step_log=True))
     state.current_step_index += 1
     state.protocol_complete = False
     events.extend(_step_change_events(state))
     return events
 
 
-def advance_step(state: SessionState, *, log_event: bool = True) -> list[dict[str, Any]]:
+def advance_step(state: SessionState, *, completed: bool = True) -> list[dict[str, Any]]:
     """Public entrypoint for the Confirm/Skip buttons to advance one step.
 
-    Mirrors the voice/typed ``next_step`` command; ``log_event`` is False for the
-    Skip button so the step advances without writing a note to the notebook.
+    Mirrors the voice/typed ``next_step`` command. ``completed=True`` (Confirm /
+    "next step") logs a "Completed step N" note; ``completed=False`` (Skip) logs a
+    "Skipped step N" note and marks the step skipped so the tracker shows it yellow.
     """
-    return _handle_next_step(Command(intent="next_step"), state, log_event=log_event)
+    return _handle_next_step(Command(intent="next_step"), state, completed=completed)
 
 
 def _handle_prev_step(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
@@ -256,7 +272,7 @@ def _handle_add_inventory(cmd: Command, state: SessionState) -> list[dict[str, A
 
     The NAME is required: with no name we add nothing and clarify. Per the
     product rule, any other missing field defaults to "TBD" (amount/unit/
-    location) and a missing expiration defaults to "N/A" — never a guess.
+    location) — never a guess.
     """
     name = (cmd.reagent_name or "").strip()
     if not name:
@@ -265,18 +281,14 @@ def _handle_add_inventory(cmd: Command, state: SessionState) -> list[dict[str, A
     amount = (cmd.amount or "").strip() or "TBD"
     unit = (cmd.unit or "").strip() or "TBD"
     location = (cmd.location or "").strip() or "TBD"
-    expiration = (cmd.expiration or "").strip() or "N/A"
     item = state.add_inventory_item(
         name,
         location=location,
-        expiration=expiration,
         amount=amount,
         unit=unit,
     )
     return [
-        inventory_added_event(
-            item.name, item.amount, item.unit, item.location, item.expiration
-        )
+        inventory_added_event(item.name, item.amount, item.unit, item.location)
     ]
 
 

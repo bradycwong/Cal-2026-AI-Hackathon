@@ -191,7 +191,7 @@ async def load_protocol_by_id(protocol_id: str) -> dict[str, Any]:
 
 
 class StepAdvanceIn(BaseModel):
-    # Confirm Action -> log=True (default); Skip -> log=False.
+    # Confirm Action -> log=True (step completed); Skip -> log=False (skipped).
     log: bool = True
 
 
@@ -200,9 +200,9 @@ async def api_step_next(body: StepAdvanceIn | None = None) -> dict[str, Any]:
     """Button-driven step advance. ``log=True`` (Confirm Action, also the
     default for a bodyless POST) writes a "Completed step N" note to the active
     notebook the same way a spoken/typed "next step" does; ``log=False`` (Skip)
-    advances without a note."""
-    log_event = True if body is None else body.log
-    events = advance_step(state, log_event=log_event)
+    writes a "Skipped step N" note and marks the step skipped in the tracker."""
+    completed = True if body is None else body.log
+    events = advance_step(state, completed=completed)
     await manager.broadcast(events)
     return {"ok": True, "events": events}
 
@@ -328,6 +328,7 @@ async def get_state() -> dict[str, Any]:
             "current_index": idx,
             "protocol_name": proto.name if proto else None,
             "finished": state.protocol_complete,
+            "skipped_indices": sorted(state.skipped_steps),
         }
         if cur
         else None,
@@ -353,7 +354,6 @@ class InventoryItemIn(BaseModel):
     unit: str = ""
     notes: str = ""
     date: str = ""
-    expiration: str = ""
 
 
 class InventoryItemEdit(BaseModel):
@@ -363,7 +363,6 @@ class InventoryItemEdit(BaseModel):
     amount: Optional[str] = None
     unit: Optional[str] = None
     date: Optional[str] = None
-    expiration: Optional[str] = None
 
 
 def _inventory_item_payload(item: Any) -> dict[str, Any]:
@@ -376,7 +375,6 @@ def _inventory_item_payload(item: Any) -> dict[str, Any]:
         "quantity_approx": item.quantity_approx,
         "notes": item.notes,
         "date": item.date,
-        "expiration": item.expiration,
     }
 
 
@@ -390,7 +388,6 @@ async def add_inventory(body: InventoryItemIn) -> dict[str, Any]:
             body.quantity_approx,
             body.notes,
             date=body.date,
-            expiration=(body.expiration.strip() or "N/A"),
             amount=body.amount,
             unit=body.unit,
         )
@@ -406,9 +403,6 @@ async def add_inventory(body: InventoryItemIn) -> dict[str, Any]:
 @app.put("/api/inventory/{item_id}")
 async def edit_inventory(item_id: int, body: InventoryItemEdit) -> dict[str, Any]:
     """Edit fields of the inventory item with ``item_id`` (stable id, not position)."""
-    expiration = body.expiration
-    if expiration is not None:
-        expiration = expiration.strip() or "N/A"
     try:
         item = state.update_inventory_item(
             item_id,
@@ -417,7 +411,6 @@ async def edit_inventory(item_id: int, body: InventoryItemEdit) -> dict[str, Any
             amount=body.amount,
             unit=body.unit,
             date=body.date,
-            expiration=expiration,
         )
     except IndexError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

@@ -228,7 +228,7 @@
 
   function clearAddItemForm() {
     populateInventoryUnits();
-    ["additem-name", "additem-amount", "additem-unit", "additem-location", "additem-date", "additem-expiration"].forEach(
+    ["additem-name", "additem-amount", "additem-unit", "additem-location", "additem-date"].forEach(
       (id) => {
         const el = $(id);
         if (el) el.value = "";
@@ -271,7 +271,6 @@
     set("additem-unit", it.unit);
     set("additem-location", it.location);
     set("additem-date", asDateInputValue(it.date));
-    set("additem-expiration", asDateInputValue(it.expiration));
     m.classList.remove("hidden");
     const name = $("additem-name");
     if (name) name.focus();
@@ -324,7 +323,6 @@
     const unit = (($("additem-unit") || {}).value || "").trim();
     const location = (($("additem-location") || {}).value || "").trim();
     const date = (($("additem-date") || {}).value || "").trim();
-    const expiration = (($("additem-expiration") || {}).value || "").trim();
     if (!name) {
       setMsg("Reagent name is required.", "text-tertiary");
       return;
@@ -333,9 +331,9 @@
     const isEdit = editingId !== null;
     try {
       if (isEdit) {
-        await updateInventoryItem(editingId, { name, amount, unit, location, date, expiration });
+        await updateInventoryItem(editingId, { name, amount, unit, location, date });
       } else {
-        await addInventoryItem({ name, amount, unit, location, date, expiration });
+        await addInventoryItem({ name, amount, unit, location, date });
       }
       await refreshInventory();
       clearAddItemForm();
@@ -517,7 +515,7 @@
     if (!host) return;
     inventoryCache = items;
     const header = `<div class="grid grid-cols-12 gap-4 px-6 py-3 bg-surface-container-low text-on-surface-variant text-xs font-bold uppercase tracking-wider border-b border-outline-variant sticky top-0 z-10">
-      <div class="col-span-3">Reagent Name</div><div class="col-span-2">Amount</div><div class="col-span-2">Location</div><div class="col-span-2">Date Created</div><div class="col-span-2">Expiration</div><div class="col-span-1 text-right">Actions</div></div>`;
+      <div class="col-span-4">Reagent Name</div><div class="col-span-2">Amount</div><div class="col-span-3">Location</div><div class="col-span-2">Date Created</div><div class="col-span-1 text-right">Actions</div></div>`;
     const rows = items
       .map((it, i) => {
         const amtRaw = (it.amount == null ? "" : String(it.amount)).trim();
@@ -532,19 +530,16 @@
           ? ` <span class="text-sm ${unitCls}">${escapeHtml(unit)}</span>`
           : "";
         return `<div class="inventory-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors group ${depletedCls}">
-      <div class="col-span-3 flex items-center gap-3">
+      <div class="col-span-4 flex items-center gap-3">
         <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary"><span class="material-symbols-outlined text-lg">science</span></div>
         <div><p class="font-bold text-on-surface">${escapeHtml(it.name)}</p><p class="text-[10px] font-data-label text-outline">${escapeHtml(
           it.code || ""
         )}</p></div>
       </div>
       <div class="col-span-2 whitespace-nowrap"><span class="text-sm font-data-label ${amtCls}">${amtText}</span>${unitText}</div>
-      <div class="col-span-2"><p class="text-on-surface text-sm">${escapeHtml(it.location)}</p></div>
+      <div class="col-span-3"><p class="text-on-surface text-sm">${escapeHtml(it.location)}</p></div>
       <div class="col-span-2"><p class="font-data-label text-on-surface-variant text-sm">${escapeHtml(
         it.date || "—"
-      )}</p></div>
-      <div class="col-span-2"><p class="font-data-label text-on-surface-variant text-sm">${escapeHtml(
-        it.expiration || "N/A"
       )}</p></div>
       <div class="col-span-1 flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
         <button type="button" class="inv-edit text-on-surface-variant hover:text-primary" data-id="${escapeHtml(String(it.id))}" title="Edit"><span class="material-symbols-outlined text-base">edit</span></button>
@@ -787,22 +782,35 @@
 
     const tracker = $("step-tracker");
     if (tracker && Array.isArray(step.all_steps)) {
+      // Steps the user skipped (advanced past without confirming) render yellow
+      // "Skipped" instead of green "Completed". A skipped index is always < idx;
+      // check current first so returning to a step via "prev" shows In Progress.
+      const skipped = new Set(
+        Array.isArray(step.skipped_indices) ? step.skipped_indices : []
+      );
       tracker.innerHTML = step.all_steps
         .map((s, i) => {
           let icon = "circle";
           let cls = "border-outline-variant opacity-50";
           let label = "Pending";
           let labelCls = "text-on-surface-variant";
-          if (finished || i < idx) {
-            icon = "check_circle";
-            cls = "border-secondary";
-            label = "Completed";
-            labelCls = "text-secondary";
-          } else if (i === idx) {
+          // Once finished there is no "In Progress" row: every step reads as
+          // Completed, except ones the user skipped, which stay yellow.
+          if (!finished && i === idx) {
             icon = "pending";
             cls = "border-primary";
             label = "In Progress";
             labelCls = "text-primary";
+          } else if (skipped.has(i)) {
+            icon = "skip_next";
+            cls = "border-tertiary";
+            label = "Skipped";
+            labelCls = "text-tertiary";
+          } else if (finished || i < idx) {
+            icon = "check_circle";
+            cls = "border-secondary";
+            label = "Completed";
+            labelCls = "text-secondary";
           }
           return `<div class="flex items-center gap-3 p-3 bg-surface-container-low rounded-lg border-l-4 ${cls}">
         <span class="material-symbols-outlined text-sm">${icon}</span>
@@ -1078,7 +1086,7 @@
         clearTransientState({ notesCleared: p.notes_cleared });
         return hydrate();
       case "voice_state":
-        return onVoiceState(p);
+        return window.LabVoice.onVoiceState(p);
       case "clarify":
         return renderClarify(p.message);
       case "inventory_added":
@@ -1102,7 +1110,7 @@
       case "timer_update":
         return onTimerUpdate(evt.payload);
       case "error":
-        return onError(evt.payload);
+        return window.LabVoice.onError(evt.payload);
     }
   }
 
@@ -1118,216 +1126,11 @@
     ws.onclose = () => setTimeout(connect, 1500);
   }
 
-  // --- voice session persistence across page navigations --------------------
-  // This is a multi-page app: every nav is a full reload that tears down the
-  // mic/recorder/socket. To make the voice assistant feel like it "stays on"
-  // (or muted, or off) as the user moves between pages, we persist the user's
-  // INTENT in sessionStorage and re-arm the mic on the next load. The server
-  // keeps the mute gate sticky and re-broadcasts it on every /ws/audio connect,
-  // so muted is authoritative server-side; we only mirror it locally for a
-  // flicker-free UI before the socket syncs.
-  const VOICE_ACTIVE_KEY = "lab.voice.active";
-  const VOICE_MUTED_KEY = "lab.voice.muted";
-  function storageGet(key) {
-    try {
-      return window.sessionStorage.getItem(key);
-    } catch (_) {
-      return null;
-    }
-  }
-  function storageSet(key, val) {
-    try {
-      window.sessionStorage.setItem(key, val);
-    } catch (_) {}
-  }
-  const setVoiceActiveStored = (on) => storageSet(VOICE_ACTIVE_KEY, on ? "1" : "0");
-  const getVoiceActiveStored = () => storageGet(VOICE_ACTIVE_KEY) === "1";
-  const setVoiceMutedStored = (m) => storageSet(VOICE_MUTED_KEY, m ? "1" : "0");
-  const getVoiceMutedStored = () => storageGet(VOICE_MUTED_KEY) === "1";
-
-  // --- voice: arm-once mic -> /ws/audio -> Deepgram (server-proxied) --------
-  // Ported from the original frontend so every served page can feed Deepgram.
-  let micStream = null;
-  let recorder = null;
-  let audioWS = null;
-  let manualStop = false;
-  let reconnects = 0;
-  let voiceMuted = getVoiceMutedStored();
-  let voiceErrorMsg = null; // sticky "off" reason (e.g. STT unavailable); see onVoiceUnavailable
-  const MAX_RECONNECTS = 3;
-
-  function pickMime() {
-    const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"];
-    return (
-      candidates.find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || ""
-    );
-  }
-
-  function setVoiceStatus(text, listening) {
-    const s = $("voice-status");
-    if (s) s.textContent = text;
-    const pulse = $("voice-pulse");
-    if (pulse) pulse.classList.toggle("voice-pulse-on", !!listening);
-  }
-
-  function setVoiceUI(active) {
-    const toggle = $("voice-toggle");
-    if (toggle) {
-      toggle.setAttribute("aria-pressed", active ? "true" : "false");
-      toggle.title = active ? "Stop voice session" : "Start voice session";
-    }
-    const mute = $("voice-mute");
-    if (mute) {
-      mute.disabled = !active;
-      mute.textContent = voiceMuted ? "mic_off" : "mic";
-      mute.title = voiceMuted ? "Unmute" : "Mute";
-    }
-    if (!active) setVoiceStatus(voiceErrorMsg || "Voice off", false);
-    else setVoiceStatus(voiceMuted ? "Muted" : "Listening", !voiceMuted);
-  }
-
-  function onVoiceState(p) {
-    voiceMuted = !!p.muted;
-    setVoiceMutedStored(voiceMuted); // mirror so the next page shows it instantly
-    if (micStream) setVoiceUI(true);
-  }
-
-  // A server-side STT failure (no DEEPGRAM_API_KEY, or a Deepgram auth/transport
-  // error) closes the audio socket the instant it opens. Without this, onclose
-  // would just flicker Listening -> Reconnecting -> retry forever. Stop the
-  // futile loop and tell the user *why* instead.
-  function onVoiceUnavailable(p) {
-    manualStop = true; // make any pending onclose finalize instead of reconnecting
-    setVoiceActiveStored(false); // don't auto-resume this on the next page
-    const msg = (p && p.message) || "";
-    // Sticky so the trailing onclose/finalizeStop renders the reason, not "Voice off".
-    voiceErrorMsg = /key|unauthor|forbidden|401|403/i.test(msg)
-      ? "Voice unavailable — STT key not configured"
-      : "Voice unavailable";
-    try {
-      if (audioWS) audioWS.close();
-    } catch (_) {}
-    finalizeStop(); // resets state + renders voiceErrorMsg via setVoiceUI(false)
-  }
-
-  function onError(p) {
-    // Only Deepgram/STT transport errors touch the voice session, and only when
-    // THIS page actually has a session running (the error is broadcast to every
-    // open client). Other error sources stay silent no-ops, as before.
-    if (p && (p.source === "deepgram" || p.code === "stt_failed") && micStream) {
-      onVoiceUnavailable(p);
-    }
-  }
-
-  async function startMic() {
-    manualStop = false;
-    reconnects = 0;
-    voiceErrorMsg = null; // clear any prior fatal reason on a fresh start/retry
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setVoiceActiveStored(false); // can't run here; don't keep retrying on nav
-      setVoiceStatus("Needs https/localhost", false);
-      return;
-    }
-    if (!window.MediaRecorder) {
-      setVoiceActiveStored(false);
-      setVoiceStatus("Unsupported browser", false);
-      return;
-    }
-    const mimeType = pickMime();
-    if (!mimeType) {
-      setVoiceActiveStored(false);
-      setVoiceStatus("No audio codec", false);
-      return;
-    }
-    setVoiceStatus("Connecting", false);
-    try {
-      micStream = await navigator.mediaDevices.getUserMedia({
-        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
-      });
-    } catch (err) {
-      setVoiceActiveStored(false); // permission gone; stop auto-resuming
-      setVoiceStatus("Mic denied", false);
-      return;
-    }
-    // Mic is live — remember the intent so navigating to another page re-arms it.
-    setVoiceActiveStored(true);
-    openAudioSocket(mimeType);
-  }
-
-  // Each socket gets its own MediaRecorder so the webm header is sent fresh on
-  // (re)connect; a header mid-stream would make the new Deepgram session deaf.
-  function openAudioSocket(mimeType) {
-    const proto = location.protocol === "https:" ? "wss" : "ws";
-    audioWS = new WebSocket(`${proto}://${location.host}/ws/audio`);
-    audioWS.binaryType = "arraybuffer";
-    audioWS.onopen = () => {
-      reconnects = 0;
-      recorder = new MediaRecorder(micStream, mimeType ? { mimeType } : undefined);
-      recorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0 && audioWS && audioWS.readyState === WebSocket.OPEN) {
-          e.data.arrayBuffer().then((buf) => audioWS.send(buf)).catch(() => {});
-        }
-      };
-      recorder.onerror = () => setVoiceStatus("Recorder error", false);
-      recorder.start(250);
-      setVoiceUI(true);
-    };
-    audioWS.onclose = () => {
-      try {
-        if (recorder && recorder.state !== "inactive") recorder.stop();
-      } catch (_) {}
-      recorder = null;
-      if (manualStop) {
-        finalizeStop();
-        return;
-      }
-      if (micStream && reconnects < MAX_RECONNECTS) {
-        reconnects += 1;
-        setVoiceStatus("Reconnecting", false);
-        setTimeout(() => {
-          if (!manualStop && micStream) openAudioSocket(mimeType);
-        }, 500 * reconnects);
-      } else {
-        setVoiceStatus("Connection lost", false);
-        finalizeStop();
-      }
-    };
-    audioWS.onerror = () => {};
-  }
-
-  function stopMic() {
-    manualStop = true;
-    setVoiceActiveStored(false); // explicit user stop: stay off across pages
-    try {
-      if (recorder && recorder.state !== "inactive") recorder.stop();
-    } catch (_) {}
-    try {
-      if (audioWS && audioWS.readyState === WebSocket.OPEN) {
-        audioWS.send(JSON.stringify({ type: "stop" }));
-        audioWS.close();
-      }
-    } catch (_) {}
-    if (!audioWS || audioWS.readyState === WebSocket.CLOSED) finalizeStop();
-  }
-
-  function finalizeStop() {
-    try {
-      if (micStream) micStream.getTracks().forEach((t) => t.stop());
-    } catch (_) {}
-    recorder = null;
-    micStream = null;
-    audioWS = null;
-    reconnects = 0;
-    voiceMuted = false;
-    setVoiceMutedStored(false);
-    clearInterim();
-    setVoiceUI(false);
-  }
-
-  function sendMuteControl(muted) {
-    if (!audioWS || audioWS.readyState !== WebSocket.OPEN) return;
-    audioWS.send(JSON.stringify({ type: "set_muted", muted }));
-  }
+  // --- voice/mic subsystem ---------------------------------------------------
+  // Extracted to voice.js (loaded before app.js): it owns getUserMedia /
+  // MediaRecorder / the /ws/audio socket + voice-state sessionStorage and exposes
+  // window.LabVoice. app.js forwards voice_state/error WS events to it, wires the
+  // dock via LabVoice.wireVoice(), and registers clearInterim as its stop hook.
 
   function wireNav() {
     const here = (location.pathname.split("/").pop() || "dashboard.html") || "dashboard.html";
@@ -1337,33 +1140,6 @@
       if (match) a.setAttribute("aria-current", "page");
       else a.removeAttribute("aria-current");
     });
-  }
-
-  function wireVoice() {
-    const toggle = $("voice-toggle");
-    if (toggle && !toggle.dataset.wired) {
-      toggle.dataset.wired = "1";
-      toggle.addEventListener("click", () => {
-        if (micStream) stopMic();
-        else startMic();
-      });
-    }
-    const mute = $("voice-mute");
-    if (mute && !mute.dataset.wired) {
-      mute.dataset.wired = "1";
-      mute.addEventListener("click", () => {
-        if (!micStream) return;
-        sendMuteControl(!voiceMuted);
-      });
-    }
-    setVoiceUI(!!micStream);
-  }
-
-  // Re-arm the mic after a navigation if the user had voice on when they left
-  // the previous page. The mute gate is restored by the server's voice_state
-  // broadcast on the fresh /ws/audio connect, so a muted session stays muted.
-  function maybeResumeVoice() {
-    if (!micStream && getVoiceActiveStored()) startMic();
   }
 
   // --- hydration error surface ----------------------------------------------
@@ -1451,7 +1227,10 @@
     wireDemoReset();
     wireGuideConfirm();
     wireStepActions();
-    wireVoice();
+    // voice.js owns the mic; register clearInterim so a mic-stop also clears the
+    // in-progress transcript line, then wire the dock buttons.
+    window.LabVoice.setStopHook(clearInterim);
+    window.LabVoice.wireVoice();
   }
 
   window.LabClient = {
@@ -1475,8 +1254,8 @@
     clearTransientState,
     handleDemoReset,
     onTranscript,
-    startMic,
-    stopMic,
+    startMic: (...a) => window.LabVoice.startMic(...a),
+    stopMic: (...a) => window.LabVoice.stopMic(...a),
     hydrate,
   };
 
@@ -1484,11 +1263,11 @@
     document.addEventListener("DOMContentLoaded", () => {
       hydrate();
       connect();
-      maybeResumeVoice();
+      window.LabVoice.maybeResumeVoice();
     });
   } else {
     hydrate();
     connect();
-    maybeResumeVoice();
+    window.LabVoice.maybeResumeVoice();
   }
 })();

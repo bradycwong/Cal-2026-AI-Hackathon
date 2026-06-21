@@ -90,15 +90,41 @@ def test_next_step_without_protocol_clarifies():
     assert events[0]["payload"]["kind"] == "clarify"
 
 
-def test_advance_step_skip_does_not_log():
-    # The Skip button advances without writing a note (log_event=False).
+def test_advance_step_skip_logs_skipped():
+    # The Skip button advances AND writes a "Skipped step N" note, and marks the
+    # step skipped so the tracker can render it yellow.
     state = fresh_state()
     handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
     before = len(state.log)
-    events = handlers.advance_step(state, log_event=False)
-    assert _kind(events, "step_change")["current_step"]["id"] == 2
-    assert all(e["payload"].get("kind") != "log_entry" for e in events)
-    assert len(state.log) == before
+    events = handlers.advance_step(state, completed=False)
+    step_change = _kind(events, "step_change")
+    assert step_change["current_step"]["id"] == 2
+    entry = _kind(events, "log_entry")
+    assert entry["text"].startswith("Skipped step 1")
+    assert entry["step_ref"] == 1       # the step we left, not the one we advanced to
+    assert entry["step_log"] is True    # keeps the UI on the guide page
+    assert len(state.log) == before + 1
+    # the left step's index (0) is now marked skipped, surfaced on step_change
+    assert step_change["skipped_indices"] == [0]
+    assert state.skipped_steps == {0}
+
+
+def test_advance_step_complete_does_not_mark_skipped():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    events = handle_command(Command(intent="next_step"), state)
+    assert _kind(events, "step_change")["skipped_indices"] == []
+    assert state.skipped_steps == set()
+
+
+def test_skipped_indices_persist_after_later_step_completed():
+    # Skip step 1, then complete step 2 -> step 1 stays marked skipped.
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    handlers.advance_step(state, completed=False)        # skip step 1 (index 0)
+    events = handlers.advance_step(state, completed=True)  # complete step 2 (index 1)
+    assert _kind(events, "step_change")["skipped_indices"] == [0]
+    assert state.skipped_steps == {0}
 
 
 def test_log_entry_field_translation():
@@ -483,19 +509,22 @@ def test_repeated_next_step_after_finish_is_idempotent():
     assert all(e["payload"].get("kind") != "log_entry" for e in events)
 
 
-def test_skip_finishes_without_logging():
+def test_skip_finishes_and_logs_skipped():
+    # Skip on the final step finishes the protocol AND logs a "Skipped step N"
+    # note (mirroring the Skip-anywhere convention) and marks the row skipped.
     state = fresh_state()
     handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
     _advance_to_last(state)
     log_len = len(state.log)
 
-    events = handlers.advance_step(state, log_event=False)
+    events = handlers.advance_step(state, completed=False)
 
     sc = _kind(events, "step_change")
     assert sc["finished"] is True
     assert state.protocol_complete is True
-    assert len(state.log) == log_len
-    assert all(e["payload"].get("kind") != "log_entry" for e in events)
+    assert _kind(events, "log_entry")["text"].startswith("Skipped step 5")
+    assert len(state.log) == log_len + 1
+    assert state.skipped_steps == {4}
 
 
 def test_one_step_protocol_finishes_on_first_next_step():

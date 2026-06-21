@@ -128,16 +128,8 @@
     </div>
     <label class="block text-xs font-bold uppercase text-on-surface-variant mb-1" for="additem-location">Location</label>
     <input id="additem-location" type="text" class="w-full mb-4 bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface" placeholder="e.g. Freezer 2 shelf B" />
-    <div class="grid grid-cols-2 gap-4">
-      <div>
-        <label class="block text-xs font-bold uppercase text-on-surface-variant mb-1" for="additem-date">Date Created</label>
-        <input id="additem-date" type="date" class="w-full mb-4 bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface" />
-      </div>
-      <div>
-        <label class="block text-xs font-bold uppercase text-on-surface-variant mb-1" for="additem-expiration">Expiration <span class="text-outline normal-case font-normal">(optional)</span></label>
-        <input id="additem-expiration" type="date" class="w-full mb-4 bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface" />
-      </div>
-    </div>
+    <label class="block text-xs font-bold uppercase text-on-surface-variant mb-1" for="additem-date">Date Created</label>
+    <input id="additem-date" type="date" class="w-full mb-4 bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface" />
     <div id="additem-result" aria-live="polite" class="text-sm mb-4 min-h-[1.25rem]"></div>
     <div class="flex justify-end gap-3">
       <button id="additem-cancel-2" class="px-4 py-2 rounded-lg border border-outline text-on-surface hover:bg-surface-variant">Cancel</button>
@@ -146,5 +138,6 @@
   </div>
 </div>
 <button id="demo-reset" data-action="demo-reset" type="button" class="fixed bottom-6 left-72 z-50 inline-flex items-center gap-2 bg-surface-container-high border border-outline-variant text-on-surface px-4 py-2 rounded-full shadow-lg hover:bg-surface-variant transition-all"><span class="material-symbols-outlined">restart_alt</span><span>Reset Demo</span></button>
+<script src="voice.js" defer></script>
 <script src="app.js" defer></script>
 </body></html>

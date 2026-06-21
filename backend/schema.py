@@ -52,7 +52,6 @@ class Command(BaseModel):
     amount: Optional[str] = None          # add_inventory (numeric quantity, e.g. "5")
     unit: Optional[str] = None            # add_inventory (e.g. "g", "mL", "uL")
     location: Optional[str] = None        # add_inventory (e.g. "shelf 4", "Fridge 1")
-    expiration: Optional[str] = None      # add_inventory (expiration date if stated)
     question: Optional[str] = None      # ask
     clarify_prompt: Optional[str] = None  # unknown / missing param -> clarification area
 
@@ -86,6 +85,7 @@ def step_change_event(
     all_steps: Optional[list[dict[str, Any]]] = None,
     current_index: Optional[int] = None,
     protocol_name: Optional[str] = None,
+    skipped_indices: Optional[list[int]] = None,
     loaded: bool = False,
     finished: bool = False,
 ) -> dict[str, Any]:
@@ -93,6 +93,8 @@ def step_change_event(
     # so the frontend can route to the active-protocol page without bouncing the
     # user around on every "next step". ``finished`` is True once the operator
     # has completed the final step (cursor stays clamped to the last real step).
+    # ``skipped_indices`` are step indices the user skipped past; the tracker
+    # renders those rows yellow ("Skipped") instead of green ("Completed").
     return command_result(
         "step_change",
         prev_step=prev_step,
@@ -101,6 +103,7 @@ def step_change_event(
         all_steps=all_steps if all_steps is not None else [],
         current_index=current_index,
         protocol_name=protocol_name,
+        skipped_indices=skipped_indices if skipped_indices is not None else [],
         loaded=loaded,
         finished=finished,
     )
@@ -175,7 +178,7 @@ def inventory_result_event(
 
 
 def inventory_added_event(
-    name: str, amount: str, unit: str, location: str, expiration: str
+    name: str, amount: str, unit: str, location: str
 ) -> dict[str, Any]:
     """A reagent was added to inventory by voice/typed command. Clients refresh
     the inventory feed off this. Additive ``kind`` on the locked envelope."""
@@ -185,7 +188,6 @@ def inventory_added_event(
         amount=amount,
         unit=unit,
         location=location,
-        expiration=expiration,
     )
 
 
