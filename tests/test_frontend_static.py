@@ -449,13 +449,14 @@ def test_app_handles_protocol_completion():
     assert "skipBtn.disabled = idx < 0 || finished" in js
 
 
-def test_guide_transcript_box_has_minimum_height():
+def test_guide_transcript_box_has_viewport_bounded_height():
     # The Guide page's Live Transcription panel is always visible (no `hidden`),
-    # so it reserves a minimum height instead of collapsing to nothing when empty
-    # (e.g. while muted, when the box shows no text).
+    # so it reserves a generous viewport-aware height instead of collapsing or
+    # staying too short for longer transcript/AI replies.
     css = (FT / "guide.css").read_text(encoding="utf-8")
     assert "#live-transcript" in css, "guide.css must scope a rule to #live-transcript"
-    assert "min-height" in css, "guide.css must give #live-transcript a min-height"
+    assert "height: clamp(12rem, 30vh, 24rem);" in css
+    assert "max-height: clamp(12rem, 30vh, 24rem);" in css
 
 
 def test_app_clears_transcript_when_muted():
