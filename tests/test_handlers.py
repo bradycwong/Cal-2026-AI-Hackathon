@@ -62,7 +62,27 @@ def test_log_entry_field_translation():
     assert p["text"] == "added 200 uL lysis buffer"  # log_text -> text
     assert p["sample_id"] == "A"
     assert p["step_ref"] == 1
-    assert set(p) == {"kind", "id", "text", "timestamp", "sample_id", "step_ref", "category"}
+    assert set(p) == {"kind", "id", "text", "timestamp", "sample_id", "step_ref", "category", "flag"}
+    # DNA Extraction step 1 expects 200 uL; the logged 200 uL matches.
+    assert p["flag"]["status"] == "ok"
+
+
+def test_log_entry_flags_volume_mismatch_and_correct_clears_it():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    events = handle_command(
+        Command(intent="log_entry", log_text="added 250 uL lysis buffer", sample_id="A"), state
+    )
+    assert events[0]["payload"]["flag"]["status"] == "mismatch"
+    # Log text is preserved exactly; the flag never rewrites it.
+    assert events[0]["payload"]["text"] == "added 250 uL lysis buffer"
+
+    events = handle_command(
+        Command(intent="correct_log", log_text="added 200 uL lysis buffer"), state
+    )
+    assert events[0]["payload"]["kind"] == "log_update"
+    assert events[0]["payload"]["flag"]["status"] == "ok"
+    assert state.log[-1]["text"] == "added 200 uL lysis buffer"
 
 
 def test_start_timer_event_shape():
@@ -312,7 +332,7 @@ def test_correct_log_updates_last_entry():
     events = handle_command(Command(intent="correct_log", log_text="corrected"), state)
 
     assert state.log[-1]["text"] == "corrected"
-    assert events[0]["payload"] == {"kind": "log_update", "id": entry_id, "text": "corrected"}
+    assert events[0]["payload"] == {"kind": "log_update", "id": entry_id, "text": "corrected", "flag": None}
 
 
 def test_correct_log_without_replacement_clarifies():

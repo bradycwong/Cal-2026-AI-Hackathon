@@ -62,6 +62,20 @@ def test_app_wires_protocol_import():
     assert "/api/protocols/${encodeURIComponent(id)}/load" in js
 
 
+def test_app_renders_reproducibility_flag():
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert "renderLogFlag" in js
+    assert 'flag.status === "mismatch"' in js
+    assert 'flag.status === "ok"' in js
+
+
+def test_notebook_css_has_flag_classes():
+    css = (FT / "notebook.css").read_text(encoding="utf-8")
+    assert ".log-flag" in css
+    assert ".log-ok" in css
+    assert ".flagged" in css
+
+
 def test_pages_expose_live_hooks():
     cards = (FT / "protocols.html").read_text(encoding="utf-8")
     assert 'id="protocol-cards"' in cards

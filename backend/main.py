@@ -25,6 +25,7 @@ from pydantic import BaseModel
 from .deepgram_stt import run_deepgram_session
 from .router import ROUTER_MODE, route
 from .protocol_import import import_protocol
+from .reproducibility import check as check_reproducibility
 from .schema import (
     Command,
     error_event,
@@ -231,7 +232,9 @@ class LogEntryIn(BaseModel):
 @app.post("/api/log")
 async def add_log(body: LogEntryIn) -> dict[str, Any]:
     """Typed/manual log entry (same persisted feed as the voice/typed spine)."""
-    entry = state.append_log(body.text, body.sample_id, body.category)
+    step = state.current_step()
+    flag = check_reproducibility(step.parameters, body.text) if step else None
+    entry = state.append_log(body.text, body.sample_id, body.category, flag)
     await manager.broadcast([log_entry_event(**entry)])
     return {"ok": True, "entry": entry}
 

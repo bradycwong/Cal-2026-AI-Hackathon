@@ -386,12 +386,13 @@ class SessionState:
         text: str,
         sample_id: Optional[str],
         category: Optional[str] = None,
+        flag: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         step = self.current_step()
         timestamp = utc_now_iso()
         step_ref = step.id if step else None
         if self.notes is not None:
-            entry = self.notes.add_note(text, timestamp, sample_id, step_ref, category)
+            entry = self.notes.add_note(text, timestamp, sample_id, step_ref, category, flag)
             self._log_seq = entry["id"]
         else:
             self._log_seq += 1
@@ -402,6 +403,7 @@ class SessionState:
                 "sample_id": sample_id,
                 "step_ref": step_ref,
                 "category": category,
+                "flag": flag,
             }
         self.log.append(entry)
         return entry
@@ -414,13 +416,16 @@ class SessionState:
             self.notes.delete_note(int(entry["id"]))
         return entry
 
-    def update_last_log(self, text: str) -> Optional[dict[str, Any]]:
+    def update_last_log(
+        self, text: str, flag: Optional[dict[str, Any]] = None
+    ) -> Optional[dict[str, Any]]:
         if not self.log:
             return None
         entry = self.log[-1]
         entry["text"] = text
+        entry["flag"] = flag
         if self.notes is not None:
-            self.notes.update_text(int(entry["id"]), text)
+            self.notes.update_text(int(entry["id"]), text, flag)
         return entry
 
     # --- timers ------------------------------------------------------------

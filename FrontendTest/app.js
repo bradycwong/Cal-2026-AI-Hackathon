@@ -241,13 +241,23 @@
     host.innerHTML = header + (rows || `<div class="p-12 text-center opacity-40">Inventory is empty.</div>`);
   }
 
-  // Plan 3 hook: a log entry may carry an optional `flag`. Render its mark when present.
-  function flagMark(flag) {
-    if (!flag || !flag.symbol) return "";
-    const cls = flag.match ? "text-secondary" : "text-tertiary";
-    return ` <span class="log-flag ${cls}" title="${escapeHtml(flag.detail || "")}">${escapeHtml(
-      flag.symbol
-    )}</span>`;
+  // Plan 3: a log entry may carry an optional reproducibility `flag` (volume_ul).
+  // VISIBLE badges use display symbols; the line text stays ASCII for screen readers.
+  function renderLogFlag(flag) {
+    if (!flag) return "";
+    if (flag.status === "ok") {
+      return `<div class="log-ok"><span aria-hidden="true">\u2713</span> OK: ${escapeHtml(
+        flag.parameter
+      )} matched ${escapeHtml(flag.expected)} ${escapeHtml(flag.unit)}</div>`;
+    }
+    if (flag.status === "mismatch") {
+      return `<div class="log-flag"><span aria-hidden="true">\u26a0</span> Warning: expected ${escapeHtml(
+        flag.expected
+      )} ${escapeHtml(flag.unit)}, logged ${escapeHtml(flag.logged)} ${escapeHtml(
+        flag.unit
+      )}</div>`;
+    }
+    return "";
   }
 
   function renderLog(log) {
@@ -258,17 +268,18 @@
       return;
     }
     host.innerHTML = log
-      .map(
-        (e) => `<div class="log-entry-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors" data-log-id="${e.id}">
+      .map((e) => {
+        const flagged = e.flag && e.flag.status === "mismatch" ? " flagged" : "";
+        return `<div class="log-entry-row${flagged} grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors" data-log-id="${e.id}">
       <div class="col-span-3 font-data-label text-on-surface text-sm">${escapeHtml(fmtTime(e.timestamp))}</div>
       <div class="col-span-3"><span class="bg-primary-container/20 text-primary-fixed px-2 py-0.5 rounded text-xs font-bold">${escapeHtml(
         e.category || (e.sample_id ? "Sample " + e.sample_id : "Note")
       )}</span></div>
-      <div class="col-span-6"><p class="text-on-surface text-sm log-text">${escapeHtml(e.text)}${flagMark(
-          e.flag
-        )}</p></div>
-    </div>`
-      )
+      <div class="col-span-6"><p class="text-on-surface text-sm log-text">${escapeHtml(
+        e.text
+      )}</p>${renderLogFlag(e.flag)}</div>
+    </div>`;
+      })
       .join("");
   }
 
@@ -485,6 +496,7 @@
     renderProtocolCards,
     renderInventory,
     renderLog,
+    renderLogFlag,
     renderStep,
     renderTimers,
     clearTransientState,

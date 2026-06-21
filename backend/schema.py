@@ -99,6 +99,7 @@ def log_entry_event(
     sample_id: Optional[str],
     step_ref: Optional[int],
     category: Optional[str] = None,
+    flag: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     return command_result(
         "log_entry",
@@ -108,6 +109,7 @@ def log_entry_event(
         sample_id=sample_id,
         step_ref=step_ref,
         category=category,
+        flag=flag,
     )
 
 
@@ -132,8 +134,10 @@ def log_removed_event(id: int) -> dict[str, Any]:
     return command_result("log_removed", id=id)
 
 
-def log_update_event(id: int, text: str) -> dict[str, Any]:
-    return command_result("log_update", id=id, text=text)
+def log_update_event(
+    id: int, text: str, flag: Optional[dict[str, Any]] = None
+) -> dict[str, Any]:
+    return command_result("log_update", id=id, text=text, flag=flag)
 
 
 def ask_result_event(question: str, answer: str) -> dict[str, Any]:

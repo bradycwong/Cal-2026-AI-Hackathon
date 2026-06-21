@@ -121,5 +121,12 @@ with no API key it falls back to a deterministic line/duration parser, so import
 works offline. Imported protocols are always `READY` and survive a restart. The
 FrontendTest protocols page has an "Import Protocol" modal wired to this endpoint.
 
+Reproducibility flags: when a log entry is added at a step that declares a
+`volume_ul` parameter, a deterministic checker compares the logged volume against
+the expected one and attaches an optional `flag` (`status: ok|mismatch`) to the
+`log_entry`/`log_update` payloads and to `/api/log` + `/api/state`. v1 flags only
+`volume_ul` mismatches; it never edits the researcher's log text, and the flag is
+persisted as part of the lab record. The notebook renders a `OK`/`Warning` line.
+
 Deferred swappable organs (NOT yet): VAD-gated streaming (cost), TTS,
 upload/library pages.

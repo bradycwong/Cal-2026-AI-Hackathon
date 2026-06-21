@@ -10,6 +10,7 @@ The `notes` schema mirrors the in-memory log row exactly
 
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any, Optional
@@ -49,6 +50,8 @@ class NoteStore:
         cols = self._columns()
         if "category" not in cols:
             self._conn.execute("ALTER TABLE notes ADD COLUMN category TEXT")
+        if "flag" not in cols:
+            self._conn.execute("ALTER TABLE notes ADD COLUMN flag TEXT")
         self._conn.commit()
 
     def add_note(
@@ -58,11 +61,13 @@ class NoteStore:
         sample_id: Optional[str],
         step_ref: Optional[int],
         category: Optional[str] = None,
+        flag: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         cur = self._conn.execute(
-            "INSERT INTO notes (text, timestamp, sample_id, step_ref, category) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (text, timestamp, sample_id, step_ref, category),
+            "INSERT INTO notes (text, timestamp, sample_id, step_ref, category, flag) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (text, timestamp, sample_id, step_ref, category,
+             json.dumps(flag) if flag is not None else None),
         )
         self._conn.commit()
         return {
@@ -72,21 +77,30 @@ class NoteStore:
             "sample_id": sample_id,
             "step_ref": step_ref,
             "category": category,
+            "flag": flag,
         }
 
     def all_notes(self) -> list[dict[str, Any]]:
         rows = self._conn.execute(
-            "SELECT id, text, timestamp, sample_id, step_ref, category "
+            "SELECT id, text, timestamp, sample_id, step_ref, category, flag "
             "FROM notes ORDER BY id ASC"
         ).fetchall()
-        return [dict(r) for r in rows]
+        notes = []
+        for r in rows:
+            note = dict(r)
+            note["flag"] = json.loads(note["flag"]) if note["flag"] else None
+            notes.append(note)
+        return notes
 
     def delete_note(self, id: int) -> None:
         self._conn.execute("DELETE FROM notes WHERE id = ?", (id,))
         self._conn.commit()
 
-    def update_text(self, id: int, text: str) -> None:
-        self._conn.execute("UPDATE notes SET text = ? WHERE id = ?", (text, id))
+    def update_text(self, id: int, text: str, flag: Optional[dict[str, Any]] = None) -> None:
+        self._conn.execute(
+            "UPDATE notes SET text = ?, flag = ? WHERE id = ?",
+            (text, json.dumps(flag) if flag is not None else None, id),
+        )
         self._conn.commit()
 
     def close(self) -> None:

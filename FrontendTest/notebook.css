@@ -22,3 +22,18 @@
 .voice-active-glow {
     box-shadow: 0 0 15px rgba(184,255,124,0.30);
 }
+
+/* Reproducibility flags (plan 3): restrained status accents on the log feed. */
+.flagged {
+    border-left: 4px solid #ff6b6b;
+}
+.log-flag {
+    color: #ffd5d5;
+    font-size: 12px;
+    margin-top: 6px;
+}
+.log-ok {
+    color: #b8ff7c;
+    font-size: 12px;
+    margin-top: 6px;
+}
