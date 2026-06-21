@@ -360,21 +360,61 @@
   }
 
   // --- transcript / clarify -------------------------------------------------
-  function renderTranscript(text) {
+  // The transcript panel mirrors the old frontend: a single in-place interim
+  // line plus appended finals, so Deepgram output is visible on every page.
+  let interimEl = null;
+  function clearInterim() {
+    if (interimEl) {
+      interimEl.remove();
+      interimEl = null;
+    }
+  }
+
+  function revealTranscript() {
+    const panel = $("live-transcript");
+    if (panel) panel.classList.remove("hidden");
+  }
+
+  function onTranscript(p) {
     const el = $("live-transcript");
-    if (el) el.textContent = text;
+    if (!el) return;
+    revealTranscript();
+    if (p && p.is_final) {
+      clearInterim();
+      const div = document.createElement("div");
+      div.className = "transcript-line transcript-final";
+      div.textContent = p.text;
+      el.appendChild(div);
+    } else {
+      if (!interimEl) {
+        interimEl = document.createElement("div");
+        interimEl.className = "transcript-line transcript-interim";
+        el.appendChild(interimEl);
+      }
+      interimEl.textContent = (p && p.text) || "";
+    }
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function clearTranscript() {
+    clearInterim();
+    const el = $("live-transcript");
+    if (el) {
+      el.innerHTML = "";
+      el.classList.add("hidden");
+    }
   }
 
   function renderClarify(message) {
     const el = $("clarify");
     if (el) el.textContent = message;
-    else renderTranscript(message);
+    else onTranscript({ text: message, is_final: true });
   }
 
   function clearTransientState(opts) {
     const notesCleared = opts && opts.notesCleared;
     renderTimersClear();
-    renderTranscript("");
+    clearTranscript();
     const cl = $("clarify");
     if (cl) cl.textContent = "";
     // Reset the step tracker / active-protocol label back to the empty state.
@@ -463,7 +503,7 @@
         clearTransientState({ notesCleared: p.notes_cleared });
         return hydrate();
       case "voice_state":
-        return; // mute/unmute badge is non-essential for the snapshot pages
+        return onVoiceState(p);
       case "clarify":
         return renderClarify(p.message);
       case "inventory_result":
@@ -477,7 +517,7 @@
   function dispatch(evt) {
     switch (evt.type) {
       case "transcript_update":
-        return renderTranscript(evt.payload.text);
+        return onTranscript(evt.payload);
       case "command_result":
         return onCommandResult(evt.payload);
       case "timer_update":
@@ -497,6 +537,182 @@
       } catch (_) {}
     };
     ws.onclose = () => setTimeout(connect, 1500);
+  }
+
+  // --- voice: arm-once mic -> /ws/audio -> Deepgram (server-proxied) --------
+  // Ported from the original frontend so every served page can feed Deepgram.
+  let micStream = null;
+  let recorder = null;
+  let audioWS = null;
+  let manualStop = false;
+  let reconnects = 0;
+  let voiceMuted = false;
+  const MAX_RECONNECTS = 3;
+
+  function pickMime() {
+    const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus"];
+    return (
+      candidates.find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || ""
+    );
+  }
+
+  function setVoiceStatus(text, listening) {
+    const s = $("voice-status");
+    if (s) s.textContent = text;
+    const pulse = $("voice-pulse");
+    if (pulse) pulse.classList.toggle("voice-pulse-on", !!listening);
+  }
+
+  function setVoiceUI(active) {
+    const toggle = $("voice-toggle");
+    if (toggle) {
+      toggle.setAttribute("aria-pressed", active ? "true" : "false");
+      toggle.title = active ? "Stop voice session" : "Start voice session";
+    }
+    const mute = $("voice-mute");
+    if (mute) {
+      mute.disabled = !active;
+      mute.textContent = voiceMuted ? "mic_off" : "mic";
+      mute.title = voiceMuted ? "Unmute" : "Mute";
+    }
+    if (!active) setVoiceStatus("Voice off", false);
+    else setVoiceStatus(voiceMuted ? "Muted" : "Listening", !voiceMuted);
+  }
+
+  function onVoiceState(p) {
+    voiceMuted = !!p.muted;
+    if (micStream) setVoiceUI(true);
+  }
+
+  async function startMic() {
+    manualStop = false;
+    reconnects = 0;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setVoiceStatus("Needs https/localhost", false);
+      return;
+    }
+    if (!window.MediaRecorder) {
+      setVoiceStatus("Unsupported browser", false);
+      return;
+    }
+    const mimeType = pickMime();
+    if (!mimeType) {
+      setVoiceStatus("No audio codec", false);
+      return;
+    }
+    setVoiceStatus("Connecting", false);
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+      });
+    } catch (err) {
+      setVoiceStatus("Mic denied", false);
+      return;
+    }
+    openAudioSocket(mimeType);
+  }
+
+  // Each socket gets its own MediaRecorder so the webm header is sent fresh on
+  // (re)connect; a header mid-stream would make the new Deepgram session deaf.
+  function openAudioSocket(mimeType) {
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    audioWS = new WebSocket(`${proto}://${location.host}/ws/audio`);
+    audioWS.binaryType = "arraybuffer";
+    audioWS.onopen = () => {
+      reconnects = 0;
+      recorder = new MediaRecorder(micStream, mimeType ? { mimeType } : undefined);
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0 && audioWS && audioWS.readyState === WebSocket.OPEN) {
+          e.data.arrayBuffer().then((buf) => audioWS.send(buf)).catch(() => {});
+        }
+      };
+      recorder.onerror = () => setVoiceStatus("Recorder error", false);
+      recorder.start(250);
+      setVoiceUI(true);
+    };
+    audioWS.onclose = () => {
+      try {
+        if (recorder && recorder.state !== "inactive") recorder.stop();
+      } catch (_) {}
+      recorder = null;
+      if (manualStop) {
+        finalizeStop();
+        return;
+      }
+      if (micStream && reconnects < MAX_RECONNECTS) {
+        reconnects += 1;
+        setVoiceStatus("Reconnecting", false);
+        setTimeout(() => {
+          if (!manualStop && micStream) openAudioSocket(mimeType);
+        }, 500 * reconnects);
+      } else {
+        setVoiceStatus("Connection lost", false);
+        finalizeStop();
+      }
+    };
+    audioWS.onerror = () => {};
+  }
+
+  function stopMic() {
+    manualStop = true;
+    try {
+      if (recorder && recorder.state !== "inactive") recorder.stop();
+    } catch (_) {}
+    try {
+      if (audioWS && audioWS.readyState === WebSocket.OPEN) {
+        audioWS.send(JSON.stringify({ type: "stop" }));
+        audioWS.close();
+      }
+    } catch (_) {}
+    if (!audioWS || audioWS.readyState === WebSocket.CLOSED) finalizeStop();
+  }
+
+  function finalizeStop() {
+    try {
+      if (micStream) micStream.getTracks().forEach((t) => t.stop());
+    } catch (_) {}
+    recorder = null;
+    micStream = null;
+    audioWS = null;
+    reconnects = 0;
+    voiceMuted = false;
+    clearInterim();
+    setVoiceUI(false);
+  }
+
+  function sendMuteControl(muted) {
+    if (!audioWS || audioWS.readyState !== WebSocket.OPEN) return;
+    audioWS.send(JSON.stringify({ type: "set_muted", muted }));
+  }
+
+  function wireNav() {
+    const here = (location.pathname.split("/").pop() || "dashboard.html") || "dashboard.html";
+    document.querySelectorAll("#main-nav [data-nav]").forEach((a) => {
+      const match = a.getAttribute("data-nav") === here;
+      a.classList.toggle("nav-active", match);
+      if (match) a.setAttribute("aria-current", "page");
+      else a.removeAttribute("aria-current");
+    });
+  }
+
+  function wireVoice() {
+    const toggle = $("voice-toggle");
+    if (toggle && !toggle.dataset.wired) {
+      toggle.dataset.wired = "1";
+      toggle.addEventListener("click", () => {
+        if (micStream) stopMic();
+        else startMic();
+      });
+    }
+    const mute = $("voice-mute");
+    if (mute && !mute.dataset.wired) {
+      mute.dataset.wired = "1";
+      mute.addEventListener("click", () => {
+        if (!micStream) return;
+        sendMuteControl(!voiceMuted);
+      });
+    }
+    setVoiceUI(!!micStream);
   }
 
   // --- bootstrap ------------------------------------------------------------
@@ -522,6 +738,8 @@
     renderTimers();
     wireImportModal();
     wireDemoReset();
+    wireVoice();
+    wireNav();
   }
 
   window.LabClient = {
@@ -541,6 +759,9 @@
     renderTimers,
     clearTransientState,
     handleDemoReset,
+    onTranscript,
+    startMic,
+    stopMic,
     hydrate,
   };
 

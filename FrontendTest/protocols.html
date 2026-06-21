@@ -101,10 +101,22 @@
 </head>
 <body class="bg-background text-on-background font-body-md min-h-screen flex">
 <!-- SideNavBar -->
-<aside class="fixed left-0 top-0 h-full flex flex-col py-stack-gap bg-surface-container dark:bg-surface-container w-64 border-r z-30">
-<a href="dashboard.html" class="px-gutter mb-8 block hover:opacity-80 transition-opacity cursor-pointer"><h1 class="font-headline-md text-headline-md text-primary">Placeholder</h1><p class="text-on-surface-variant text-sm">AI Assistant</p></a>
-<nav class="flex-1 px-4 space-y-2"><a class="bg-primary-container text-on-primary-container rounded-xl flex items-center px-4 py-3 transition-all duration-200" href="protocols.html"><span class="material-symbols-outlined mr-3">menu_book</span><span class="">Protocols</span></a><a class="text-on-surface-variant flex items-center px-4 py-3 hover:bg-surface-variant rounded-xl transition-all duration-200" href="notebook.html"><span class="material-symbols-outlined mr-3">description</span><span class="">Notebook</span></a><a class="text-on-surface-variant flex items-center px-4 py-3 hover:bg-surface-variant rounded-xl transition-all duration-200" href="guide.html"><span class="material-symbols-outlined mr-3">biotech</span><span class="">Guide</span></a><a class="text-on-surface-variant flex items-center px-4 py-3 hover:bg-surface-variant rounded-xl transition-all duration-200" href="inventory.html"><span class="material-symbols-outlined mr-3">inventory_2</span><span class="">Inventory</span></a></nav>
-<div class="px-4 mt-auto space-y-2 border-t border-outline-variant pt-4"><a class="text-on-surface-variant flex items-center px-4 py-3 hover:bg-surface-variant rounded-xl transition-all duration-200" href="#"><span class="material-symbols-outlined mr-3">help</span><span class="">Support</span></a><a class="text-on-surface-variant flex items-center px-4 py-3 hover:bg-surface-variant rounded-xl transition-all duration-200" href="#"><span class="material-symbols-outlined mr-3 text-error">logout</span><span class="text-error">Logout</span></a></div>
+<aside class="h-screen w-64 fixed left-0 top-0 border-r border-outline-variant flex flex-col py-gutter px-unit z-50 bg-surface-container-low" id="side-nav">
+<a href="dashboard.html" class="px-gutter mb-8 block hover:opacity-80 transition-opacity cursor-pointer">
+<h1 class="font-headline-md text-headline-md text-primary">Placeholder</h1>
+<p class="text-on-surface-variant text-sm">AI Assistant</p>
+</a>
+<nav class="flex-1 space-y-1" id="main-nav">
+<a href="dashboard.html" data-nav="dashboard.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">dashboard</span><span class="font-body-md text-body-md">Dashboard</span></a>
+<a href="protocols.html" data-nav="protocols.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">library_books</span><span class="font-body-md text-body-md">Protocols</span></a>
+<a href="notebook.html" data-nav="notebook.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">list_alt</span><span class="font-body-md text-body-md">Notebook</span></a>
+<a href="guide.html" data-nav="guide.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">menu_book</span><span class="font-body-md text-body-md">Guide</span></a>
+<a href="inventory.html" data-nav="inventory.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">inventory_2</span><span class="font-body-md text-body-md">Inventory</span></a>
+</nav>
+<div class="mt-auto px-4 pt-4 border-t border-outline-variant"><div class="space-y-1">
+<div class="flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors cursor-pointer active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">help</span><span class="font-body-md text-body-md">Support</span></div>
+<div class="flex items-center px-4 py-3 text-error font-medium hover:bg-error-container/10 transition-colors cursor-pointer active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">logout</span><span class="font-body-md text-body-md">Logout</span></div>
+</div></div>
 </aside>
 <!-- Main Content Area -->
 <main class="flex-1 ml-64 flex flex-col min-h-screen relative">
@@ -286,17 +298,22 @@
 </section>
 <!-- BottomNavBar (Voice Interaction Area) -->
 
-<button id="voice-assistant-toggle" class="fixed bottom-8 right-8 z-50 flex items-center gap-3 bg-surface-container-lowest border border-outline-variant rounded-xl px-4 py-3 shadow-xl hover:border-primary transition-all duration-300">
-  <div class="relative w-8 h-8 flex items-center justify-center shrink-0">
-    <span class="absolute inset-0 rounded-full border border-secondary animate-ping opacity-40"></span>
-    <span class="absolute inset-1 rounded-full border border-secondary opacity-60"></span>
-    <span class="material-symbols-outlined text-secondary" style="font-size:16px">mic</span>
-  </div>
-  <div class="flex flex-col items-start">
-    <span class="text-[9px] font-bold text-secondary uppercase tracking-[0.2em] leading-none">Listening</span>
-    <span class="text-xs text-on-surface-variant">Voice Assistant</span>
-  </div>
-</button></main>
+<div id="voice-dock" class="fixed bottom-8 right-8 z-50 w-80 max-w-[90vw] flex flex-col gap-2 items-end">
+<div id="live-transcript" class="hidden w-full bg-surface-container-lowest border border-outline-variant rounded-xl px-4 py-3 shadow-xl text-sm text-on-surface max-h-40 overflow-y-auto" aria-live="polite"></div>
+<div class="flex items-center gap-2 bg-surface-container-lowest border border-outline-variant rounded-xl px-4 py-3 shadow-xl">
+<button id="voice-toggle" type="button" aria-pressed="false" title="Start voice session" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
+<div class="relative w-8 h-8 flex items-center justify-center shrink-0">
+<span id="voice-pulse" class="absolute inset-0 rounded-full border border-secondary opacity-0"></span>
+<span class="material-symbols-outlined text-secondary" style="font-size:16px">mic</span>
+</div>
+<div class="flex flex-col items-start">
+<span id="voice-status" class="text-[9px] font-bold text-secondary uppercase tracking-[0.2em] leading-none">Voice off</span>
+<span class="text-xs text-on-surface-variant">Voice Assistant</span>
+</div>
+</button>
+<button id="voice-mute" type="button" disabled title="Mute" class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors disabled:opacity-30">mic</button>
+</div>
+</div></main>
 <!-- Import Protocol Modal -->
 <div id="import-modal" class="hidden fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4">
   <div class="bg-surface-container-high border border-outline-variant rounded-2xl w-full max-w-2xl p-6 shadow-2xl">
