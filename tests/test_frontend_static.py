@@ -243,13 +243,17 @@ def test_notebook_page_allows_scrolling():
     assert "height: 1227px" not in notebook
 
 
-def test_notebook_manual_entry_has_clear_sample_copy():
+def test_notebook_manual_entry_has_related_protocol_field():
     notebook = (FT / "notebook.html").read_text(encoding="utf-8")
     assert 'for="log-text"' in notebook
     assert ">Observation</label>" in notebook
-    assert 'for="log-sample"' in notebook
-    assert ">Sample / tube (optional)</label>" in notebook
-    assert "Examples: 1, A, Tube 3" in notebook
+    # The optional field is the related protocol (a dropdown), not a sample/tube id.
+    assert 'for="log-protocol"' in notebook
+    assert ">Related protocol (optional)</label>" in notebook
+    assert '<select id="log-protocol"' in notebook
+    # The old sample/tube field is gone.
+    assert 'id="log-sample"' not in notebook
+    assert "Sample / tube" not in notebook
 
 
 def test_notebook_renderer_shows_newest_entries_first_without_mutating_log():
@@ -259,10 +263,14 @@ def test_notebook_renderer_shows_newest_entries_first_without_mutating_log():
     assert "log.reverse()" not in js
 
 
-def test_notebook_manual_entry_rejects_bare_sample_values_as_observations():
+def test_notebook_manual_entry_attaches_related_protocol():
     js = (FT / "app.js").read_text(encoding="utf-8")
-    assert "looksLikeSampleOnly" in js
-    assert "Put sample/tube values in the Sample / tube field." in js
+    # The dropdown is filled from the live protocol list and sent as the entry
+    # category; the old sample-only guard is gone with the sample/tube field.
+    assert "populateLogProtocols" in js
+    assert "log-protocol" in js
+    assert "looksLikeSampleOnly" not in js
+    assert "Put sample/tube values" not in js
 
 
 def test_inventory_add_item_collects_structured_amount():
@@ -334,10 +342,20 @@ def test_app_handles_protocol_completion():
     assert "skipBtn.disabled = idx < 0 || finished" in js
 
 
-def test_dashboard_has_reagent_prep_panel_hooks():
+def test_guide_has_reagent_prep_modal_hooks():
+    # Reagent prep is a modal that pops up on protocol load (lands on the Guide),
+    # not an always-on dashboard panel. Overage was removed: samples only.
+    html = (FT / "guide.html").read_text(encoding="utf-8")
+    for token in ("prep-modal", "prep-open", "prep-samples", "prep-compute", "prep-table"):
+        assert token in html, f"guide.html missing {token}"
+    assert "prep-overage" not in html, "overage input should be gone from guide.html"
+
+
+def test_dashboard_no_longer_has_reagent_prep_panel():
+    # The static prep panel was moved off the dashboard into the Guide modal.
     html = (FT / "dashboard.html").read_text(encoding="utf-8")
     for token in ("prep-samples", "prep-overage", "prep-compute", "prep-table"):
-        assert token in html, f"dashboard.html missing {token}"
+        assert token not in html, f"dashboard.html should no longer contain {token}"
 
 
 def test_app_wires_reagent_prep_client():
@@ -349,5 +367,9 @@ def test_app_wires_reagent_prep_client():
         "handlePrepCompute",
         "prep-compute",
         "prep-table",
+        "openPrepModal",
+        "prep-modal-on-load",
     ):
         assert token in js, f"app.js missing {token}"
+    # The overage input no longer exists, so the client must not read it.
+    assert "prep-overage" not in js, "app.js should no longer reference prep-overage"

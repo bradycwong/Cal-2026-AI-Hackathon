@@ -25,6 +25,7 @@
 <a href="notebook.html" data-nav="notebook.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">list_alt</span><span class="font-body-md text-body-md">Notebook</span></a>
 <a href="guide.html" data-nav="guide.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">menu_book</span><span class="font-body-md text-body-md">Guide</span></a>
 <a href="inventory.html" data-nav="inventory.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">inventory_2</span><span class="font-body-md text-body-md">Inventory</span></a>
+<a href="commands.html" data-nav="commands.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">record_voice_over</span><span class="font-body-md text-body-md">Commands</span></a>
 </nav>
 </aside>
 <!-- Center: Active Step Detail -->
@@ -34,6 +35,7 @@
 <span id="protocol-name" class="text-on-surface-variant text-sm">No protocol loaded</span>
 <span class="material-symbols-outlined text-sm text-on-surface-variant">chevron_right</span>
 <span class="text-primary text-sm font-bold">Current Protocol</span>
+<button id="prep-open" type="button" title="Show scaled reagent prep for this protocol" class="hidden ml-auto inline-flex items-center gap-1 text-primary text-sm font-semibold hover:underline"><span class="material-symbols-outlined text-base">science</span>Reagent Prep</button>
 </div>
 <!-- Main Task Card -->
 <div class="bg-surface-container-low border border-outline-variant rounded-xl p-10 flex flex-col items-center justify-center text-center shadow-lg mb-gutter">
@@ -110,6 +112,32 @@
 <!-- Bottom: Persistent Voice Status Bar -->
 
 <button id="demo-reset" data-action="demo-reset" type="button" class="fixed bottom-6 left-72 z-50 inline-flex items-center gap-2 bg-surface-container-high border border-outline-variant text-on-surface px-4 py-2 rounded-full shadow-lg hover:bg-surface-variant transition-all"><span class="material-symbols-outlined">restart_alt</span><span>Reset Demo</span></button>
+<!-- Reagent Prep Modal (pops up when a protocol is loaded) -->
+<div id="prep-modal" class="hidden fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4">
+  <div class="bg-surface-container-high border border-outline-variant rounded-2xl w-full max-w-3xl p-6 shadow-2xl max-h-[85vh] overflow-y-auto custom-scrollbar">
+    <div class="flex justify-between items-start mb-1">
+      <div>
+        <h3 class="text-sm font-bold text-primary uppercase tracking-widest">Reagent Prep</h3>
+        <p id="prep-protocol-name" class="font-headline-md text-headline-md text-on-surface">Protocol</p>
+      </div>
+      <button id="prep-close" type="button" class="text-on-surface-variant hover:text-on-surface" aria-label="Close"><span class="material-symbols-outlined">close</span></button>
+    </div>
+    <p class="text-xs text-on-surface-variant mb-4">Scaled reagent volumes for this run, checked against current inventory.</p>
+    <div class="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end mb-4">
+      <label class="block">
+        <span class="text-xs font-bold uppercase text-on-surface-variant">Samples</span>
+        <input id="prep-samples" type="number" min="1" value="12" class="mt-1 w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface" />
+      </label>
+      <button id="prep-compute" type="button" class="bg-primary text-on-primary px-4 py-2 rounded-lg font-bold hover:bg-primary/90 transition-all">Compute</button>
+    </div>
+    <div id="prep-table" class="text-sm text-on-surface-variant" aria-live="polite">
+      Load a protocol to calculate scaled reagents.
+    </div>
+    <div class="flex justify-end mt-6">
+      <button id="prep-done" type="button" class="px-4 py-2 rounded-lg border border-outline text-on-surface hover:bg-surface-variant">Done</button>
+    </div>
+  </div>
+</div>
 <script src="voice.js" defer></script>
 <script src="app.js" defer></script>
 

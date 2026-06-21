@@ -86,6 +86,8 @@
     await fetch(`${API}/api/protocols/${encodeURIComponent(id)}/load`, {
       method: "POST",
     });
+    // Loading lands on the Guide; flag the prep modal to pop up once it hydrates.
+    flagPrepOnLoad();
     window.location.href = "guide.html";
   }
 
@@ -413,6 +415,7 @@
     const res = $("log-result");
     if (res) res.textContent = "";
     m.classList.remove("hidden");
+    populateLogProtocols(); // fill "Related protocol" from the live library
     const t = $("log-text");
     if (t) t.focus();
   }
@@ -420,30 +423,43 @@
     const m = $("log-modal");
     if (m) m.classList.add("hidden");
   }
-  function looksLikeSampleOnly(text) {
-    return /^\d+$/.test((text || "").trim());
+  // Fill the manual-entry "Related protocol" dropdown from the loaded protocols.
+  // The chosen name rides along as the entry's category (its badge); "— None —"
+  // sends no category. A failed fetch leaves just the None option, never an error.
+  async function populateLogProtocols() {
+    const sel = $("log-protocol");
+    if (!sel) return;
+    const prev = sel.value;
+    let protocols = [];
+    try {
+      protocols = await fetchProtocols();
+    } catch (_) {
+      protocols = [];
+    }
+    sel.innerHTML =
+      `<option value="">— None —</option>` +
+      protocols
+        .map((p) => `<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`)
+        .join("");
+    if (prev) sel.value = prev; // keep a pending pick across re-opens
   }
   async function submitLogForm(e) {
     if (e) e.preventDefault();
     const textEl = $("log-text");
-    const sampleEl = $("log-sample");
+    const protocolEl = $("log-protocol");
     const result = $("log-result");
     const text = ((textEl && textEl.value) || "").trim();
-    const sample = ((sampleEl && sampleEl.value) || "").trim();
+    const protocol = ((protocolEl && protocolEl.value) || "").trim();
     if (!text) {
       if (result) result.textContent = "Enter an observation to log.";
       return;
     }
-    if (looksLikeSampleOnly(text) && !sample) {
-      if (result) result.textContent = "Put sample/tube values in the Sample / tube field.";
-      if (sampleEl) sampleEl.focus();
-      return;
-    }
     if (result) result.textContent = "Saving...";
     try {
-      await postLog(text, sample || null, null);
+      // The related protocol is stored as the entry category (its feed badge).
+      await postLog(text, null, protocol || null);
       if (textEl) textEl.value = "";
-      if (sampleEl) sampleEl.value = "";
+      if (protocolEl) protocolEl.value = "";
       await refreshNotebookFeed();
       if (result) result.textContent = "";
       closeLogModal();
@@ -701,7 +717,7 @@
             <tr class="text-xs uppercase text-on-surface-variant border-b border-outline-variant">
               <th class="py-2 pr-3">Reagent</th>
               <th class="py-2 pr-3">Per sample</th>
-              <th class="py-2 pr-3">Run</th>
+              <th class="py-2 pr-3">Samples</th>
               <th class="py-2 pr-3">Total</th>
               <th class="py-2 pr-3">Availability</th>
             </tr>
@@ -711,7 +727,7 @@
               <tr class="border-b border-outline-variant/60">
                 <td class="py-3 pr-3 text-on-surface font-medium">${escapeHtml(row.reagent)}</td>
                 <td class="py-3 pr-3 font-data-label">${escapeHtml(row.per_sample_ul)} uL</td>
-                <td class="py-3 pr-3 font-data-label">${escapeHtml(row.n_samples)} + ${escapeHtml(row.overage_pct)}%</td>
+                <td class="py-3 pr-3 font-data-label">${escapeHtml(row.n_samples)}</td>
                 <td class="py-3 pr-3 font-data-label text-on-surface">${escapeHtml(row.total_display)}</td>
                 <td class="py-3 pr-3">
                   <div class="${prepVerdictClass(row.verdict)} font-bold">${escapeHtml(prepVerdictLabel(row))}</div>
@@ -729,17 +745,76 @@
     const table = $("prep-table");
     if (!table) return;
     const samples = Number($("prep-samples")?.value || 0);
-    const overage = Number($("prep-overage")?.value || 0);
     table.textContent = "Calculating reagent prep...";
     try {
+      // Overage was removed from the UI: scale on the raw sample count only.
       const data = await fetchScale({
         sample_count: samples,
-        overage_percent: overage
+        overage_percent: 0
       });
       renderPrepTable(data);
     } catch (err) {
       table.innerHTML = `<div class="text-error">${escapeHtml(err.message || String(err))}</div>`;
     }
+  }
+
+  // --- reagent prep modal ---------------------------------------------------
+  // The prep table is no longer an always-on dashboard panel; it surfaces as a
+  // modal that pops up when a protocol is loaded (and is re-openable from the
+  // Guide breadcrumb). A full page reload happens on load, so a sessionStorage
+  // flag carries the "open me" intent across the navigation.
+  const PREP_ON_LOAD_KEY = "prep-modal-on-load";
+
+  function flagPrepOnLoad() {
+    try {
+      sessionStorage.setItem(PREP_ON_LOAD_KEY, "1");
+    } catch (e) {
+      /* sessionStorage unavailable (private mode); modal just won't auto-open */
+    }
+  }
+  function consumePrepOnLoad() {
+    try {
+      if (sessionStorage.getItem(PREP_ON_LOAD_KEY) === "1") {
+        sessionStorage.removeItem(PREP_ON_LOAD_KEY);
+        return true;
+      }
+    } catch (e) {
+      /* ignore */
+    }
+    return false;
+  }
+
+  function prepModalOpen() {
+    const modal = $("prep-modal");
+    return !!modal && !modal.classList.contains("hidden");
+  }
+  function openPrepModal(name) {
+    const modal = $("prep-modal");
+    if (!modal) return;
+    const title = $("prep-protocol-name");
+    const resolved = name || $("protocol-name")?.textContent || "Protocol";
+    if (title) title.textContent = resolved;
+    modal.classList.remove("hidden");
+    handlePrepCompute();
+  }
+  function closePrepModal() {
+    const modal = $("prep-modal");
+    if (modal) modal.classList.add("hidden");
+  }
+  function wirePrepModal() {
+    const compute = $("prep-compute");
+    if (compute) compute.addEventListener("click", handlePrepCompute);
+    const openBtn = $("prep-open");
+    if (openBtn) openBtn.addEventListener("click", () => openPrepModal());
+    ["prep-close", "prep-done"].forEach((id) => {
+      const b = $(id);
+      if (b) b.addEventListener("click", closePrepModal);
+    });
+    const modal = $("prep-modal");
+    if (modal)
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) closePrepModal();
+      });
   }
 
   // Plan 3: a log entry may carry an optional reproducibility `flag` (volume_ul).
@@ -999,6 +1074,9 @@
     const idx = step.current_index == null ? -1 : step.current_index;
     const panel = $("step-panel");
     if (panel && idx >= 0) panel.classList.remove("hidden");
+    // Reagent-prep is reachable from the breadcrumb once a protocol is active.
+    const prepOpen = $("prep-open");
+    if (prepOpen && idx >= 0) prepOpen.classList.remove("hidden");
 
     // Live step counters (Guide): mirror the tracker so "STEP x / N" and the
     // "Protocol Phase 0x / 0N" header track the loaded protocol instead of fake data.
@@ -1285,7 +1363,13 @@
   function maybeNavigate(p) {
     switch (p.kind) {
       case "step_change":
-        if (p.loaded) navTo("guide.html"); // only on protocol LOAD, not step nav
+        if (p.loaded) {
+          // Cross-page loads reload the Guide; flag the prep modal so it opens
+          // after hydrate. An in-page load (already on the Guide) is handled by
+          // the dispatcher below, which opens the modal directly.
+          if (currentPage() !== "guide.html") flagPrepOnLoad();
+          navTo("guide.html"); // only on protocol LOAD, not step nav
+        }
         return;
       case "log_entry":
         // The auto-note from advancing a step must NOT yank the user off the
@@ -1307,7 +1391,11 @@
     switch (p.kind) {
       case "step_change":
         renderStep(p);
-        if ($("prep-table")) handlePrepCompute();
+        // A fresh protocol load pops the prep modal; a plain step advance does
+        // not (the prep table is run-level, not per-step). If the modal is
+        // already open, keep its availability numbers fresh.
+        if (p.loaded) openPrepModal(p.protocol_name);
+        else if (prepModalOpen()) handlePrepCompute();
         return;
       case "log_entry":
         return applyLogEntry(p);
@@ -1466,14 +1554,15 @@
       if ($("step-tracker") || $("step-current")) {
         const st = await fetchState();
         renderStep(st.step);
-        if ($("prep-table") && st.step) handlePrepCompute();
+        // Pop the prep modal once, right after a protocol load lands here.
+        const active = st.step && st.step.current_index != null;
+        if (active && $("prep-modal") && consumePrepOnLoad()) {
+          openPrepModal(st.step.protocol_name);
+        }
       }
     });
     renderTimers();
-    const prepButton = $("prep-compute");
-    if (prepButton) {
-      prepButton.addEventListener("click", handlePrepCompute);
-    }
+    wirePrepModal();
     wireImportModal();
     wireAddItemModal();
     wireLogModal();
@@ -1496,6 +1585,8 @@
     fetchState,
     fetchScale,
     renderPrepTable,
+    openPrepModal,
+    closePrepModal,
     loadProtocol,
     importProtocol,
     handleProtocolImport,

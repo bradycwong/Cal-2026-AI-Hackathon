@@ -23,6 +23,7 @@
 <a href="notebook.html" data-nav="notebook.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">list_alt</span><span class="font-body-md text-body-md">Notebook</span></a>
 <a href="guide.html" data-nav="guide.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">menu_book</span><span class="font-body-md text-body-md">Guide</span></a>
 <a href="inventory.html" data-nav="inventory.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">inventory_2</span><span class="font-body-md text-body-md">Inventory</span></a>
+<a href="commands.html" data-nav="commands.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">record_voice_over</span><span class="font-body-md text-body-md">Commands</span></a>
 </nav>
 </aside>
 <!-- Main Content Canvas -->
@@ -134,9 +135,10 @@
 <h3 class="font-headline-md text-headline-md text-on-surface">Add log entry</h3>
 <label for="log-text" class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Observation</label>
 <input id="log-text" type="text" required placeholder="What happened? e.g. added 200 uL lysis buffer" class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface outline-none focus:border-primary"/>
-<label for="log-sample" class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Sample / tube (optional)</label>
-<input id="log-sample" type="text" placeholder="1, A, or Tube 3" class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface outline-none focus:border-primary"/>
-<p class="text-xs text-on-surface-variant -mt-2">Examples: 1, A, Tube 3. You do not need to type "sample".</p>
+<label for="log-protocol" class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Related protocol (optional)</label>
+<select id="log-protocol" class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface outline-none focus:border-primary">
+<option value="">— None —</option>
+</select>
 <p id="log-result" class="text-sm text-on-surface-variant min-h-[1.25rem]" aria-live="polite"></p>
 <div class="flex justify-end gap-2">
 <button id="log-cancel" type="button" class="px-4 py-2 rounded-lg border border-outline-variant text-on-surface hover:bg-surface-variant">Cancel</button>

@@ -1,0 +1,267 @@
+<!DOCTYPE html><html class="dark" lang="en" style=""><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>LIMS AI Assistant - Voice Commands</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500&family=DM+Sans:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500;600;700&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300..500&family=DM+Sans:wght@300..700&amp;family=JetBrains+Mono:wght@100..900&amp;display=swap" rel="stylesheet">
+<script src="tailwind-config.js"></script>
+<link href="commands.css" rel="stylesheet">
+<link href="shared.css" rel="stylesheet">
+</head>
+<body class="bg-background text-on-surface font-body-md text-body-md overflow-hidden h-screen flex">
+<!-- SideNavBar Shell -->
+<aside class="h-screen w-64 fixed left-0 top-0 border-r border-outline-variant flex flex-col py-gutter px-unit z-50 bg-surface-container-low" id="side-nav">
+<a href="dashboard.html" class="px-gutter mb-8 block hover:opacity-80 transition-opacity cursor-pointer">
+<h1 class="font-headline-md text-headline-md text-primary">Lab</h1>
+<p class="text-on-surface-variant text-sm">AI Assistant</p>
+</a>
+<nav class="flex-1 space-y-1" id="main-nav">
+<a href="dashboard.html" data-nav="dashboard.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">dashboard</span><span class="font-body-md text-body-md">Dashboard</span></a>
+<a href="protocols.html" data-nav="protocols.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">library_books</span><span class="font-body-md text-body-md">Protocols</span></a>
+<a href="notebook.html" data-nav="notebook.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">list_alt</span><span class="font-body-md text-body-md">Notebook</span></a>
+<a href="guide.html" data-nav="guide.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">menu_book</span><span class="font-body-md text-body-md">Guide</span></a>
+<a href="inventory.html" data-nav="inventory.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">inventory_2</span><span class="font-body-md text-body-md">Inventory</span></a>
+<a href="commands.html" data-nav="commands.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">record_voice_over</span><span class="font-body-md text-body-md">Commands</span></a>
+</nav>
+</aside>
+<!-- Main Content Area -->
+<main class="ml-64 flex-1 flex flex-col relative h-full">
+<!-- Canvas -->
+<div class="flex-1 overflow-hidden flex flex-col px-container-padding py-stack-gap pt-8">
+<!-- Header -->
+<div class="max-w-full w-full space-y-4 mb-6">
+<div class="flex justify-between items-end gap-4 flex-wrap">
+<div>
+<h2 class="font-headline-lg text-headline-lg text-on-surface">Voice Commands</h2>
+<p class="text-on-surface-variant text-sm mt-1">Everything you can say to the assistant. Click the mic (bottom-right) or type in the box — speech and text run the exact same commands.</p>
+</div>
+<div class="flex items-center gap-2 bg-surface-container-high border border-outline-variant rounded-full px-4 py-2 text-sm text-on-surface-variant shrink-0">
+<span class="material-symbols-outlined text-secondary" style="font-size:18px">graphic_eq</span>
+<span>Phrasing is flexible — these are examples, not exact scripts.</span>
+</div>
+</div>
+</div>
+<!-- Command Reference Table -->
+<div class="flex-1 min-h-0 overflow-hidden">
+<div class="glass-panel rounded-2xl overflow-hidden flex flex-col h-full">
+<div class="bg-surface-container-high px-6 py-4 flex justify-between items-center border-b border-outline-variant shrink-0">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary">record_voice_over</span>
+<span class="font-bold text-on-surface">Voice Command Reference</span>
+</div>
+<span id="cmd-count" class="text-xs text-on-surface-variant font-data-label uppercase tracking-widest">15 commands</span>
+</div>
+<div class="flex-1 overflow-y-auto custom-scrollbar">
+<table class="w-full text-left border-collapse">
+<thead class="sticky top-0 z-10">
+<tr class="bg-surface-container-high text-on-surface-variant">
+<th scope="col" class="font-data-label text-xs uppercase tracking-widest font-bold px-6 py-3 w-[22%]">Command</th>
+<th scope="col" class="font-data-label text-xs uppercase tracking-widest font-bold px-6 py-3 w-[40%]">Say something like…</th>
+<th scope="col" class="font-data-label text-xs uppercase tracking-widest font-bold px-6 py-3 w-[38%]">What happens</th>
+</tr>
+</thead>
+
+<!-- Protocols -->
+<tbody>
+<tr class="cmd-category">
+<th colspan="3" scope="colgroup" class="px-6 py-2 bg-surface-container-low border-y border-outline-variant">
+<span class="flex items-center gap-2 text-primary font-data-label text-xs uppercase tracking-widest font-bold">
+<span class="material-symbols-outlined" style="font-size:18px">library_books</span>Protocols</span>
+</th>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-on-surface-variant" style="font-size:18px">play_circle</span>Load protocol</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Load DNA extraction protocol</span><span class="cmd-chip">Open DNA extraction</span><span class="cmd-chip">Start DNA extraction</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Loads the named protocol and jumps to its first step.</td>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-secondary" style="font-size:18px">check_circle</span>Next step</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Next</span><span class="cmd-chip">Next step</span><span class="cmd-chip">Continue</span><span class="cmd-chip">Confirm action</span><span class="cmd-chip">Done</span><span class="cmd-chip">Mark complete</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Marks the current step complete, logs it to the notebook, and advances.</td>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-tertiary" style="font-size:18px">skip_next</span>Skip step</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Skip</span><span class="cmd-chip">Skip this step</span><span class="cmd-chip">Skip ahead</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Advances <em>without</em> completing — the step is logged as <span class="text-tertiary font-medium">Skipped</span>.</td>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-on-surface-variant" style="font-size:18px">arrow_back</span>Previous step</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Go back</span><span class="cmd-chip">Previous step</span><span class="cmd-chip">Back a step</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Returns to the previous step.</td>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-on-surface-variant" style="font-size:18px">replay</span>Repeat step</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Repeat that</span><span class="cmd-chip">Say that again</span><span class="cmd-chip">What step am I on?</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Re-reads the current step without advancing.</td>
+</tr>
+</tbody>
+
+<!-- Notebook -->
+<tbody>
+<tr class="cmd-category">
+<th colspan="3" scope="colgroup" class="px-6 py-2 bg-surface-container-low border-y border-outline-variant">
+<span class="flex items-center gap-2 text-primary font-data-label text-xs uppercase tracking-widest font-bold">
+<span class="material-symbols-outlined" style="font-size:18px">edit_note</span>Notebook</span>
+</th>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-on-surface-variant" style="font-size:18px">note_add</span>Log a note</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Make a note that the lysate is cloudy</span><span class="cmd-chip">Log 5 mL added</span><span class="cmd-chip">Record sample A1 looks clear</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Adds a timestamped entry to the active notebook (a spoken sample id like “sample A1” is auto-tagged).</td>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-on-surface-variant" style="font-size:18px">undo</span>Undo last note</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Scratch that</span><span class="cmd-chip">Delete that</span><span class="cmd-chip">Undo the last note</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Removes the most recent notebook entry.</td>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-on-surface-variant" style="font-size:18px">edit</span>Correct last note</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Change the last note to 6 mL added</span><span class="cmd-chip">Correct that to …</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Replaces the text of the most recent entry.</td>
+</tr>
+</tbody>
+
+<!-- Timers -->
+<tbody>
+<tr class="cmd-category">
+<th colspan="3" scope="colgroup" class="px-6 py-2 bg-surface-container-low border-y border-outline-variant">
+<span class="flex items-center gap-2 text-primary font-data-label text-xs uppercase tracking-widest font-bold">
+<span class="material-symbols-outlined" style="font-size:18px">timer</span>Timers</span>
+</th>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-secondary" style="font-size:18px">hourglass_top</span>Start a timer</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Start a 5 minute timer</span><span class="cmd-chip">Set a timer for 30 seconds</span><span class="cmd-chip">Start the timer</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Starts a countdown. With no spoken duration it uses the current step’s declared time.</td>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-error" style="font-size:18px">timer_off</span>Stop a timer</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Stop timer</span><span class="cmd-chip">Cancel the timer</span><span class="cmd-chip">Stop the alarm</span><span class="cmd-chip">Stop beeping</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Stops and clears all timers — running or paused — and silences the alarm.</td>
+</tr>
+</tbody>
+
+<!-- Inventory -->
+<tbody>
+<tr class="cmd-category">
+<th colspan="3" scope="colgroup" class="px-6 py-2 bg-surface-container-low border-y border-outline-variant">
+<span class="flex items-center gap-2 text-primary font-data-label text-xs uppercase tracking-widest font-bold">
+<span class="material-symbols-outlined" style="font-size:18px">inventory_2</span>Inventory</span>
+</th>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-on-surface-variant" style="font-size:18px">search</span>Find an item</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Where is the EDTA?</span><span class="cmd-chip">Where's the ethanol?</span><span class="cmd-chip">Find Proteinase K</span><span class="cmd-chip">Do we have Tris?</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Looks up the item’s location and approximate quantity.</td>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-on-surface-variant" style="font-size:18px">add_box</span>Add an item</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Add 5 g of EDTA on shelf 4 to the inventory</span><span class="cmd-chip">Put Proteinase K in the inventory</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Adds a new reagent. The name is required; amount, unit, and location are optional.</td>
+</tr>
+</tbody>
+
+<!-- Questions -->
+<tbody>
+<tr class="cmd-category">
+<th colspan="3" scope="colgroup" class="px-6 py-2 bg-surface-container-low border-y border-outline-variant">
+<span class="flex items-center gap-2 text-primary font-data-label text-xs uppercase tracking-widest font-bold">
+<span class="material-symbols-outlined" style="font-size:18px">help</span>Questions</span>
+</th>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-on-surface-variant" style="font-size:18px">quiz</span>Ask about the protocol</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">How much ethanol does this step use?</span><span class="cmd-chip">What temperature for the spin?</span><span class="cmd-chip">Why do we incubate?</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Answers from the loaded protocol’s steps only — it won’t invent details it can’t find.</td>
+</tr>
+</tbody>
+
+<!-- Voice session -->
+<tbody>
+<tr class="cmd-category">
+<th colspan="3" scope="colgroup" class="px-6 py-2 bg-surface-container-low border-y border-outline-variant">
+<span class="flex items-center gap-2 text-primary font-data-label text-xs uppercase tracking-widest font-bold">
+<span class="material-symbols-outlined" style="font-size:18px">mic</span>Voice session</span>
+</th>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-error" style="font-size:18px">mic_off</span>Mute</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Mute</span><span class="cmd-chip">Stop listening</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Stops acting on commands. The mic stays on so you can unmute by voice.</td>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-secondary" style="font-size:18px">mic</span>Unmute</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Unmute</span><span class="cmd-chip">Resume listening</span><span class="cmd-chip">Start listening</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Resumes acting on commands.</td>
+</tr>
+</tbody>
+</table>
+<!-- Safety footnote -->
+<div class="px-6 py-4 border-t border-outline-variant flex items-start gap-3 text-sm text-on-surface-variant bg-surface-container-low/40">
+<span class="material-symbols-outlined text-primary shrink-0" style="font-size:20px">verified_user</span>
+<p>If a command is unclear or missing a detail, the assistant asks a one-line question instead of guessing — it never invents a reagent, dose, duration, or note.</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<script>
+  // Keep the header badge honest: derive the count from the rendered rows so it
+  // can never drift out of sync with the table (the literal value is just a
+  // no-JS fallback).
+  (function () {
+    var n = document.querySelectorAll('table .cmd-row').length;
+    var el = document.getElementById('cmd-count');
+    if (el) el.textContent = n + ' commands';
+  })();
+</script>
+<!-- Voice Assistant Bubble -->
+<div id="voice-dock" class="fixed bottom-8 right-8 z-50 w-80 max-w-[90vw] flex flex-col gap-2 items-end">
+<div id="live-transcript" class="hidden w-full bg-surface-container-lowest border border-outline-variant rounded-xl px-4 py-3 shadow-xl text-sm text-on-surface max-h-40 overflow-y-auto" aria-live="polite"></div>
+<div class="flex items-center gap-2 bg-surface-container-lowest border border-outline-variant rounded-xl px-4 py-3 shadow-xl">
+<button id="voice-mute" type="button" disabled aria-pressed="false" title="Mute" class="relative w-8 h-8 flex items-center justify-center shrink-0 rounded-full hover:opacity-80 transition-opacity disabled:opacity-40">
+<span id="voice-pulse" class="absolute inset-0 rounded-full border border-secondary opacity-0"></span>
+<span id="voice-mic" class="material-symbols-outlined voice-mic-off" style="font-size:16px">mic</span>
+</button>
+<button id="voice-toggle" type="button" aria-pressed="false" title="Start voice session" class="flex flex-col items-start hover:opacity-80 transition-opacity">
+<span id="voice-status" class="text-[9px] font-bold text-secondary uppercase tracking-[0.2em] leading-none">Voice off</span>
+<span class="text-xs text-on-surface-variant">Voice Assistant</span>
+</button>
+</div>
+</div>
+</main>
+<button id="demo-reset" data-action="demo-reset" type="button" class="fixed bottom-6 left-72 z-50 inline-flex items-center gap-2 bg-surface-container-high border border-outline-variant text-on-surface px-4 py-2 rounded-full shadow-lg hover:bg-surface-variant transition-all"><span class="material-symbols-outlined">restart_alt</span><span>Reset Demo</span></button>
+<script src="voice.js" defer></script>
+<script src="app.js" defer></script>
+</body></html>

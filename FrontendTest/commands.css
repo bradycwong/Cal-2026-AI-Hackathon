@@ -1,0 +1,62 @@
+/* commands.css — Voice Commands reference page. Mirrors inventory.css chrome
+ * (glass-panel + custom-scrollbar + body) and adds the command-table niceties. */
+
+.glass-panel {
+    background: rgba(13,17,23,0.88);
+    backdrop-filter: blur(12px);
+    border: 1px solid #253050;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: #0D1117;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #253050;
+    border-radius: 10px;
+}
+
+body {
+    background-color: #0D1117;
+    color: #E8EDF7;
+}
+
+/* Sticky header: give the cells (not just the row) a solid fill so scrolling
+   rows never bleed through the translucent glass panel behind them. The bottom
+   separator is an inset shadow, not a border: a collapsed-border bottom edge is
+   painted on the shared cell edge (not the sticky element) and can visually
+   detach while rows scroll under it — an inset shadow travels with the cell. */
+thead th {
+    background-color: #1A2235;
+    box-shadow: inset 0 -1px 0 #253050;
+}
+
+/* Command rows: subtle hover + hairline separators between entries. */
+.cmd-row + .cmd-row > th,
+.cmd-row + .cmd-row > td {
+    border-top: 1px solid rgba(37, 48, 80, 0.5);
+}
+.cmd-row:hover > th,
+.cmd-row:hover > td {
+    background: rgba(184, 195, 255, 0.04);
+}
+
+/* Spoken-phrase chips: monospace pills that read as "say this". */
+.cmd-chip {
+    display: inline-block;
+    margin: 0 6px 6px 0;
+    padding: 2px 10px;
+    border: 1px solid #253050;
+    border-radius: 9999px;
+    background: #1A2235;
+    color: #E8EDF7;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    line-height: 18px;
+    white-space: nowrap;
+}
+.cmd-row:last-child > td:first-of-type .cmd-chip:last-child {
+    margin-bottom: 0;
+}
