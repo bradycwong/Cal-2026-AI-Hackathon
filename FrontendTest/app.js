@@ -1518,9 +1518,8 @@
     _deductTriggeredForRun = true;
 
     try {
-      const samples = _lastPrepSamples || 1;
       const plan = await fetchScaleWithPriority({
-        sample_count: samples,
+        sample_count: _lastPrepSamples || 1,
         overage_percent: 0,
         priority_order: _getPriorityOrder(),
       });
@@ -1529,12 +1528,8 @@
 
       await consumeReagents(deductions);
 
-      // Show one toast per deducted item.
       for (const d of deductions) {
-        const remaining = d.new_amount > 0
-          ? `${d.new_amount} ${d.new_unit} remaining`
-          : "removed from inventory";
-        showToast(`${d.name} — ${remaining}`);
+        showToast(`${d.name} — ${d.new_amount} ${d.new_unit} remaining`);
         await new Promise((r) => setTimeout(r, 350));
       }
     } catch (err) {
