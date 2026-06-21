@@ -2,7 +2,7 @@
 
 A hands-free lab assistant: speak (or type) a command — load a protocol, log an
 observation, start a timer, find a reagent, ask what's next — and the screen
-updates in real time. **Voice is now live** (Deepgram nova-2, server-proxied);
+updates in real time. **Voice is now live** (Deepgram nova-3, server-proxied);
 persistence (SQLite) and the rest remain swappable organs added without touching
 the spine.
 
@@ -22,7 +22,7 @@ Input channels are swappable; the spine is not. The typed box POSTs to
 ## Voice
 
 Click **Start session** (top-right), allow the mic, and speak. Mic audio streams
-as webm/opus to `/ws/audio`; the server proxies it to Deepgram nova-2 (key stays
+as webm/opus to `/ws/audio`; the server proxies it to Deepgram nova-3 (key stays
 server-side), shows interim words live, and routes finished utterances through the
 same spine. Requires `DEEPGRAM_API_KEY` in `.env`.
 
