@@ -69,6 +69,29 @@ def test_load_protocol_by_id_advances_tracker(client):
     assert payload["protocol_name"] == "DNA Extraction"
 
 
+def test_step_next_endpoint_logs_by_default(client):
+    # Confirm Action (log=True, the default) advances and writes a note.
+    client.post("/api/protocols/dna_extraction/load")
+    r = client.post("/api/step/next")
+    assert r.status_code == 200
+    kinds = [e["payload"].get("kind") for e in r.json()["events"]]
+    assert "step_change" in kinds
+    assert "log_entry" in kinds
+    log = client.get("/api/log").json()["log"]
+    assert log[-1]["text"].startswith("Completed step 1")
+
+
+def test_step_next_endpoint_skip_does_not_log(client):
+    # Skip (log=False) advances without writing a note.
+    client.post("/api/protocols/dna_extraction/load")
+    r = client.post("/api/step/next", json={"log": False})
+    assert r.status_code == 200
+    kinds = [e["payload"].get("kind") for e in r.json()["events"]]
+    assert "step_change" in kinds
+    assert "log_entry" not in kinds
+    assert client.get("/api/log").json()["log"] == []
+
+
 def test_post_log_persists_and_lists(client):
     r = client.post("/api/log", json={"text": "added 200 uL", "category": "Note"})
     assert r.status_code == 200

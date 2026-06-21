@@ -83,14 +83,39 @@ def _handle_load_protocol(cmd: Command, state: SessionState) -> list[dict[str, A
     return _step_change_events(state, loaded=True)
 
 
-def _handle_next_step(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+def _handle_next_step(
+    cmd: Command, state: SessionState, *, log_event: bool = True
+) -> list[dict[str, Any]]:
     if not state.active_protocol:
         return [clarify_event("No protocol is loaded. Say 'load DNA extraction protocol' first.")]
     last = len(state.active_protocol.steps) - 1
     if state.current_step_index >= last:
         return [clarify_event(f"You're on the last step of {state.active_protocol.name}.")]
+    # Record completing the step we're leaving BEFORE advancing, so the note's
+    # step_ref points at the finished step (and lands in the active notebook).
+    # The "skip" button advances with log_event=False to move on without a note.
+    events: list[dict[str, Any]] = []
+    if log_event:
+        completed = state.current_step()
+        if completed is not None:
+            category = state.active_protocol.name if state.active_protocol else None
+            entry = state.append_log(
+                f"Completed step {completed.id}: {completed.text}", None, category, None
+            )
+            # step_log=True so the frontend logs it without leaving the guide page.
+            events.append(log_entry_event(**entry, step_log=True))
     state.current_step_index += 1
-    return _step_change_events(state)
+    events.extend(_step_change_events(state))
+    return events
+
+
+def advance_step(state: SessionState, *, log_event: bool = True) -> list[dict[str, Any]]:
+    """Public entrypoint for the Confirm/Skip buttons to advance one step.
+
+    Mirrors the voice/typed ``next_step`` command; ``log_event`` is False for the
+    Skip button so the step advances without writing a note to the notebook.
+    """
+    return _handle_next_step(Command(intent="next_step"), state, log_event=log_event)
 
 
 def _handle_prev_step(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
