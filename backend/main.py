@@ -332,6 +332,8 @@ class InventoryItemIn(BaseModel):
     location: str = ""
     quantity_approx: str = ""
     notes: str = ""
+    date: str = ""
+    expiration: str = ""
 
 
 @app.post("/api/inventory", status_code=201)
@@ -339,7 +341,12 @@ async def add_inventory(body: InventoryItemIn) -> dict[str, Any]:
     """Manual add-item entry: persist a reagent to the file-driven inventory."""
     try:
         item = state.add_inventory_item(
-            body.name, body.location, body.quantity_approx, body.notes
+            body.name,
+            body.location,
+            body.quantity_approx,
+            body.notes,
+            date=body.date,
+            expiration=(body.expiration.strip() or "unknown"),
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -350,6 +357,8 @@ async def add_inventory(body: InventoryItemIn) -> dict[str, Any]:
             "location": item.location,
             "quantity_approx": item.quantity_approx,
             "notes": item.notes,
+            "date": item.date,
+            "expiration": item.expiration,
         },
         "inventory_count": len(state.inventory),
     }
