@@ -348,11 +348,11 @@ class InventoryItemIn(BaseModel):
     name: str
     location: str = ""
     quantity_approx: str = ""
+    amount: str = ""
+    unit: str = ""
     notes: str = ""
     date: str = ""
     expiration: str = ""
-    amount: str = ""
-    unit: str = ""
 
 
 class InventoryItemEdit(BaseModel):
@@ -367,6 +367,7 @@ class InventoryItemEdit(BaseModel):
 
 def _inventory_item_payload(item: Any) -> dict[str, Any]:
     return {
+        "id": item.id,
         "name": item.name,
         "location": item.location,
         "amount": item.amount,
@@ -401,15 +402,15 @@ async def add_inventory(body: InventoryItemIn) -> dict[str, Any]:
     }
 
 
-@app.put("/api/inventory/{index}")
-async def edit_inventory(index: int, body: InventoryItemEdit) -> dict[str, Any]:
-    """Edit fields of the inventory item at ``index`` (by list position)."""
+@app.put("/api/inventory/{item_id}")
+async def edit_inventory(item_id: int, body: InventoryItemEdit) -> dict[str, Any]:
+    """Edit fields of the inventory item with ``item_id`` (stable id, not position)."""
     expiration = body.expiration
     if expiration is not None:
         expiration = expiration.strip() or "N/A"
     try:
         item = state.update_inventory_item(
-            index,
+            item_id,
             name=body.name,
             location=body.location,
             amount=body.amount,
@@ -428,11 +429,11 @@ async def edit_inventory(index: int, body: InventoryItemEdit) -> dict[str, Any]:
     }
 
 
-@app.delete("/api/inventory/{index}")
-async def remove_inventory(index: int) -> dict[str, Any]:
-    """Delete the inventory item at ``index`` (by list position)."""
+@app.delete("/api/inventory/{item_id}")
+async def remove_inventory(item_id: int) -> dict[str, Any]:
+    """Delete the inventory item with ``item_id`` (stable id, not position)."""
     try:
-        removed = state.delete_inventory_item(index)
+        removed = state.delete_inventory_item(item_id)
     except IndexError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {

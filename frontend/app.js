@@ -651,10 +651,6 @@ const Alarm = {
 
 connect();
 
-// Cache the app shell for instant/offline loads. Registration is best-effort:
-// unsupported browsers or insecure contexts just fall back to network loads.
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js").catch(() => {});
-  });
-}
+// Service worker removed: the live UI is FrontendTest/, served fresh from the
+// network. /sw.js now serves a self-unregistering stub that clears any stale
+// registration from earlier visits, so this page no longer registers one.

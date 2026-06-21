@@ -15,6 +15,19 @@
 
   const API = "";
   const $ = (id) => document.getElementById(id);
+  const INVENTORY_UNITS = [
+    "mL",
+    "uL",
+    "L",
+    "g",
+    "mg",
+    "ug",
+    "bottles",
+    "plates",
+    "aliquots",
+    "doses",
+    "reactions",
+  ];
 
   function escapeHtml(s) {
     return String(s == null ? "" : s)
@@ -144,8 +157,8 @@
   }
 
   // --- inventory add / edit / delete ----------------------------------------
-  let inventoryCache = []; // last-rendered items, for edit prefill (index-based)
-  let editingIndex = null; // null = add mode; number = editing that row index
+  let inventoryCache = []; // last-rendered items, for edit prefill (keyed by id)
+  let editingId = null; // null = add mode; number = id of the item being edited
 
   async function refreshInventory() {
     if ($("inventory-rows")) renderInventory(await fetchInventory());
@@ -162,8 +175,8 @@
     return data;
   }
 
-  async function updateInventoryItem(index, payload) {
-    const r = await fetch(`${API}/api/inventory/${index}`, {
+  async function updateInventoryItem(id, payload) {
+    const r = await fetch(`${API}/api/inventory/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -173,11 +186,29 @@
     return data;
   }
 
-  async function deleteInventoryItem(index) {
-    const r = await fetch(`${API}/api/inventory/${index}`, { method: "DELETE" });
+  async function deleteInventoryItem(id) {
+    const r = await fetch(`${API}/api/inventory/${id}`, { method: "DELETE" });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data.detail || `delete failed (${r.status})`);
     return data;
+  }
+
+  function populateInventoryUnits() {
+    const options = $("additem-unit-options");
+    if (!options || options.dataset.populated) return;
+    options.innerHTML = INVENTORY_UNITS.map(
+      (unit) => `<option value="${escapeHtml(unit)}"></option>`
+    ).join("");
+    options.dataset.populated = "1";
+  }
+
+  function formatInventoryAmount(item) {
+    const { amount, unit } = item || {};
+    const cleanAmount = String(amount || "").trim();
+    const cleanUnit = String(unit || "").trim();
+    if (cleanAmount && cleanUnit) return `${cleanAmount} ${cleanUnit}`;
+    if (cleanAmount) return cleanAmount;
+    return String((item && item.quantity_approx) || "").trim() || "—";
   }
 
   // <input type=date> only accepts YYYY-MM-DD; ignore anything else (e.g. "N/A").
@@ -196,6 +227,7 @@
   }
 
   function clearAddItemForm() {
+    populateInventoryUnits();
     ["additem-name", "additem-amount", "additem-unit", "additem-location", "additem-date", "additem-expiration"].forEach(
       (id) => {
         const el = $(id);
@@ -212,7 +244,7 @@
   function openAddItemModal() {
     const m = $("additem-modal");
     if (!m) return;
-    editingIndex = null;
+    editingId = null;
     setModalMode("add");
     clearAddItemForm();
     // Default "Date Created" to today for convenience.
@@ -223,11 +255,11 @@
     if (name) name.focus();
   }
 
-  function openEditItemModal(index) {
+  function openEditItemModal(id) {
     const m = $("additem-modal");
-    const it = inventoryCache[index];
+    const it = inventoryCache.find((x) => x.id === id);
     if (!m || !it) return;
-    editingIndex = index;
+    editingId = id;
     setModalMode("edit");
     clearAddItemForm();
     const set = (id, val) => {
@@ -298,10 +330,10 @@
       return;
     }
     setMsg("Saving...", "text-on-surface-variant");
-    const isEdit = editingIndex !== null;
+    const isEdit = editingId !== null;
     try {
       if (isEdit) {
-        await updateInventoryItem(editingIndex, { name, amount, unit, location, date, expiration });
+        await updateInventoryItem(editingId, { name, amount, unit, location, date, expiration });
       } else {
         await addInventoryItem({ name, amount, unit, location, date, expiration });
       }
@@ -315,12 +347,12 @@
     }
   }
 
-  async function handleDeleteItem(index) {
-    const it = inventoryCache[index];
+  async function handleDeleteItem(id) {
+    const it = inventoryCache.find((x) => x.id === id);
     const name = it ? it.name : "this item";
     if (!window.confirm(`Delete "${name}" from inventory?`)) return;
     try {
-      await deleteInventoryItem(index);
+      await deleteInventoryItem(id);
       await refreshInventory();
       showToast(`"${name}" was deleted`);
     } catch (e) {
@@ -331,6 +363,7 @@
   function wireAddItemModal() {
     const open = $("add-item");
     if (!open) return;
+    populateInventoryUnits();
     open.addEventListener("click", openAddItemModal);
     ["additem-cancel", "additem-cancel-2"].forEach((id) => {
       const b = $(id);
@@ -350,8 +383,59 @@
       rowsHost.addEventListener("click", (e) => {
         const editBtn = e.target.closest(".inv-edit");
         const delBtn = e.target.closest(".inv-delete");
-        if (editBtn) openEditItemModal(parseInt(editBtn.dataset.index, 10));
-        else if (delBtn) handleDeleteItem(parseInt(delBtn.dataset.index, 10));
+        if (editBtn) openEditItemModal(parseInt(editBtn.dataset.id, 10));
+        else if (delBtn) handleDeleteItem(parseInt(delBtn.dataset.id, 10));
+      });
+  }
+
+  // --- manual log entry modal (notebook "Manual Entry") ---------------------
+  function openLogModal() {
+    const m = $("log-modal");
+    if (!m) return;
+    const res = $("log-result");
+    if (res) res.textContent = "";
+    m.classList.remove("hidden");
+    const t = $("log-text");
+    if (t) t.focus();
+  }
+  function closeLogModal() {
+    const m = $("log-modal");
+    if (m) m.classList.add("hidden");
+  }
+  async function submitLogForm(e) {
+    if (e) e.preventDefault();
+    const textEl = $("log-text");
+    const sampleEl = $("log-sample");
+    const result = $("log-result");
+    const text = ((textEl && textEl.value) || "").trim();
+    if (!text) {
+      if (result) result.textContent = "Enter an observation to log.";
+      return;
+    }
+    if (result) result.textContent = "Saving...";
+    try {
+      await postLog(text, (sampleEl && sampleEl.value) || null, null);
+      if (textEl) textEl.value = "";
+      if (sampleEl) sampleEl.value = "";
+      await refreshNotebookFeed();
+      if (result) result.textContent = "";
+      closeLogModal();
+    } catch (err) {
+      if (result) result.textContent = "Could not save: " + err.message;
+    }
+  }
+  function wireLogModal() {
+    const open = $("log-add");
+    if (!open) return;
+    open.addEventListener("click", openLogModal);
+    const cancel = $("log-cancel");
+    if (cancel) cancel.addEventListener("click", closeLogModal);
+    const form = $("log-form");
+    if (form) form.addEventListener("submit", submitLogForm);
+    const modal = $("log-modal");
+    if (modal)
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) closeLogModal();
       });
   }
 
@@ -440,20 +524,21 @@
         const unit = (it.unit == null ? "" : String(it.unit)).trim();
         const amtNum = parseFloat(amtRaw);
         const isZero = amtRaw !== "" && !isNaN(amtNum) && amtNum === 0;
-        const rowTint = isZero ? "bg-error-container/10" : "";
+        const depletedCls = isZero ? "inv-depleted" : "";
         const amtCls = isZero ? "text-error font-bold" : "text-on-surface";
-        const amtText = amtRaw === "" ? "—" : escapeHtml(amtRaw);
+        const unitCls = isZero ? "text-error" : "text-on-surface-variant";
+        const amtText = amtRaw === "" ? escapeHtml(formatInventoryAmount(it)) : escapeHtml(amtRaw);
         const unitText = amtRaw !== "" && unit
-          ? ` <span class="text-on-surface-variant text-xs">${escapeHtml(unit)}</span>`
+          ? ` <span class="text-sm ${unitCls}">${escapeHtml(unit)}</span>`
           : "";
-        return `<div class="inventory-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors group ${rowTint}">
+        return `<div class="inventory-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors group ${depletedCls}">
       <div class="col-span-3 flex items-center gap-3">
         <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary"><span class="material-symbols-outlined text-lg">science</span></div>
         <div><p class="font-bold text-on-surface">${escapeHtml(it.name)}</p><p class="text-[10px] font-data-label text-outline">${escapeHtml(
           it.code || ""
         )}</p></div>
       </div>
-      <div class="col-span-2"><span class="text-sm font-data-label ${amtCls}">${amtText}</span>${unitText}</div>
+      <div class="col-span-2 whitespace-nowrap"><span class="text-sm font-data-label ${amtCls}">${amtText}</span>${unitText}</div>
       <div class="col-span-2"><p class="text-on-surface text-sm">${escapeHtml(it.location)}</p></div>
       <div class="col-span-2"><p class="font-data-label text-on-surface-variant text-sm">${escapeHtml(
         it.date || "—"
@@ -462,8 +547,8 @@
         it.expiration || "N/A"
       )}</p></div>
       <div class="col-span-1 flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-        <button type="button" class="inv-edit text-on-surface-variant hover:text-primary" data-index="${i}" title="Edit"><span class="material-symbols-outlined text-base">edit</span></button>
-        <button type="button" class="inv-delete text-on-surface-variant hover:text-error" data-index="${i}" title="Delete"><span class="material-symbols-outlined text-base">delete</span></button>
+        <button type="button" class="inv-edit text-on-surface-variant hover:text-primary" data-id="${escapeHtml(String(it.id))}" title="Edit"><span class="material-symbols-outlined text-base">edit</span></button>
+        <button type="button" class="inv-delete text-on-surface-variant hover:text-error" data-id="${escapeHtml(String(it.id))}" title="Delete"><span class="material-symbols-outlined text-base">delete</span></button>
       </div>
     </div>`;
       })
@@ -638,7 +723,10 @@
       .join("");
   }
 
-  // --- step actions: Confirm Action (log + advance) / Skip (advance only) ----
+  // --- step actions: Skip advances WITHOUT logging --------------------------
+  // Confirm Action (#confirm-step) is wired by wireGuideConfirm() and sends
+  // "next step" through the spine, which logs a "Completed step N" note. Skip
+  // calls the endpoint with log=false so it advances without a note.
   async function advanceStep(log) {
     await fetch(API + "/api/step/next", {
       method: "POST",
@@ -647,16 +735,13 @@
     });
   }
   function wireStepActions() {
-    const confirm = $("confirm-action");
-    if (confirm && !confirm.dataset.wired) {
-      confirm.dataset.wired = "1";
-      confirm.addEventListener("click", () => advanceStep(true));
-    }
     const skip = $("skip-action");
-    if (skip && !skip.dataset.wired) {
-      skip.dataset.wired = "1";
-      skip.addEventListener("click", () => advanceStep(false));
-    }
+    if (!skip || skip.dataset.wired) return;
+    skip.dataset.wired = "1";
+    skip.addEventListener("click", () => {
+      if (skip.disabled) return;
+      advanceStep(false).catch(() => {});
+    });
   }
 
   function renderStep(step) {
@@ -669,6 +754,22 @@
     const idx = step.current_index == null ? -1 : step.current_index;
     const panel = $("step-panel");
     if (panel && idx >= 0) panel.classList.remove("hidden");
+
+    // Live step counters (Guide): mirror the tracker so "STEP x / N" and the
+    // "Protocol Phase 0x / 0N" header track the loaded protocol instead of fake data.
+    const total = Array.isArray(step.all_steps) ? step.all_steps.length : 0;
+    const human = idx >= 0 ? idx + 1 : 0;
+    const counter = $("step-counter");
+    if (counter) counter.textContent = total ? `STEP ${human} / ${total}` : "STEP —";
+    const phase = $("step-phase");
+    if (phase)
+      phase.textContent = total
+        ? `Protocol Phase ${String(human).padStart(2, "0")} / ${String(total).padStart(2, "0")}`
+        : "Protocol Phase —";
+    const confirmBtn = $("confirm-step");
+    if (confirmBtn) confirmBtn.disabled = idx < 0;
+    const skipBtn = $("skip-action");
+    if (skipBtn) skipBtn.disabled = idx < 0;
 
     const tracker = $("step-tracker");
     if (tracker && Array.isArray(step.all_steps)) {
@@ -799,6 +900,16 @@
     // Reset the step tracker / active-protocol label back to the empty state.
     const cur = $("step-current");
     if (cur) cur.textContent = "No protocol loaded.";
+    const pname = $("protocol-name");
+    if (pname) pname.textContent = "No protocol loaded";
+    const counter = $("step-counter");
+    if (counter) counter.textContent = "STEP —";
+    const phase = $("step-phase");
+    if (phase) phase.textContent = "Protocol Phase —";
+    const confirmBtn = $("confirm-step");
+    if (confirmBtn) confirmBtn.disabled = true;
+    const skipBtn = $("skip-action");
+    if (skipBtn) skipBtn.disabled = true;
     const prev = $("step-prev");
     if (prev) prev.textContent = "";
     const nxt = $("step-next");
@@ -833,6 +944,30 @@
   function wireDemoReset() {
     const btn = $("demo-reset") || document.querySelector('[data-action="demo-reset"]');
     if (btn) btn.addEventListener("click", handleDemoReset);
+  }
+
+  // --- typed/click command channel ------------------------------------------
+  // Posts a transcript through the SAME spine as voice (/api/ingest -> route ->
+  // handle_command -> broadcast over /ws/events), so on-screen buttons and
+  // spoken commands behave identically. Events arrive via WS; ignore the body.
+  async function ingestCommand(transcript) {
+    await fetch(API + "/api/ingest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transcript }),
+    });
+  }
+
+  // Guide "Confirm Action": click == saying "next step". Disabled until a step
+  // is active (renderStep toggles it), so it never fires with no protocol loaded.
+  function wireGuideConfirm() {
+    const btn = $("confirm-step");
+    if (!btn || btn.dataset.wired) return;
+    btn.dataset.wired = "1";
+    btn.addEventListener("click", () => {
+      if (btn.disabled) return;
+      ingestCommand("next step").catch(() => {});
+    });
   }
 
   // --- in-memory log mirror so WS deltas can re-render the feed --------------
@@ -893,6 +1028,7 @@
       case "log_removed":
         return navTo("notebook.html");
       case "inventory_result":
+      case "inventory_added":
         return navTo("inventory.html");
     }
   }
@@ -931,6 +1067,10 @@
         return onVoiceState(p);
       case "clarify":
         return renderClarify(p.message);
+      case "inventory_added":
+        showToast(`"${p.name}" was added to inventory`);
+        refreshInventory();
+        return;
       case "inventory_result":
       case "ask_result":
         return;
@@ -948,7 +1088,7 @@
       case "timer_update":
         return onTimerUpdate(evt.payload);
       case "error":
-        return;
+        return onError(evt.payload);
     }
   }
 
@@ -999,6 +1139,7 @@
   let manualStop = false;
   let reconnects = 0;
   let voiceMuted = getVoiceMutedStored();
+  let voiceErrorMsg = null; // sticky "off" reason (e.g. STT unavailable); see onVoiceUnavailable
   const MAX_RECONNECTS = 3;
 
   function pickMime() {
@@ -1027,7 +1168,7 @@
       mute.textContent = voiceMuted ? "mic_off" : "mic";
       mute.title = voiceMuted ? "Unmute" : "Mute";
     }
-    if (!active) setVoiceStatus("Voice off", false);
+    if (!active) setVoiceStatus(voiceErrorMsg || "Voice off", false);
     else setVoiceStatus(voiceMuted ? "Muted" : "Listening", !voiceMuted);
   }
 
@@ -1037,9 +1178,37 @@
     if (micStream) setVoiceUI(true);
   }
 
+  // A server-side STT failure (no DEEPGRAM_API_KEY, or a Deepgram auth/transport
+  // error) closes the audio socket the instant it opens. Without this, onclose
+  // would just flicker Listening -> Reconnecting -> retry forever. Stop the
+  // futile loop and tell the user *why* instead.
+  function onVoiceUnavailable(p) {
+    manualStop = true; // make any pending onclose finalize instead of reconnecting
+    setVoiceActiveStored(false); // don't auto-resume this on the next page
+    const msg = (p && p.message) || "";
+    // Sticky so the trailing onclose/finalizeStop renders the reason, not "Voice off".
+    voiceErrorMsg = /key|unauthor|forbidden|401|403/i.test(msg)
+      ? "Voice unavailable — STT key not configured"
+      : "Voice unavailable";
+    try {
+      if (audioWS) audioWS.close();
+    } catch (_) {}
+    finalizeStop(); // resets state + renders voiceErrorMsg via setVoiceUI(false)
+  }
+
+  function onError(p) {
+    // Only Deepgram/STT transport errors touch the voice session, and only when
+    // THIS page actually has a session running (the error is broadcast to every
+    // open client). Other error sources stay silent no-ops, as before.
+    if (p && (p.source === "deepgram" || p.code === "stt_failed") && micStream) {
+      onVoiceUnavailable(p);
+    }
+  }
+
   async function startMic() {
     manualStop = false;
     reconnects = 0;
+    voiceErrorMsg = null; // clear any prior fatal reason on a fresh start/retry
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setVoiceActiveStored(false); // can't run here; don't keep retrying on nav
       setVoiceStatus("Needs https/localhost", false);
@@ -1183,23 +1352,70 @@
     if (!micStream && getVoiceActiveStored()) startMic();
   }
 
+  // --- hydration error surface ----------------------------------------------
+  // hydrate() previously swallowed every section error, so a broken API contract
+  // looked like an empty panel. Each section now runs through hydrateSection():
+  // the failure is logged and summarised in a dismissible page-level banner.
+  const hydrateFailures = new Set();
+  function showHydrateError(section) {
+    hydrateFailures.add(section);
+    let bar = $("hydrate-error");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "hydrate-error";
+      bar.setAttribute("role", "alert");
+      bar.className =
+        "fixed top-0 inset-x-0 z-[100] bg-error-container text-on-error-container text-sm px-4 py-2 flex items-center justify-between gap-4 shadow-lg";
+      const msg = document.createElement("span");
+      msg.id = "hydrate-error-msg";
+      const close = document.createElement("button");
+      close.type = "button";
+      close.setAttribute("aria-label", "Dismiss");
+      close.className = "font-bold opacity-80 hover:opacity-100 shrink-0";
+      close.textContent = "✕";
+      close.addEventListener("click", () => bar.remove());
+      bar.appendChild(msg);
+      bar.appendChild(close);
+      document.body.appendChild(bar);
+    }
+    const m = $("hydrate-error-msg");
+    if (m)
+      m.textContent = `Couldn't load: ${Array.from(hydrateFailures).join(
+        ", "
+      )}. The backend may be unavailable — showing what loaded.`;
+  }
+  function clearHydrateError() {
+    hydrateFailures.clear();
+    const bar = $("hydrate-error");
+    if (bar) bar.remove();
+  }
+  async function hydrateSection(name, run) {
+    try {
+      await run();
+    } catch (err) {
+      console.warn(`[hydrate] ${name} failed:`, err);
+      showHydrateError(name);
+    }
+  }
+
   // --- bootstrap ------------------------------------------------------------
   async function hydrate() {
     wireNav();
-    try {
+    clearHydrateError(); // start each (re)hydrate clean; a fixed section clears its error
+    await hydrateSection("protocols", async () => {
       if ($("protocol-cards")) renderProtocolCards(await fetchProtocols());
-    } catch (_) {}
-    try {
+    });
+    await hydrateSection("inventory", async () => {
       if ($("inventory-rows")) renderInventory(await fetchInventory());
-    } catch (_) {}
-    try {
+    });
+    await hydrateSection("log", async () => {
       if ($("log-rows") || $("log-preview")) {
         logCache = await fetchLog();
         renderLog(logCache);
         renderLogPreview(logCache);
       }
-    } catch (_) {}
-    try {
+    });
+    await hydrateSection("notebooks", async () => {
       if ($("notebook-list") || $("notebook-title") || $("notebook-select")) {
         const data = await fetchNotebooks();
         renderNotebooks(data);
@@ -1207,17 +1423,19 @@
         wireNotebookNew();
         wireNotebookSelect();
       }
-    } catch (_) {}
-    try {
+    });
+    await hydrateSection("protocol state", async () => {
       if ($("step-tracker") || $("step-current")) {
         const st = await fetchState();
         renderStep(st.step);
       }
-    } catch (_) {}
+    });
     renderTimers();
     wireImportModal();
     wireAddItemModal();
+    wireLogModal();
     wireDemoReset();
+    wireGuideConfirm();
     wireStepActions();
     wireVoice();
   }
@@ -1233,6 +1451,7 @@
     importProtocol,
     handleProtocolImport,
     postLog,
+    ingestCommand,
     renderProtocolCards,
     renderInventory,
     renderLog,

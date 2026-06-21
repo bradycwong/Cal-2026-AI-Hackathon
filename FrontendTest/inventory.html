@@ -4,106 +4,16 @@
 <title>LIMS AI Assistant - Inventory</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500&family=DM+Sans:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500;600;700&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300..500&family=DM+Sans:wght@300..700&amp;family=JetBrains+Mono:wght@100..900&amp;display=swap" rel="stylesheet">
-<script id="tailwind-config">
-      tailwind.config = {
-        darkMode: "class",
-        theme: {
-          extend: {
-            "colors": {
-                    "inverse-surface": "#E8EDF7",
-                    "surface-dim": "#0D1117",
-                    "on-error": "#1A0000",
-                    "secondary-fixed-dim": "#8FD95A",
-                    "error": "#FF6B6B",
-                    "on-secondary": "#0D1117",
-                    "on-secondary-fixed": "#0D1117",
-                    "surface": "#0D1117",
-                    "on-primary-fixed-variant": "#1A3A7A",
-                    "on-primary": "#051025",
-                    "background": "#0D1117",
-                    "secondary-fixed": "#B8FF7C",
-                    "surface-container-high": "#1A2235",
-                    "on-tertiary-container": "#FFD580",
-                    "primary": "#7BA7F5",
-                    "outline": "#4A5570",
-                    "tertiary-container": "#7A4A00",
-                    "on-tertiary-fixed-variant": "#7A4A00",
-                    "error-container": "#7A1515",
-                    "secondary-container": "#3A7A1A",
-                    "on-background": "#E8EDF7",
-                    "on-tertiary-fixed": "#1A0D00",
-                    "on-primary-fixed": "#051025",
-                    "on-tertiary": "#1A0D00",
-                    "tertiary": "#F5A623",
-                    "on-secondary-container": "#0D1117",
-                    "on-primary-container": "#E8EDF7",
-                    "primary-fixed-dim": "#7BA7F5",
-                    "secondary": "#B8FF7C",
-                    "surface-bright": "#253050",
-                    "inverse-on-surface": "#131929",
-                    "surface-container-low": "#111724",
-                    "outline-variant": "#253050",
-                    "surface-container-lowest": "#080C14",
-                    "on-secondary-fixed-variant": "#3A7A1A",
-                    "primary-container": "#2352C8",
-                    "on-surface": "#E8EDF7",
-                    "tertiary-fixed-dim": "#F5A623",
-                    "on-surface-variant": "#8A96B0",
-                    "primary-fixed": "#C5D5F5",
-                    "on-error-container": "#FFD5D5",
-                    "tertiary-fixed": "#FFD580",
-                    "surface-tint": "#7BA7F5",
-                    "surface-variant": "#1E2A3F",
-                    "surface-container": "#131929",
-                    "inverse-primary": "#2352C8",
-                    "surface-container-highest": "#1E2A3F"
-            },
-            "borderRadius": {
-                    "DEFAULT": "0.125rem",
-                    "lg": "0.25rem",
-                    "xl": "0.5rem",
-                    "full": "0.75rem"
-            },
-            "spacing": {
-                    "gutter": "24px",
-                    "touch-target": "48px",
-                    "stack-gap": "16px",
-                    "container-padding": "32px",
-                    "unit": "8px"
-            },
-            "fontFamily": {
-                    "headline-lg": ["DM Mono"],
-                    "data-label": ["JetBrains Mono"],
-                    "display-timer": ["JetBrains Mono"],
-                    "body-md": ["DM Sans"],
-                    "data-value": ["JetBrains Mono"],
-                    "body-lg": ["DM Sans"],
-                    "headline-lg-mobile": ["DM Mono"],
-                    "headline-md": ["DM Mono"]
-            },
-            "fontSize": {
-                    "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "600"}],
-                    "data-label": ["14px", {"lineHeight": "20px", "fontWeight": "500"}],
-                    "display-timer": ["72px", {"lineHeight": "80px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
-                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
-                    "data-value": ["18px", {"lineHeight": "24px", "fontWeight": "600"}],
-                    "body-lg": ["20px", {"lineHeight": "30px", "fontWeight": "400"}],
-                    "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
-                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "500"}]
-            }
-          },
-        },
-      }
-    </script>
+<script src="tailwind-config.js"></script>
 <link href="inventory.css" rel="stylesheet">
+<link href="shared.css" rel="stylesheet">
 </head>
-<body class="font-body-md text-body-md overflow-hidden h-screen flex">
+<body class="bg-background text-on-surface font-body-md text-body-md overflow-hidden h-screen flex">
 <!-- SideNavBar Shell -->
 <aside class="h-screen w-64 fixed left-0 top-0 border-r border-outline-variant flex flex-col py-gutter px-unit z-50 bg-surface-container-low" id="side-nav">
 <a href="dashboard.html" class="px-gutter mb-8 block hover:opacity-80 transition-opacity cursor-pointer">
-<h1 class="font-headline-md text-headline-md text-primary">Placeholder</h1>
+<h1 class="font-headline-md text-headline-md text-primary">Lab</h1>
 <p class="text-on-surface-variant text-sm">AI Assistant</p>
 </a>
 <nav class="flex-1 space-y-1" id="main-nav">
@@ -113,10 +23,6 @@
 <a href="guide.html" data-nav="guide.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">menu_book</span><span class="font-body-md text-body-md">Guide</span></a>
 <a href="inventory.html" data-nav="inventory.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">inventory_2</span><span class="font-body-md text-body-md">Inventory</span></a>
 </nav>
-<div class="mt-auto px-4 pt-4 border-t border-outline-variant"><div class="space-y-1">
-<div class="flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors cursor-pointer active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">help</span><span class="font-body-md text-body-md">Support</span></div>
-<div class="flex items-center px-4 py-3 text-error font-medium hover:bg-error-container/10 transition-colors cursor-pointer active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">logout</span><span class="font-body-md text-body-md">Logout</span></div>
-</div></div>
 </aside>
 <!-- Main Content Area -->
 <main class="ml-64 flex-1 flex flex-col relative h-full">
@@ -138,20 +44,7 @@
 <section class="glass-panel p-4 rounded-xl flex flex-col md:flex-row items-center gap-4">
 <div class="relative flex-1 group">
 <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant group-focus-within:text-primary transition-colors">search</span>
-<input class="w-full bg-surface-container-lowest border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary rounded-lg py-3 pl-12 pr-12 text-on-surface placeholder:text-on-surface-variant outline-none transition-all" placeholder="Search inventory via voice or text..." type="text">
-<button class="absolute right-4 top-1/2 -translate-y-1/2 text-primary hover:scale-110 transition-transform">
-<span class="material-symbols-outlined" data-icon="mic" data-weight="fill">mic</span>
-</button>
-</div>
-<div class="flex items-center gap-2">
-<button class="px-4 py-2 rounded-full border border-outline-variant text-on-surface-variant flex items-center gap-2 text-sm font-medium hover:bg-surface-variant">
-<span class="material-symbols-outlined text-sm">filter_list</span>
-                    Category
-                </button>
-<button class="px-4 py-2 rounded-full border border-outline-variant text-on-surface-variant flex items-center gap-2 text-sm font-medium hover:bg-surface-variant">
-<span class="material-symbols-outlined text-sm">location_on</span>
-                    Location
-                </button>
+<input aria-label="Search inventory" class="w-full bg-surface-container-lowest border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary rounded-lg py-3 pl-12 pr-4 text-on-surface placeholder:text-on-surface-variant outline-none transition-all" placeholder="Search inventory..." type="text">
 </div>
 </section>
 </div>
@@ -168,48 +61,7 @@
 </div>
 </div>
 <div id="inventory-rows" class="flex-1 overflow-y-auto custom-scrollbar">
-<!-- Table Header -->
-<div class="grid grid-cols-12 gap-4 px-6 py-3 bg-surface-container-low text-on-surface-variant text-xs font-bold uppercase tracking-wider border-b border-outline-variant sticky top-0 z-10">
-<div class="col-span-3">Reagent Name</div>
-<div class="col-span-2">Amount</div>
-<div class="col-span-2">Location</div>
-<div class="col-span-2">Date Created</div>
-<div class="col-span-2">Expiration</div>
-<div class="col-span-1 text-right">Actions</div>
-</div>
-<!-- Table Rows (replaced at runtime from /api/inventory by app.js) -->
-<div class="inventory-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors">
-<div class="col-span-3 flex items-center gap-3">
-<div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-<span class="material-symbols-outlined text-lg">science</span>
-</div>
-<div>
-<p class="font-bold text-on-surface">Proteinase K</p>
-<p class="text-[10px] font-data-label text-outline">PRK-2001-A</p>
-</div>
-</div>
-<div class="col-span-2">
-<span class="text-sm font-data-label text-on-surface">4</span> <span class="text-on-surface-variant text-xs">doses</span>
-</div>
-<div class="col-span-2">
-<p class="text-on-surface text-sm">Freezer 2 shelf B</p>
-</div>
-<div class="col-span-2">
-<p class="font-data-label text-on-surface-variant text-sm">2024-02-10</p>
-</div>
-<div class="col-span-2">
-<p class="font-data-label text-on-surface-variant text-sm">N/A</p>
-</div>
-<div class="col-span-1 flex items-center justify-end gap-1 text-on-surface-variant">
-<span class="material-symbols-outlined text-base">edit</span>
-<span class="material-symbols-outlined text-base">delete</span>
-</div>
-</div>
-<!-- Historical Placeholder -->
-<div class="p-12 flex flex-col items-center justify-center opacity-30 select-none">
-<span class="material-symbols-outlined text-6xl mb-4">inventory</span>
-<p class="font-headline-md">Inventory End Reached</p>
-</div>
+<div class="p-12 text-center text-on-surface-variant text-sm">Loading inventory…</div>
 </div>
 </div>
 </div>
@@ -266,19 +118,12 @@
     <div class="grid grid-cols-2 gap-4">
       <div>
         <label class="block text-xs font-bold uppercase text-on-surface-variant mb-1" for="additem-amount">Amount</label>
-        <input id="additem-amount" type="number" min="0" step="any" class="w-full mb-4 bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface" placeholder="e.g. 200" />
+        <input id="additem-amount" type="text" inputmode="decimal" class="w-full mb-4 bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface" placeholder="e.g. 500" />
       </div>
       <div>
         <label class="block text-xs font-bold uppercase text-on-surface-variant mb-1" for="additem-unit">Unit</label>
         <input id="additem-unit" type="text" list="additem-unit-options" class="w-full mb-4 bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface" placeholder="e.g. mL" />
-        <datalist id="additem-unit-options">
-          <option value="mL"></option><option value="L"></option><option value="µL"></option>
-          <option value="g"></option><option value="mg"></option><option value="kg"></option>
-          <option value="µM"></option><option value="mM"></option>
-          <option value="aliquots"></option><option value="doses"></option>
-          <option value="reactions"></option><option value="plates"></option>
-          <option value="bottles"></option><option value="tubes"></option><option value="units"></option>
-        </datalist>
+        <datalist id="additem-unit-options"></datalist>
       </div>
     </div>
     <label class="block text-xs font-bold uppercase text-on-surface-variant mb-1" for="additem-location">Location</label>

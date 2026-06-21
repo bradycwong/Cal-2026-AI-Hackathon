@@ -139,3 +139,87 @@ def test_pages_expose_live_hooks():
     guide = (FT / "guide.html").read_text(encoding="utf-8")
     assert 'id="step-tracker"' in guide
     assert 'id="live-transcript"' in guide
+
+
+# --- cleanup: de-duped shell, real branding, dead controls removed ----------
+
+def test_pages_use_shared_head_assets():
+    for page in PAGES:
+        html = (FT / page).read_text(encoding="utf-8")
+        assert "tailwind-config.js" in html, f"{page} not using shared tailwind-config.js"
+        assert "shared.css" in html, f"{page} not linking shared.css"
+        assert 'id="tailwind-config"' not in html, f"{page} still inlines the tailwind config"
+
+
+def test_pages_have_real_branding():
+    for page in PAGES:
+        html = (FT / page).read_text(encoding="utf-8")
+        assert "Placeholder" not in html, f"{page} still shows Placeholder branding"
+
+
+def test_dead_controls_removed():
+    for page in PAGES:
+        html = (FT / page).read_text(encoding="utf-8")
+        assert ">Support<" not in html, f"{page} still has the dead Support control"
+        assert ">Logout<" not in html, f"{page} still has the dead Logout control"
+    assert "Export PDF" not in (FT / "notebook.html").read_text(encoding="utf-8")
+
+
+def test_manual_entry_and_add_item_are_wired():
+    notebook = (FT / "notebook.html").read_text(encoding="utf-8")
+    assert 'id="log-add"' in notebook       # Manual Entry opens the log modal
+    assert 'id="log-form"' in notebook
+    inventory = (FT / "inventory.html").read_text(encoding="utf-8")
+    assert 'id="add-item"' in inventory      # Add Item opens the inventory modal
+    assert 'id="additem-modal"' in inventory
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert "wireLogModal" in js
+    assert "wireAddItemModal" in js
+
+
+def test_inventory_add_item_collects_structured_amount():
+    inventory = (FT / "inventory.html").read_text(encoding="utf-8")
+    assert 'id="additem-amount"' in inventory
+    assert 'id="additem-unit"' in inventory
+    assert 'for="additem-amount">Amount' in inventory
+    assert 'for="additem-unit">Unit' in inventory
+
+
+def test_inventory_renderer_uses_structured_amount():
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert "INVENTORY_UNITS" in js
+    assert "formatInventoryAmount" in js
+    assert "populateInventoryUnits" in js
+    assert "amount, unit" in js
+    assert ">Amount</div>" in js
+
+
+def test_guide_confirm_and_live_step_counters_wired():
+    guide = (FT / "guide.html").read_text(encoding="utf-8")
+    # Guide "Confirm Action" + breadcrumb + counters target real ids the renderer fills.
+    for marker in ('id="confirm-step"', 'id="protocol-name"', 'id="step-counter"', 'id="step-phase"'):
+        assert marker in guide, f"guide.html missing {marker}"
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    # Clicking "Confirm Action" confirms via the same /api/ingest spine as voice.
+    assert "wireGuideConfirm" in js
+    assert "ingestCommand" in js
+    assert "/api/ingest" in js
+
+
+def test_dead_decoration_timers_removed():
+    # The waveform / live-sync micro-interaction timers targeted elements that no
+    # longer exist; both the JS loops and the orphaned CSS are gone.
+    for css in ("dashboard.css", "protocols.css", "guide.css"):
+        assert ".waveform-bar" not in (FT / css).read_text(encoding="utf-8"), css
+    for page in ("dashboard.html", "protocols.html", "notebook.html"):
+        assert "waveform-bar" not in (FT / page).read_text(encoding="utf-8"), page
+    # dead notebook "live-sync" selector is gone too
+    assert ".text-secondary.animate-pulse" not in (FT / "notebook.html").read_text(encoding="utf-8")
+
+
+def test_hydration_errors_are_surfaced_not_swallowed():
+    # P2a: hydrate() must report section failures (log + page banner) instead of
+    # swallowing them, so a broken API contract isn't disguised as empty UI.
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    for token in ("hydrateSection", "showHydrateError", "console.warn", '"hydrate-error"'):
+        assert token in js, f"app.js missing {token}"

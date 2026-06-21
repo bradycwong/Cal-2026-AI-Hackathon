@@ -1,0 +1,100 @@
+# Plan: FrontendTest cleanup — de-dup the shell, real branding, wire/cut buttons, kill the stale SW
+
+## Context
+
+`FrontendTest/` is the **live UI** (served at `/` by `backend/main.py:427`; static-mounted at `main.py:440`).
+The backend is connected and 153 tests pass, but the UI is not product-clean: every page shows
+**"Placeholder"** branding, the dashboard carries **fake decoration** (`System Status: Optimal`, an
+AI-quote panel, a version string), the **90-line Tailwind config + fonts + voice/nav CSS are duplicated
+across all 5 pages**, several buttons are **dead** (Support, Logout, Manual Entry, Export PDF, Add Item),
+and a **stale service worker** (`frontend/sw.js`) caches `/static/*` paths that don't exist under
+FrontendTest. Goal: make it demo-clean **without restructuring** — keep the 5 static pages and keep
+`tests/test_frontend_static.py` green.
+
+**Decisions (locked with the user):**
+1. **Targeted de-dup, keep 5 pages** — no Jinja2/SPA. Extract the duplicated head config + shared CSS; leave nav/voice-dock HTML inline (the tests pin it per-page).
+2. **Wire what has a backend, cut the rest** — Manual Entry → `POST /api/log`, Add Item → `POST /api/inventory` (both already exist: `main.py:251`, `main.py:301`); remove Support, Logout, Export PDF.
+3. **Remove the service worker** — ship a self-unregistering "kill" `sw.js` and drop the legacy registration.
+
+## Constraints — must stay green (`tests/test_frontend_static.py`)
+
+The tests read each raw `.html`/`.js`/`.css` file. Keeping 5 pages means **preserve every marker**:
+per-page `id="side-nav"`, `id="main-nav"`, all five `data-nav="*.html"`, `id="voice-toggle"`/`voice-mute`/
+`live-transcript`, `demo-reset`, the import-modal ids (`import-protocol/-modal/-text/-submit`), the live-data
+hook ids (`#protocol-cards`, `#inventory-rows`, `#log-rows`, `#step-tracker`, `#step-current`, `#timer-list`),
+`window.LabClient` + its asserted methods, the `/api/*` + `/ws/events` strings, the command-kind cases, and
+`.log-flag`/`.log-ok`/`.flagged` in `notebook.css`. Do **not** remove or rename any of these.
+
+## Tasks
+
+**A. De-dup the head (Tailwind config + fonts).**
+- New `FrontendTest/tailwind-config.js` holding the single `tailwind.config = {…}` block.
+- In each page, replace the inline `<script id="tailwind-config">…</script>` with
+  `<script src="tailwind-config.js"></script>` placed **immediately after** the `cdn.tailwindcss.com`
+  script (load order matters: CDN defines `tailwind`, then the config sets `tailwind.config`).
+- Remove the **duplicate** second `Material Symbols` `<link>` (present twice on 4 of 5 pages); keep one
+  fonts link set, identical across pages.
+
+**B. One shared stylesheet.**
+- New `FrontendTest/shared.css` with the rules currently copy-pasted into all 5 css files: `.nav-active`,
+  `.transcript-line/-interim/-final`, `#voice-pulse.voice-pulse-on`, `@keyframes voice-ping`.
+- Delete those blocks from `dashboard.css`/`protocols.css`/`notebook.css`/`guide.css`/`inventory.css`; add
+  `<link rel="stylesheet" href="shared.css">` to each page (alongside the existing page css).
+- **Keep** page-specific rules in place — in particular leave `.flagged`/`.log-flag`/`.log-ok` in
+  `notebook.css` (the tests assert them there).
+
+**C. Real branding.** Replace `Placeholder` everywhere with **Lab** (README product name). Sidebar logo
+`<h1>Lab</h1>` + subtitle (e.g. "Voice ELN"/"AI Lab Assistant") on all 5 pages; fix the dashboard footer
+string (`…v2.4.0 | System Status: Optimal | …`) — remove it or replace with honest text; update any
+`<title>`. End state: `assert "Placeholder" not in html` for every page.
+
+**D. Remove fake decoration / give live containers a real empty state.**
+- **Guardrail:** before deleting any block, confirm it holds no app.js hook id (see Constraints). Only
+  remove pure decoration.
+- Delete the dashboard `System Status`/version footer, the **AI Lab Status** quote panel, and the hardcoded
+  low-stock alert cards; delete the notebook fake "research notes"/AI-analysis panel and guide's fake step
+  states that sit **outside** `#step-tracker`.
+- For hardcoded rows **inside** live containers (`#protocol-cards`, `#log-rows`, `#inventory-rows`,
+  `#step-tracker`) — these are overwritten by `LabClient.hydrate()` — replace them with a single muted
+  "Loading…/No entries yet" placeholder so there's no flash of fake data (and no stale demo data if hydrate
+  fails). Keep the container id.
+
+**E. Wire two buttons, cut three.**
+- **Manual Entry** (`notebook.html`): give the button an id, add a small `#log-form` (text + optional
+  sample id) modeled on the existing import-modal pattern; wire in `FrontendTest/app.js` to the existing
+  `LabClient.postLog(text, sample_id)` → `POST /api/log`. The `log_entry` WS event already re-renders
+  `#log-rows`.
+- **Add Item** (`inventory.html`): give the button an id, add `#inv-form` (name/location/quantity/notes —
+  port the fields from the legacy `frontend/` add-item form); add a `LabClient` handler that
+  `POST /api/inventory` then re-renders inventory via `renderInventory(fetchInventory())`.
+- **Remove** Support + Logout (sidebar footer, all 5 pages — no auth concept) and Export PDF (notebook —
+  real export is a separate feature). Don't touch asserted `LabClient` methods; only add new ones.
+
+**F. Kill the service worker.**
+- Replace `frontend/sw.js` with a self-unregistering stub: `install`→`skipWaiting()`;
+  `activate`→ delete all `caches.keys()` + `self.registration.unregister()` + reload clients. Keep the
+  `/sw.js` route (`main.py:432`) serving this stub so returning visitors with a stale registration get
+  cleaned up.
+- Remove the legacy registration in `frontend/app.js` (`navigator.serviceWorker.register("/sw.js")`) so no
+  new registrations are created. FrontendTest never registered it, so nothing else changes.
+
+**G. Tests.**
+- Existing assertions stay green (all markers preserved). **Add** static assertions that lock the cleanup:
+  each page references `tailwind-config.js` + `shared.css`; `"Placeholder"` absent from every page;
+  Support/Logout/Export PDF strings absent; `#log-form` present in notebook, `#inv-form` present in
+  inventory. (`tests/test_frontend_static.py`, same `read_text()` pattern.)
+
+## Verification
+
+1. `python -m pytest tests/ -q` → all green (153 + new assertions).
+2. `uvicorn backend.main:app` → open `/`; on each page confirm: branding reads **Lab**, no `System Status`/
+   AI-quote/version decoration, sidebar + voice dock intact and functional, **Manual Entry** adds a real log
+   row, **Add Item** adds a real inventory row, Support/Logout/Export PDF gone.
+3. DevTools → Application → Service Workers shows **none** after a refresh (stub unregistered + caches
+   cleared); Network shows fonts/Tailwind/`shared.css` load once per page.
+4. Greps: `Placeholder` → 0 hits in `FrontendTest/`; no inline `id="tailwind-config"` block remains; every
+   page links `shared.css`.
+
+## Notes & scope
+- No new backend routes; no Jinja2; nav/voice-dock HTML stays duplicated by design (tests pin it per-page).
+- This plan lives in the repo as `frontend_cleanup_plan.txt` (per the plan-artifacts-in-repo convention).

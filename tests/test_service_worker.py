@@ -1,4 +1,6 @@
-"""Service-worker shell cache: served at root scope, registered, precaches shell."""
+"""Service worker removed. /sw.js now serves a self-unregistering "kill" stub
+that clears stale caches from earlier visits; the live UI (FrontendTest/) is
+served fresh from the network and no longer registers a worker."""
 
 import os
 
@@ -14,24 +16,24 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_sw_served_from_root_as_javascript():
-    # Must be served from "/" so its default scope is the whole origin; a worker
-    # under /static could only control /static.
+    # Still served from "/" so its scope is the whole origin and the stub can
+    # unregister a worker an earlier visit registered at root scope.
     with TestClient(main.app) as client:
         r = client.get("/sw.js")
     assert r.status_code == 200
     assert "javascript" in r.headers["content-type"]
-    assert "lab-shell" in r.text
 
 
-def test_app_registers_service_worker():
+def test_app_does_not_register_service_worker():
+    # No SW caching: the live UI is served fresh from the network.
     js = (ROOT / "frontend" / "app.js").read_text()
-    assert 'navigator.serviceWorker.register("/sw.js")' in js
+    assert "navigator.serviceWorker.register" not in js
 
 
-def test_sw_precaches_shell_and_skips_dynamic_traffic():
+def test_sw_is_self_unregistering_kill_stub():
     sw = (ROOT / "frontend" / "sw.js").read_text()
-    for asset in ('"/"', '"/static/styles.css"', '"/static/app.js"'):
-        assert asset in sw, f"shell missing {asset}"
-    # Live data + sockets must never be cached.
-    assert '"/api/"' in sw
-    assert '"/ws/"' in sw
+    assert "self.registration.unregister()" in sw
+    assert "caches.delete" in sw
+    # The stub must NOT precache the old (now-nonexistent) legacy shell paths.
+    assert "/static/styles.css" not in sw
+    assert "/static/app.js" not in sw

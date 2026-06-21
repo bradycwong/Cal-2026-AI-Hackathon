@@ -3,110 +3,20 @@
 <meta content="width=device-width, initial-scale=1.0" name="viewport">
 <title>LIMS AI Assistant - Lab Protocol</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script src="tailwind-config.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500&family=DM+Sans:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500;600;700&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300..500&family=DM+Sans:wght@300..700&amp;family=JetBrains+Mono:wght@100..900&amp;display=swap" rel="stylesheet">
 <link href="guide.css" rel="stylesheet">
-<script id="tailwind-config">
-        tailwind.config = {
-            darkMode: "class",
-            theme: {
-                extend: {
-                    "colors": {
-                        "inverse-surface": "#E8EDF7",
-                        "surface-dim": "#0D1117",
-                        "on-error": "#1A0000",
-                        "secondary-fixed-dim": "#8FD95A",
-                        "error": "#FF6B6B",
-                        "on-secondary": "#0D1117",
-                        "on-secondary-fixed": "#0D1117",
-                        "surface": "#0D1117",
-                        "on-primary-fixed-variant": "#1A3A7A",
-                        "on-primary": "#051025",
-                        "background": "#0D1117",
-                        "secondary-fixed": "#B8FF7C",
-                        "surface-container-high": "#1A2235",
-                        "on-tertiary-container": "#FFD580",
-                        "primary": "#7BA7F5",
-                        "outline": "#4A5570",
-                        "tertiary-container": "#7A4A00",
-                        "on-tertiary-fixed-variant": "#7A4A00",
-                        "error-container": "#7A1515",
-                        "secondary-container": "#3A7A1A",
-                        "on-background": "#E8EDF7",
-                        "on-tertiary-fixed": "#1A0D00",
-                        "on-primary-fixed": "#051025",
-                        "on-tertiary": "#1A0D00",
-                        "tertiary": "#F5A623",
-                        "on-secondary-container": "#0D1117",
-                        "on-primary-container": "#E8EDF7",
-                        "primary-fixed-dim": "#7BA7F5",
-                        "secondary": "#B8FF7C",
-                        "surface-bright": "#253050",
-                        "inverse-on-surface": "#131929",
-                        "surface-container-low": "#111724",
-                        "outline-variant": "#253050",
-                        "surface-container-lowest": "#080C14",
-                        "on-secondary-fixed-variant": "#3A7A1A",
-                        "primary-container": "#2352C8",
-                        "on-surface": "#E8EDF7",
-                        "tertiary-fixed-dim": "#F5A623",
-                        "on-surface-variant": "#8A96B0",
-                        "primary-fixed": "#C5D5F5",
-                        "on-error-container": "#FFD5D5",
-                        "tertiary-fixed": "#FFD580",
-                        "surface-tint": "#7BA7F5",
-                        "surface-variant": "#1E2A3F",
-                        "surface-container": "#131929",
-                        "inverse-primary": "#2352C8",
-                        "surface-container-highest": "#1E2A3F"
-                    },
-                    "borderRadius": {
-                        "DEFAULT": "0.125rem",
-                        "lg": "0.25rem",
-                        "xl": "0.5rem",
-                        "full": "0.75rem"
-                    },
-                    "spacing": {
-                        "gutter": "24px",
-                        "touch-target": "48px",
-                        "stack-gap": "16px",
-                        "container-padding": "32px",
-                        "unit": "8px"
-                    },
-                    "fontFamily": {
-                        "headline-lg": ["DM Mono"],
-                        "data-label": ["JetBrains Mono"],
-                        "display-timer": ["JetBrains Mono"],
-                        "body-md": ["DM Sans"],
-                        "data-value": ["JetBrains Mono"],
-                        "body-lg": ["DM Sans"],
-                        "headline-lg-mobile": ["DM Mono"],
-                        "headline-md": ["DM Mono"]
-                    },
-                    "fontSize": {
-                        "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "600"}],
-                        "data-label": ["14px", {"lineHeight": "20px", "fontWeight": "500"}],
-                        "display-timer": ["72px", {"lineHeight": "80px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
-                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
-                        "data-value": ["18px", {"lineHeight": "24px", "fontWeight": "600"}],
-                        "body-lg": ["20px", {"lineHeight": "30px", "fontWeight": "400"}],
-                        "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
-                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "500"}]
-                    }
-                }
-            }
-        }
-    </script>
+<link href="shared.css" rel="stylesheet">
 </head>
-<body class="bg-background text-on-background font-body-md min-h-screen flex flex-col overflow-hidden">
+<body class="bg-background text-on-surface font-body-md min-h-screen flex flex-col overflow-hidden">
 <!-- Top Navigation Shell -->
 
 <main class="flex-grow flex overflow-hidden">
 <!-- Left: Side Navigation / Protocol Steps -->
 <aside class="h-screen w-64 fixed left-0 top-0 border-r border-outline-variant flex flex-col py-gutter px-unit z-50 bg-surface-container-low" id="side-nav">
 <a href="dashboard.html" class="px-gutter mb-8 block hover:opacity-80 transition-opacity cursor-pointer">
-<h1 class="font-headline-md text-headline-md text-primary">Placeholder</h1>
+<h1 class="font-headline-md text-headline-md text-primary">Lab</h1>
 <p class="text-on-surface-variant text-sm">AI Assistant</p>
 </a>
 <nav class="flex-1 space-y-1" id="main-nav">
@@ -116,37 +26,33 @@
 <a href="guide.html" data-nav="guide.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">menu_book</span><span class="font-body-md text-body-md">Guide</span></a>
 <a href="inventory.html" data-nav="inventory.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">inventory_2</span><span class="font-body-md text-body-md">Inventory</span></a>
 </nav>
-<div class="mt-auto px-4 pt-4 border-t border-outline-variant"><div class="space-y-1">
-<div class="flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors cursor-pointer active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">help</span><span class="font-body-md text-body-md">Support</span></div>
-<div class="flex items-center px-4 py-3 text-error font-medium hover:bg-error-container/10 transition-colors cursor-pointer active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">logout</span><span class="font-body-md text-body-md">Logout</span></div>
-</div></div>
 </aside>
 <!-- Center: Active Step Detail -->
 <section class="ml-64 mr-80 flex-grow flex flex-col p-container-padding overflow-y-auto custom-scrollbar">
 <!-- Breadcrumb -->
 <div class="flex items-center gap-2 mb-stack-gap">
-<span class="text-on-surface-variant text-sm">Genomic DNA Extraction</span>
+<span id="protocol-name" class="text-on-surface-variant text-sm">No protocol loaded</span>
 <span class="material-symbols-outlined text-sm text-on-surface-variant">chevron_right</span>
 <span class="text-primary text-sm font-bold">Current Protocol</span>
 </div>
 <!-- Main Task Card -->
 <div class="bg-surface-container-low border border-outline-variant rounded-xl p-10 flex flex-col items-center justify-center text-center shadow-lg mb-gutter">
-<span class="text-primary font-data-label text-data-label mb-4 tracking-widest uppercase">Protocol Phase 02 / 05</span>
+<span id="step-phase" class="text-primary font-data-label text-data-label mb-4 tracking-widest uppercase">Protocol Phase —</span>
 <h1 id="step-current" class="font-headline-lg text-headline-lg text-on-surface mb-8 max-w-2xl">
                     No protocol loaded. Say or click "Load Protocol" to begin.
                 </h1>
 <div class="w-full max-w-md flex flex-col gap-4">
 <div class="flex gap-3">
-<button id="confirm-action" type="button" title="Mark this step complete and advance (logs to the notebook)" class="flex-1 bg-primary text-on-primary h-14 rounded-full font-bold text-lg flex items-center justify-center gap-3 active:opacity-80 transition-all hover:scale-[1.02] pulse-glow">
+<button id="confirm-step" type="button" disabled title="Mark this step complete and advance (logs to the notebook)" class="flex-1 bg-primary text-on-primary h-14 rounded-full font-bold text-lg flex items-center justify-center gap-3 active:opacity-80 transition-all hover:scale-[1.02] pulse-glow disabled:opacity-40 disabled:hover:scale-100">
 <span class="material-symbols-outlined">check_circle</span>
                         Confirm Action
                     </button>
-<button id="skip-action" type="button" title="Advance to the next step without logging" class="shrink-0 border border-outline text-on-surface px-6 h-14 rounded-full font-bold text-lg flex items-center justify-center gap-2 hover:bg-surface-variant active:opacity-80 transition-all">
+<button id="skip-action" type="button" disabled title="Advance to the next step without logging" class="shrink-0 border border-outline text-on-surface px-6 h-14 rounded-full font-bold text-lg flex items-center justify-center gap-2 hover:bg-surface-variant active:opacity-80 transition-all disabled:opacity-40">
 <span class="material-symbols-outlined">skip_next</span>
                         Skip
                     </button>
 </div>
-<p class="text-on-surface-variant text-sm">Say <span class="text-primary italic">"Confirmed"</span> or <span class="text-primary italic">"next step"</span> to log &amp; advance · Skip moves on without a note</p>
+<p class="text-on-surface-variant text-sm">Click, or say <span class="text-primary italic">"next step"</span> to log &amp; advance · Skip moves on without a note</p>
 </div>
 </div>
 <!-- Live Transcription Area -->
@@ -186,34 +92,15 @@
   <div id="step-panel" class="flex flex-col hidden">
     <div class="flex justify-between items-center mb-stack-gap">
       <h3 class="font-data-label text-data-label text-primary tracking-widest uppercase">Protocol Status</h3>
-      <span class="text-xs font-bold text-primary">STEP 2 / 5</span>
+      <span id="step-counter" class="text-xs font-bold text-primary">STEP —</span>
     </div>
     <div id="step-tracker" class="flex flex-col gap-2">
-      <div class="flex items-center gap-3 p-3 bg-surface-container-low rounded-lg border-l-4 border-secondary">
-        <span class="material-symbols-outlined text-secondary text-sm">check_circle</span>
-        <div class="flex flex-col">
-          <span class="text-xs font-bold text-on-surface">Sample Preparation</span>
-          <span class="text-[10px] text-secondary uppercase">Completed</span>
-        </div>
-      </div>
-      <div class="flex items-center gap-3 p-3 bg-surface-container-low rounded-lg border-l-4 border-primary">
-        <span class="material-symbols-outlined text-primary text-sm animate-pulse">pending</span>
-        <div class="flex flex-col">
-          <span class="text-xs font-bold text-on-surface">Lysis Buffer Addition</span>
-          <span class="text-[10px] text-primary uppercase">In Progress</span>
-        </div>
-      </div>
-      <div class="flex items-center gap-3 p-3 bg-surface-container-low rounded-lg border-l-4 border-outline-variant opacity-50">
-        <span class="material-symbols-outlined text-on-surface-variant text-sm">circle</span>
-        <div class="flex flex-col">
-          <span class="text-xs font-bold text-on-surface-variant">Incubation</span>
-          <span class="text-[10px] text-on-surface-variant uppercase">Pending</span>
-        </div>
-      </div>
+      <div class="text-on-surface-variant text-sm">No protocol loaded.</div>
     </div>
   </div>
 
   <!-- Active Timers (live: populated by app.js) -->
+  <h3 class="font-data-label text-data-label text-primary tracking-widest uppercase mb-stack-gap">Active Timers</h3>
   <div id="timer-list" class="flex flex-col gap-3"></div>
 </div>
 <!-- Contextual Information -->
@@ -234,7 +121,7 @@
 
 
 
-<div id="voice-dock" class="fixed bottom-8 right-8 z-50 flex flex-col gap-2 items-end">
+<div id="voice-dock" class="fixed bottom-8 right-8 z-50 w-80 max-w-[90vw] flex flex-col gap-2 items-end">
 <div class="flex items-center gap-2 bg-surface-container-lowest border border-outline-variant rounded-xl px-4 py-3 shadow-xl">
 <button id="voice-toggle" type="button" aria-pressed="false" title="Start voice session" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
 <div class="relative w-8 h-8 flex items-center justify-center shrink-0">

@@ -52,6 +52,9 @@ class InventoryItem:
     name: str
     location: str
     quantity_approx: str
+    # In-memory stable identity for edit/delete; assigned per session, NOT
+    # persisted to the CSV (the UI always re-fetches fresh ids on hydrate).
+    id: int = 0
     notes: str = ""
     code: str = ""
     category: str = "General"
@@ -207,9 +210,9 @@ def load_inventory_file(path: Path) -> list[InventoryItem]:
                     category=(row.get("category") or "General").strip() or "General",
                     date=(row.get("date") or "").strip(),
                     expiration=(row.get("expiration") or "").strip(),
+                    status=status,
                     amount=(row.get("amount") or "").strip(),
                     unit=(row.get("unit") or "").strip(),
-                    status=status,
                 )
             )
     return items
@@ -221,12 +224,48 @@ _INVENTORY_COLUMNS = [
 ]
 
 
-def _inventory_row(item: "InventoryItem") -> list[str]:
+def _quantity_from_parts(quantity_approx: str, amount: str, unit: str) -> str:
+    quantity = quantity_approx.strip()
+    if quantity:
+        return quantity
+    amount = amount.strip()
+    unit = unit.strip()
+    if amount and unit:
+        return f"{amount} {unit}"
+    return amount
+
+
+def _inventory_row(item: InventoryItem) -> list[str]:
     """One CSV row for an item, in ``_INVENTORY_COLUMNS`` order."""
     return [
-        item.name, item.amount, item.unit, item.location, item.quantity_approx,
-        item.notes, item.code, item.category, item.date, item.expiration, item.status,
+        item.name,
+        item.amount,
+        item.unit,
+        item.location,
+        item.quantity_approx,
+        item.notes,
+        item.code,
+        item.category,
+        item.date,
+        item.expiration,
+        item.status,
     ]
+
+
+def _inventory_file_has_current_columns(path: Path) -> bool:
+    if not path.exists() or path.stat().st_size == 0:
+        return True
+    with path.open(newline="", encoding="utf-8") as fh:
+        reader = csv.reader(fh)
+        return next(reader, []) == _INVENTORY_COLUMNS
+
+
+def _write_inventory_file(path: Path, items: list[InventoryItem]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(_INVENTORY_COLUMNS)
+        writer.writerows(_inventory_row(item) for item in items)
 
 
 class SessionState:
@@ -242,6 +281,7 @@ class SessionState:
         self.timers: list[Timer] = []
         self._log_seq = 0
         self._timer_seq = 0
+        self._inventory_seq = 0
         self.notes = NoteStore(db_path) if db_path else None
         # Multi-notebook log. DB-backed: the NoteStore owns notebooks + the
         # active pointer. In-memory (tests): mirror that with plain dicts/lists,
@@ -266,6 +306,8 @@ class SessionState:
         inv_path = self.data_dir / "inventory.csv"
         if inv_path.exists():
             self.inventory = load_inventory_file(inv_path)
+            for item in self.inventory:
+                item.id = self._next_inventory_id()
         if self.notes is not None:
             self.active_notebook_id = int(self.notes.get_active_notebook_id())
             self.log = self.notes.all_notes(self.active_notebook_id)
@@ -304,6 +346,7 @@ class SessionState:
         """Read-only view of inventory for ``GET /api/inventory``."""
         return [
             {
+                "id": item.id,
                 "name": item.name,
                 "code": item.code,
                 "location": item.location,
@@ -318,6 +361,18 @@ class SessionState:
             }
             for item in self.inventory
         ]
+
+    def _next_inventory_id(self) -> int:
+        """Monotonic per-session id so edit/delete target an item by identity
+        rather than list position (positions shift as items are added/removed)."""
+        self._inventory_seq += 1
+        return self._inventory_seq
+
+    def _inventory_index_by_id(self, item_id: int) -> int:
+        for i, item in enumerate(self.inventory):
+            if item.id == item_id:
+                return i
+        raise IndexError(f"no inventory item with id {item_id}")
 
     # --- mutating writers (upload protocol / add inventory item) -----------
     def add_inventory_item(
@@ -345,21 +400,27 @@ class SessionState:
         status = (status or "ok").strip().lower()
         if status not in _INVENTORY_STATUSES:
             status = "ok"
+        amount = amount.strip()
+        unit = unit.strip()
         item = InventoryItem(
             name=name,
             location=location.strip(),
-            quantity_approx=quantity_approx.strip(),
+            quantity_approx=_quantity_from_parts(quantity_approx, amount, unit),
             notes=notes.strip(),
             code=code.strip(),
             category=(category or "General").strip() or "General",
             date=date.strip(),
             expiration=expiration.strip(),
-            amount=str(amount).strip(),
-            unit=str(unit).strip(),
             status=status,
+            amount=amount,
+            unit=unit,
         )
+        item.id = self._next_inventory_id()
         self.inventory.append(item)
         inv_path = self.data_dir / "inventory.csv"
+        if not _inventory_file_has_current_columns(inv_path):
+            _write_inventory_file(inv_path, self.inventory)
+            return item
         write_header = not inv_path.exists() or inv_path.stat().st_size == 0
         inv_path.parent.mkdir(parents=True, exist_ok=True)
         with inv_path.open("a", newline="", encoding="utf-8") as fh:
@@ -381,7 +442,7 @@ class SessionState:
 
     def update_inventory_item(
         self,
-        index: int,
+        item_id: int,
         name: Optional[str] = None,
         location: Optional[str] = None,
         amount: Optional[str] = None,
@@ -389,13 +450,13 @@ class SessionState:
         date: Optional[str] = None,
         expiration: Optional[str] = None,
     ) -> InventoryItem:
-        """Edit fields of the item at ``index`` and persist the whole CSV.
+        """Edit fields of the item with ``item_id`` and persist the whole CSV.
 
-        Only non-None fields are changed, so partial updates are safe.
+        Keyed by stable id (not list position), so a concurrent add/delete that
+        reorders the list can't make an edit land on the wrong row. Only
+        non-None fields are changed, so partial updates are safe.
         """
-        if index < 0 or index >= len(self.inventory):
-            raise IndexError("inventory index out of range")
-        item = self.inventory[index]
+        item = self.inventory[self._inventory_index_by_id(item_id)]
         if name is not None:
             new_name = name.strip()
             if not new_name:
@@ -407,6 +468,8 @@ class SessionState:
             item.amount = str(amount).strip()
         if unit is not None:
             item.unit = str(unit).strip()
+        if amount is not None or unit is not None:
+            item.quantity_approx = _quantity_from_parts("", item.amount, item.unit)
         if date is not None:
             item.date = date.strip()
         if expiration is not None:
@@ -414,11 +477,9 @@ class SessionState:
         self._write_inventory()
         return item
 
-    def delete_inventory_item(self, index: int) -> InventoryItem:
-        """Remove the item at ``index`` and persist the whole CSV."""
-        if index < 0 or index >= len(self.inventory):
-            raise IndexError("inventory index out of range")
-        removed = self.inventory.pop(index)
+    def delete_inventory_item(self, item_id: int) -> InventoryItem:
+        """Remove the item with ``item_id`` (by stable id) and persist the CSV."""
+        removed = self.inventory.pop(self._inventory_index_by_id(item_id))
         self._write_inventory()
         return removed
 
