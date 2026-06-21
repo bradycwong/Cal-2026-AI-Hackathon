@@ -53,6 +53,53 @@ def test_add_inventory_item_blank_name_422(client):
     assert r.status_code == 422
 
 
+def test_add_inventory_item_blank_expiration_is_na(client):
+    r = client.post("/api/inventory", json={"name": "Tris", "amount": "5", "unit": "mL"})
+    assert r.status_code == 201
+    body = r.json()
+    assert body["item"]["expiration"] == "N/A"
+    assert body["item"]["amount"] == "5"
+    assert body["item"]["unit"] == "mL"
+
+
+def test_edit_inventory_item(client):
+    client.post("/api/inventory", json={"name": "Agarose", "amount": "10", "unit": "g"})
+    r = client.put("/api/inventory/0", json={"name": "Agarose LE", "amount": "0", "unit": "g"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["item"]["name"] == "Agarose LE"
+    assert body["item"]["amount"] == "0"
+    assert body["item"]["unit"] == "g"
+    # Edit persists in memory (and would survive a reload from the CSV).
+    assert main.state.inventory[0].name == "Agarose LE"
+    assert main.state.inventory[0].amount == "0"
+
+
+def test_edit_inventory_blank_name_422(client):
+    client.post("/api/inventory", json={"name": "Agarose"})
+    r = client.put("/api/inventory/0", json={"name": "   "})
+    assert r.status_code == 422
+
+
+def test_edit_inventory_out_of_range_404(client):
+    r = client.put("/api/inventory/99", json={"name": "Nope"})
+    assert r.status_code == 404
+
+
+def test_delete_inventory_item(client):
+    client.post("/api/inventory", json={"name": "Agarose"})
+    client.post("/api/inventory", json={"name": "SYBR Safe"})
+    r = client.delete("/api/inventory/0")
+    assert r.status_code == 200
+    assert r.json()["removed"] == "Agarose"
+    assert [i.name for i in main.state.inventory] == ["SYBR Safe"]
+
+
+def test_delete_inventory_out_of_range_404(client):
+    r = client.delete("/api/inventory/99")
+    assert r.status_code == 404
+
+
 def test_upload_protocol(client):
     r = client.post(
         "/api/protocols",

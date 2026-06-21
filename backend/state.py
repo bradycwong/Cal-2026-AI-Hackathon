@@ -57,6 +57,8 @@ class InventoryItem:
     category: str = "General"
     date: str = ""
     expiration: str = ""
+    amount: str = ""
+    unit: str = ""
     status: str = "ok"
 
 
@@ -205,6 +207,8 @@ def load_inventory_file(path: Path) -> list[InventoryItem]:
                     category=(row.get("category") or "General").strip() or "General",
                     date=(row.get("date") or "").strip(),
                     expiration=(row.get("expiration") or "").strip(),
+                    amount=(row.get("amount") or "").strip(),
+                    unit=(row.get("unit") or "").strip(),
                     status=status,
                 )
             )
@@ -212,9 +216,17 @@ def load_inventory_file(path: Path) -> list[InventoryItem]:
 
 
 _INVENTORY_COLUMNS = [
-    "name", "location", "quantity_approx", "notes", "code", "category", "date",
-    "expiration", "status",
+    "name", "amount", "unit", "location", "quantity_approx", "notes", "code",
+    "category", "date", "expiration", "status",
 ]
+
+
+def _inventory_row(item: "InventoryItem") -> list[str]:
+    """One CSV row for an item, in ``_INVENTORY_COLUMNS`` order."""
+    return [
+        item.name, item.amount, item.unit, item.location, item.quantity_approx,
+        item.notes, item.code, item.category, item.date, item.expiration, item.status,
+    ]
 
 
 class SessionState:
@@ -297,6 +309,8 @@ class SessionState:
                 "location": item.location,
                 "category": item.category,
                 "quantity_approx": item.quantity_approx,
+                "amount": item.amount,
+                "unit": item.unit,
                 "date": item.date,
                 "expiration": item.expiration,
                 "status": item.status,
@@ -317,6 +331,8 @@ class SessionState:
         date: str = "",
         expiration: str = "",
         status: str = "ok",
+        amount: str = "",
+        unit: str = "",
     ) -> InventoryItem:
         """Append a manually-entered item to memory and persist it to the CSV.
 
@@ -338,6 +354,8 @@ class SessionState:
             category=(category or "General").strip() or "General",
             date=date.strip(),
             expiration=expiration.strip(),
+            amount=str(amount).strip(),
+            unit=str(unit).strip(),
             status=status,
         )
         self.inventory.append(item)
@@ -348,11 +366,61 @@ class SessionState:
             writer = csv.writer(fh)
             if write_header:
                 writer.writerow(_INVENTORY_COLUMNS)
-            writer.writerow([
-                item.name, item.location, item.quantity_approx, item.notes,
-                item.code, item.category, item.date, item.expiration, item.status,
-            ])
+            writer.writerow(_inventory_row(item))
         return item
+
+    def _write_inventory(self) -> None:
+        """Rewrite the whole inventory CSV from memory (used by edit/delete)."""
+        inv_path = self.data_dir / "inventory.csv"
+        inv_path.parent.mkdir(parents=True, exist_ok=True)
+        with inv_path.open("w", newline="", encoding="utf-8") as fh:
+            writer = csv.writer(fh)
+            writer.writerow(_INVENTORY_COLUMNS)
+            for it in self.inventory:
+                writer.writerow(_inventory_row(it))
+
+    def update_inventory_item(
+        self,
+        index: int,
+        name: Optional[str] = None,
+        location: Optional[str] = None,
+        amount: Optional[str] = None,
+        unit: Optional[str] = None,
+        date: Optional[str] = None,
+        expiration: Optional[str] = None,
+    ) -> InventoryItem:
+        """Edit fields of the item at ``index`` and persist the whole CSV.
+
+        Only non-None fields are changed, so partial updates are safe.
+        """
+        if index < 0 or index >= len(self.inventory):
+            raise IndexError("inventory index out of range")
+        item = self.inventory[index]
+        if name is not None:
+            new_name = name.strip()
+            if not new_name:
+                raise ValueError("inventory item requires a name")
+            item.name = new_name
+        if location is not None:
+            item.location = location.strip()
+        if amount is not None:
+            item.amount = str(amount).strip()
+        if unit is not None:
+            item.unit = str(unit).strip()
+        if date is not None:
+            item.date = date.strip()
+        if expiration is not None:
+            item.expiration = expiration.strip()
+        self._write_inventory()
+        return item
+
+    def delete_inventory_item(self, index: int) -> InventoryItem:
+        """Remove the item at ``index`` and persist the whole CSV."""
+        if index < 0 or index >= len(self.inventory):
+            raise IndexError("inventory index out of range")
+        removed = self.inventory.pop(index)
+        self._write_inventory()
+        return removed
 
     def add_protocol_from_text(self, text: str) -> Protocol:
         """Validate an uploaded protocol document, register it, and persist it.

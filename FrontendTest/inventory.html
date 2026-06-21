@@ -171,10 +171,11 @@
 <!-- Table Header -->
 <div class="grid grid-cols-12 gap-4 px-6 py-3 bg-surface-container-low text-on-surface-variant text-xs font-bold uppercase tracking-wider border-b border-outline-variant sticky top-0 z-10">
 <div class="col-span-3">Reagent Name</div>
-<div class="col-span-3">Location</div>
+<div class="col-span-2">Amount</div>
+<div class="col-span-2">Location</div>
 <div class="col-span-2">Date Created</div>
 <div class="col-span-2">Expiration</div>
-<div class="col-span-2">Status</div>
+<div class="col-span-1 text-right">Actions</div>
 </div>
 <!-- Table Rows (replaced at runtime from /api/inventory by app.js) -->
 <div class="inventory-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors">
@@ -187,17 +188,21 @@
 <p class="text-[10px] font-data-label text-outline">PRK-2001-A</p>
 </div>
 </div>
-<div class="col-span-3">
+<div class="col-span-2">
+<span class="text-sm font-data-label text-on-surface">4</span> <span class="text-on-surface-variant text-xs">doses</span>
+</div>
+<div class="col-span-2">
 <p class="text-on-surface text-sm">Freezer 2 shelf B</p>
 </div>
 <div class="col-span-2">
 <p class="font-data-label text-on-surface-variant text-sm">2024-02-10</p>
 </div>
 <div class="col-span-2">
-<p class="font-data-label text-on-surface-variant text-sm">unknown</p>
+<p class="font-data-label text-on-surface-variant text-sm">N/A</p>
 </div>
-<div class="col-span-2">
-<span class="text-xs font-bold uppercase">low</span>
+<div class="col-span-1 flex items-center justify-end gap-1 text-on-surface-variant">
+<span class="material-symbols-outlined text-base">edit</span>
+<span class="material-symbols-outlined text-base">delete</span>
 </div>
 </div>
 <!-- Historical Placeholder -->
@@ -253,11 +258,29 @@
 <div id="additem-modal" class="hidden fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4">
   <div class="bg-surface-container-high border border-outline-variant rounded-2xl w-full max-w-lg p-6 shadow-2xl">
     <div class="flex justify-between items-center mb-4">
-      <h3 class="font-headline-md text-headline-md">Add Inventory Item</h3>
+      <h3 id="additem-title" class="font-headline-md text-headline-md">Add Inventory Item</h3>
       <button id="additem-cancel" class="text-on-surface-variant hover:text-on-surface" aria-label="Close"><span class="material-symbols-outlined">close</span></button>
     </div>
     <label class="block text-xs font-bold uppercase text-on-surface-variant mb-1" for="additem-name">Reagent</label>
     <input id="additem-name" type="text" class="w-full mb-4 bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface" placeholder="e.g. Proteinase K" />
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-xs font-bold uppercase text-on-surface-variant mb-1" for="additem-amount">Amount</label>
+        <input id="additem-amount" type="number" min="0" step="any" class="w-full mb-4 bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface" placeholder="e.g. 200" />
+      </div>
+      <div>
+        <label class="block text-xs font-bold uppercase text-on-surface-variant mb-1" for="additem-unit">Unit</label>
+        <input id="additem-unit" type="text" list="additem-unit-options" class="w-full mb-4 bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface" placeholder="e.g. mL" />
+        <datalist id="additem-unit-options">
+          <option value="mL"></option><option value="L"></option><option value="µL"></option>
+          <option value="g"></option><option value="mg"></option><option value="kg"></option>
+          <option value="µM"></option><option value="mM"></option>
+          <option value="aliquots"></option><option value="doses"></option>
+          <option value="reactions"></option><option value="plates"></option>
+          <option value="bottles"></option><option value="tubes"></option><option value="units"></option>
+        </datalist>
+      </div>
+    </div>
     <label class="block text-xs font-bold uppercase text-on-surface-variant mb-1" for="additem-location">Location</label>
     <input id="additem-location" type="text" class="w-full mb-4 bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface" placeholder="e.g. Freezer 2 shelf B" />
     <div class="grid grid-cols-2 gap-4">
