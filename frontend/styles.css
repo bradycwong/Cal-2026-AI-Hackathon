@@ -177,6 +177,8 @@ body {
   min-width: 120px;
 }
 .timer-card.expired { border-color: var(--err); color: var(--err); animation: flash 0.8s ease-in-out 3; }
+.timer-card.paused { border-style: dashed; border-color: var(--warn); opacity: 0.8; }
+.timer-card.paused .timer-clock { color: var(--muted); }
 .timer-label { font-size: 12px; color: var(--muted); text-transform: uppercase; }
 .timer-clock { font-size: 32px; font-variant-numeric: tabular-nums; font-weight: 700; }
 

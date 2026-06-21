@@ -195,8 +195,10 @@ function onTimerUpdate(p) {
   }
   const wasExpired = el.classList.contains("expired");
   el.classList.toggle("expired", !!p.expired);
+  el.classList.toggle("paused", !!p.paused);
+  const labelExtra = p.paused ? ` · paused` : "";
   el.innerHTML =
-    `<div class="timer-label">${escapeHtml(p.label)}</div>` +
+    `<div class="timer-label">${escapeHtml(p.label)}${labelExtra}</div>` +
     `<div class="timer-clock">${p.expired ? "DONE" : fmtClock(p.remaining_s)}</div>`;
   if (p.expired && !wasExpired) {
     chime();
