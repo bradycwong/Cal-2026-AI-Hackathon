@@ -191,7 +191,14 @@
     const btn = $("tts-mute");
     if (!btn) return;
     renderTTSMute();
-    btn.addEventListener("click", () => setTTSMuted(!_ttsMuted));
+    btn.addEventListener("click", () => {
+      const muting = !_ttsMuted;
+      setTTSMuted(muting);
+      // Speak a short confirmation when turning the voice ON so the toggle has an
+      // immediate, audible effect (the click is also the gesture that unlocks
+      // browser audio autoplay).
+      if (!muting) speak("AI voice on");
+    });
   }
 
   async function fetchScaleWithPriority(body) {

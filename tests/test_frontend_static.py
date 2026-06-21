@@ -586,9 +586,19 @@ def test_app_wires_notebook_export():
         assert token in js, f"app.js missing {token}"
 
 
-def test_guide_has_tts_mute_button():
-    html = (FT / "guide.html").read_text(encoding="utf-8")
-    assert 'id="tts-mute"' in html, "guide.html missing tts-mute button"
+def test_every_page_has_tts_mute_button():
+    # The AI-voice toggle lives in the shared sidebar, so it must appear on every
+    # page — not just the guide tab where it was first added.
+    for page in (
+        "dashboard.html",
+        "protocols.html",
+        "guide.html",
+        "notebook.html",
+        "inventory.html",
+        "commands.html",
+    ):
+        html = (FT / page).read_text(encoding="utf-8")
+        assert 'id="tts-mute"' in html, f"{page} missing tts-mute button"
 
 
 def test_app_wires_tts_output():
