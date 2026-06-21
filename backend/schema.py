@@ -81,7 +81,11 @@ def step_change_event(
     all_steps: Optional[list[dict[str, Any]]] = None,
     current_index: Optional[int] = None,
     protocol_name: Optional[str] = None,
+    loaded: bool = False,
 ) -> dict[str, Any]:
+    # ``loaded`` is True only when a protocol was just LOADED (not on step nav),
+    # so the frontend can route to the active-protocol page without bouncing the
+    # user around on every "next step".
     return command_result(
         "step_change",
         prev_step=prev_step,
@@ -90,6 +94,7 @@ def step_change_event(
         all_steps=all_steps if all_steps is not None else [],
         current_index=current_index,
         protocol_name=protocol_name,
+        loaded=loaded,
     )
 
 
@@ -167,6 +172,14 @@ def voice_state_event(muted: bool, label: str) -> dict[str, Any]:
 
 def reset_event(notes_cleared: bool) -> dict[str, Any]:
     return command_result("reset", notes_cleared=notes_cleared)
+
+
+def notebook_list_event(
+    notebooks: list[dict[str, Any]], active_id: int
+) -> dict[str, Any]:
+    """Notebooks changed (created/selected): clients refresh the list + active
+    feed. Additive ``kind`` on the locked command_result envelope."""
+    return command_result("notebook_list", notebooks=notebooks, active_id=active_id)
 
 
 def timer_update_event(

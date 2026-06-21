@@ -125,13 +125,9 @@
 <section class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-4">
 <div>
 <nav class="flex text-on-surface-variant text-sm gap-2 mb-2">
-<span class="hover:text-primary cursor-pointer">Projects</span>
-<span class="">/</span>
-<span class="hover:text-primary cursor-pointer">Genomics</span>
-<span class="">/</span>
-<span class="text-primary font-bold">DNA-EX-2024</span>
+<span class="text-primary font-bold">Notebooks</span>
 </nav>
-<h2 class="font-headline-lg text-headline-lg text-on-surface flex items-center gap-4">Notebook <span class="text-outline text-2xl font-light">|</span> <span class="text-primary-container bg-primary-container/10 px-3 py-1 rounded text-2xl font-semibold">[DNA Extraction Protocol]</span></h2>
+<h2 class="font-headline-lg text-headline-lg text-on-surface flex items-center gap-4">Notebook <span class="text-outline text-2xl font-light">|</span> <span id="notebook-title" class="text-primary-container bg-primary-container/10 px-3 py-1 rounded text-2xl font-semibold">Notebook</span></h2>
 </div>
 <div class="flex items-center gap-3">
 <button class="bg-surface-container-high border border-outline-variant text-on-surface px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-surface-variant transition-colors">
@@ -229,50 +225,14 @@
 <div class="glass-panel rounded-2xl flex flex-col h-full overflow-hidden">
 <div class="bg-surface-container-high px-6 py-4 flex justify-between items-center border-b border-outline-variant">
 <div class="flex items-center gap-3">
-<span class="material-symbols-outlined text-primary">edit_note</span>
-<h3 class="font-bold text-on-surface">Research Notes</h3>
+<span class="material-symbols-outlined text-primary">menu_book</span>
+<h3 class="font-bold text-on-surface">Notebooks</h3>
 </div>
-<button class="text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-1 group/copy mr-3" title="Copy All">
-  <span class="material-symbols-outlined text-[20px]">content_copy</span>
-  
-</button><button class="text-on-surface-variant hover:text-on-surface transition-colors">
-<span class="material-symbols-outlined">edit</span>
-</button><button class="text-on-surface-variant hover:text-on-surface transition-colors ml-2"><span class="material-symbols-outlined">fullscreen</span></button>
+<button id="notebook-new" type="button" class="bg-primary text-on-primary px-3 py-1.5 rounded-lg font-bold flex items-center gap-1 hover:opacity-90 transition-all text-sm">
+<span class="material-symbols-outlined text-base">add</span> New
+</button>
 </div>
-<div class="flex-1 p-6 bg-surface-container-lowest overflow-y-auto custom-scrollbar">
-<div class="mb-6">
-<p class="text-xs font-data-label text-primary uppercase tracking-widest mb-1">Subject</p>
-<h4 class="font-headline-md text-lg text-on-surface">DNA Extraction Protocol - 2024-05-24</h4>
-</div>
-<div class="space-y-6">
-<div class="relative pl-6 border-l-2 border-primary/30">
-<p class="text-xs font-data-label text-on-surface-variant mb-2">14:22:05 - PCR Amplification</p>
-<p class="text-on-surface leading-relaxed italic">
-                    "Observed slightly faster ramp-up in fluorescence during cycle 28. Threshold reached earlier than expected. Potential high-yield sample detected."
-                </p>
-</div>
-<div class="bg-primary-container/10 p-4 rounded-xl border border-primary/20">
-<div class="flex items-center gap-2 mb-2">
-<span class="material-symbols-outlined text-primary text-sm">auto_awesome</span>
-<span class="text-xs font-bold text-primary uppercase tracking-wider">AI Analysis</span>
-</div>
-<p class="text-sm text-on-surface-variant">
-                    Telemetry suggests Sample A purity is optimal. Recommend proceeding with standard elution volume unless manual override is triggered.
-                </p>
-</div>
-<div class="relative pl-6 border-l-2 border-secondary/30">
-<p class="text-xs font-data-label text-on-surface-variant mb-2">13:45:10 - Reagent Prep</p>
-<p class="text-on-surface leading-relaxed italic">
-                    "Lot #XP-202 verified. Master mix consistency looks good. No visible precipitation in the buffer solution."
-                </p>
-</div>
-<div class="pt-8 opacity-30">
-<div class="h-px bg-outline-variant w-full mb-4"></div>
-<p class="text-center text-xs font-data-label">End of current session notes</p>
-</div>
-</div>
-</div>
-
+<div id="notebook-list" class="flex-1 p-4 bg-surface-container-lowest overflow-y-auto custom-scrollbar space-y-2"></div>
 </div></div>
 </div>
 </main>
