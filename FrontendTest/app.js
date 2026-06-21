@@ -69,6 +69,18 @@
   async function fetchState() {
     return getJSON("/api/state");
   }
+  async function fetchScale(body) {
+    const res = await fetch("/api/scale", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || "Could not scale reagents");
+    }
+    return data;
+  }
 
   async function loadProtocol(id) {
     await fetch(`${API}/api/protocols/${encodeURIComponent(id)}/load`, {
@@ -408,19 +420,28 @@
     const m = $("log-modal");
     if (m) m.classList.add("hidden");
   }
+  function looksLikeSampleOnly(text) {
+    return /^\d+$/.test((text || "").trim());
+  }
   async function submitLogForm(e) {
     if (e) e.preventDefault();
     const textEl = $("log-text");
     const sampleEl = $("log-sample");
     const result = $("log-result");
     const text = ((textEl && textEl.value) || "").trim();
+    const sample = ((sampleEl && sampleEl.value) || "").trim();
     if (!text) {
       if (result) result.textContent = "Enter an observation to log.";
       return;
     }
+    if (looksLikeSampleOnly(text) && !sample) {
+      if (result) result.textContent = "Put sample/tube values in the Sample / tube field.";
+      if (sampleEl) sampleEl.focus();
+      return;
+    }
     if (result) result.textContent = "Saving...";
     try {
-      await postLog(text, (sampleEl && sampleEl.value) || null, null);
+      await postLog(text, sample || null, null);
       if (textEl) textEl.value = "";
       if (sampleEl) sampleEl.value = "";
       await refreshNotebookFeed();
@@ -575,6 +596,78 @@
     host.innerHTML = header + (rows || `<div class="p-12 text-center opacity-40">Inventory is empty.</div>`);
   }
 
+  function prepVerdictClass(verdict) {
+    if (verdict === "in_stock") return "text-secondary";
+    if (verdict === "insufficient" || verdict === "critical" || verdict === "missing") return "text-error";
+    return "text-tertiary";
+  }
+
+  function prepVerdictLabel(row) {
+    if (row.verdict === "in_stock") return "In stock";
+    if (row.verdict === "unknown_unit") return "Check units";
+    if (row.verdict === "insufficient") {
+      return `Short ${row.shortage_ul} uL`;
+    }
+    if (row.verdict === "missing") return "Missing";
+    return row.verdict;
+  }
+
+  function renderPrepTable(data) {
+    const mount = $("prep-table");
+    if (!mount) return;
+    const rows = data.reagents || [];
+    if (!rows.length) {
+      mount.innerHTML = `<div class="text-on-surface-variant">No scalable reagent volumes found in this protocol.</div>`;
+      return;
+    }
+    mount.innerHTML = `
+      <div class="overflow-x-auto">
+        <table class="prep-table w-full text-left border-collapse">
+          <thead>
+            <tr class="text-xs uppercase text-on-surface-variant border-b border-outline-variant">
+              <th class="py-2 pr-3">Reagent</th>
+              <th class="py-2 pr-3">Per sample</th>
+              <th class="py-2 pr-3">Run</th>
+              <th class="py-2 pr-3">Total</th>
+              <th class="py-2 pr-3">Availability</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr class="border-b border-outline-variant/60">
+                <td class="py-3 pr-3 text-on-surface font-medium">${escapeHtml(row.reagent)}</td>
+                <td class="py-3 pr-3 font-data-label">${escapeHtml(row.per_sample_ul)} uL</td>
+                <td class="py-3 pr-3 font-data-label">${escapeHtml(row.n_samples)} + ${escapeHtml(row.overage_pct)}%</td>
+                <td class="py-3 pr-3 font-data-label text-on-surface">${escapeHtml(row.total_display)}</td>
+                <td class="py-3 pr-3">
+                  <div class="${prepVerdictClass(row.verdict)} font-bold">${escapeHtml(prepVerdictLabel(row))}</div>
+                  <div class="text-xs text-on-surface-variant">${escapeHtml(row.match_name || "No inventory match")}</div>
+                </td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  async function handlePrepCompute() {
+    const table = $("prep-table");
+    if (!table) return;
+    const samples = Number($("prep-samples")?.value || 0);
+    const overage = Number($("prep-overage")?.value || 0);
+    table.textContent = "Calculating reagent prep...";
+    try {
+      const data = await fetchScale({
+        sample_count: samples,
+        overage_percent: overage
+      });
+      renderPrepTable(data);
+    } catch (err) {
+      table.innerHTML = `<div class="text-error">${escapeHtml(err.message || String(err))}</div>`;
+    }
+  }
+
   // Plan 3: a log entry may carry an optional reproducibility `flag` (volume_ul).
   // VISIBLE badges use display symbols; the line text stays ASCII for screen readers.
   function renderLogFlag(flag) {
@@ -601,7 +694,8 @@
       host.innerHTML = `<div class="p-12 flex flex-col items-center justify-center opacity-30 select-none"><span class="material-symbols-outlined text-6xl mb-4">history_edu</span><p class="font-headline-md">No log entries yet</p></div>`;
       return;
     }
-    host.innerHTML = log
+    const displayLog = [...log].reverse();
+    host.innerHTML = displayLog
       .map((e) => {
         const flagged = e.flag && e.flag.status === "mismatch" ? " flagged" : "";
         return `<div class="log-entry-row${flagged} grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors" data-log-id="${e.id}">
@@ -1084,7 +1178,9 @@
     maybeNavigate(p);
     switch (p.kind) {
       case "step_change":
-        return renderStep(p);
+        renderStep(p);
+        if ($("prep-table")) handlePrepCompute();
+        return;
       case "log_entry":
         return applyLogEntry(p);
       case "log_removed":
@@ -1242,9 +1338,14 @@
       if ($("step-tracker") || $("step-current")) {
         const st = await fetchState();
         renderStep(st.step);
+        if ($("prep-table") && st.step) handlePrepCompute();
       }
     });
     renderTimers();
+    const prepButton = $("prep-compute");
+    if (prepButton) {
+      prepButton.addEventListener("click", handlePrepCompute);
+    }
     wireImportModal();
     wireAddItemModal();
     wireLogModal();
@@ -1264,6 +1365,8 @@
     addInventoryItem,
     fetchLog,
     fetchState,
+    fetchScale,
+    renderPrepTable,
     loadProtocol,
     importProtocol,
     handleProtocolImport,

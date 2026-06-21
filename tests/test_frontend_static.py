@@ -194,6 +194,35 @@ def test_manual_entry_and_add_item_are_wired():
     assert "wireAddItemModal" in js
 
 
+def test_notebook_page_allows_scrolling():
+    notebook = (FT / "notebook.html").read_text(encoding="utf-8")
+    assert "overflow: hidden" not in notebook
+    assert "width: 1280px" not in notebook
+    assert "height: 1227px" not in notebook
+
+
+def test_notebook_manual_entry_has_clear_sample_copy():
+    notebook = (FT / "notebook.html").read_text(encoding="utf-8")
+    assert 'for="log-text"' in notebook
+    assert ">Observation</label>" in notebook
+    assert 'for="log-sample"' in notebook
+    assert ">Sample / tube (optional)</label>" in notebook
+    assert "Examples: 1, A, Tube 3" in notebook
+
+
+def test_notebook_renderer_shows_newest_entries_first_without_mutating_log():
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert "const displayLog = [...log].reverse();" in js
+    assert "host.innerHTML = displayLog" in js
+    assert "log.reverse()" not in js
+
+
+def test_notebook_manual_entry_rejects_bare_sample_values_as_observations():
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert "looksLikeSampleOnly" in js
+    assert "Put sample/tube values in the Sample / tube field." in js
+
+
 def test_inventory_add_item_collects_structured_amount():
     inventory = (FT / "inventory.html").read_text(encoding="utf-8")
     assert 'id="additem-amount"' in inventory
@@ -261,3 +290,22 @@ def test_app_handles_protocol_completion():
     # Both action buttons must be disabled when the protocol is finished.
     assert "confirmBtn.disabled = idx < 0 || finished" in js
     assert "skipBtn.disabled = idx < 0 || finished" in js
+
+
+def test_dashboard_has_reagent_prep_panel_hooks():
+    html = (FT / "dashboard.html").read_text(encoding="utf-8")
+    for token in ("prep-samples", "prep-overage", "prep-compute", "prep-table"):
+        assert token in html, f"dashboard.html missing {token}"
+
+
+def test_app_wires_reagent_prep_client():
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    for token in (
+        "/api/scale",
+        "fetchScale",
+        "renderPrepTable",
+        "handlePrepCompute",
+        "prep-compute",
+        "prep-table",
+    ):
+        assert token in js, f"app.js missing {token}"

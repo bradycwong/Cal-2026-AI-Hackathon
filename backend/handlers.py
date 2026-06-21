@@ -9,10 +9,10 @@ This is also where Command field names are translated to persistence field names
 
 from __future__ import annotations
 
-import difflib
 from typing import Any
 
 from . import router
+from .inventory import find_inventory_match
 from .reproducibility import check as check_reproducibility
 from .schema import (
     Command,
@@ -259,17 +259,9 @@ def _handle_find_inventory(cmd: Command, state: SessionState) -> list[dict[str, 
     if not cmd.reagent_name:
         msg = cmd.clarify_prompt or "Which reagent are you looking for?"
         return [clarify_event(msg)]
-    names = [item.name for item in state.inventory]
-    query = cmd.reagent_name.strip()
-    matches = difflib.get_close_matches(query.lower(), [n.lower() for n in names], n=1, cutoff=0.6)
-    if not matches:
-        # substring fallback before giving up
-        for item in state.inventory:
-            if query.lower() in item.name.lower():
-                return [inventory_result_event(item.name, item.location, item.quantity_approx)]
+    item = find_inventory_match(cmd.reagent_name, state.inventory)
+    if item is None:
         return [clarify_event(f"I don't have a record for {cmd.reagent_name}.")]
-    matched_name = matches[0]
-    item = next(i for i in state.inventory if i.name.lower() == matched_name)
     return [inventory_result_event(item.name, item.location, item.quantity_approx)]
 
 

@@ -79,11 +79,20 @@
       toggle.setAttribute("aria-pressed", active ? "true" : "false");
       toggle.title = active ? "Stop voice session" : "Start voice session";
     }
+    // The mic glyph IS the mute button now (one icon, color-coded), so update its
+    // state class instead of swapping text — overwriting textContent would wipe
+    // the nested pulse ring / icon spans.
     const mute = $("voice-mute");
     if (mute) {
       mute.disabled = !active;
-      mute.textContent = voiceMuted ? "mic_off" : "mic";
-      mute.title = voiceMuted ? "Unmute" : "Mute";
+      mute.setAttribute("aria-pressed", active && voiceMuted ? "true" : "false");
+      mute.title = active && voiceMuted ? "Unmute" : "Mute";
+    }
+    const mic = $("voice-mic");
+    if (mic) {
+      const tone = !active ? "off" : voiceMuted ? "muted" : "live"; // gray / red / green
+      mic.classList.remove("voice-mic-off", "voice-mic-live", "voice-mic-muted");
+      mic.classList.add("voice-mic-" + tone);
     }
     if (!active) setVoiceStatus(voiceErrorMsg || "Voice off", false);
     else setVoiceStatus(voiceMuted ? "Muted" : "Listening", !voiceMuted);

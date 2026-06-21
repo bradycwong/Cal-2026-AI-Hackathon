@@ -122,6 +122,16 @@ with no API key it falls back to a deterministic line/duration parser, so import
 works offline. Imported protocols are always `READY` and survive a restart. The
 FrontendTest protocols page has an "Import Protocol" modal wired to this endpoint.
 
+Reagent prep scaling: `POST /api/scale` computes a deterministic prep table for
+the active protocol or a provided `protocol_id`. It reads structured protocol
+parameters (`reagent`, `volume_ul`), scales totals by sample count and overage,
+and compares those totals against inventory without calling the LLM or mutating
+lab state. Inventory matching here is stricter than the voice `find_inventory`
+command so generic shared words (e.g. "buffer") don't pair unrelated reagents. In
+the dashboard, load DNA Extraction, enter `12` samples and `10` percent overage,
+then compute: ethanol and nuclease-free water show in stock, while lysis buffer
+shows missing (no close inventory match).
+
 Reproducibility flags: when a log entry is added at a step that declares a
 `volume_ul` parameter, a deterministic checker compares the logged volume against
 the expected one and attaches an optional `flag` (`status: ok|mismatch`) to the

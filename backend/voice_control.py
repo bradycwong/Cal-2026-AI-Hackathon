@@ -88,8 +88,9 @@ class VoiceControl:
     """Per-audio-session control state.
 
     The mic/Deepgram stream stays open while muted so the user can say
-    "unmute"; this gate only controls whether transcript text is displayed and
-    whether final utterances enter the command spine.
+    "unmute". Muting gates the command spine only: a muted utterance is still
+    transcribed and displayed (kept visible for debugging) but never routes a
+    command.
     """
 
     def __init__(self, muted: bool = False) -> None:
@@ -112,14 +113,16 @@ class VoiceControl:
         if not text:
             return self._decision(False, False, "", False)
 
-        # Muted: the mic keeps listening but the ONLY thing that can happen is a
-        # resume. Match "unmute" loosely so it works even if STT bundles it into
-        # a longer utterance; ignore everything else.
+        # Muted: the mic keeps listening. "unmute" (matched loosely, so it works
+        # even when STT bundles it into a longer utterance) is the one thing that
+        # changes state and resumes without echoing the control word. Any other
+        # utterance is still surfaced as transcript (kept visible for debugging)
+        # but never routes a command.
         if self.muted:
             if wants_unmute(text):
                 state = self.set_muted(False)
                 return self._decision(False, False, "", state.changed)
-            return self._decision(False, False, "", False)
+            return self._decision(True, False, text, False)
 
         control = classify_control(text)
         if control is not None:
