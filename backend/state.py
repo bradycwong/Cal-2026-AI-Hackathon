@@ -178,6 +178,23 @@ class SessionState:
         self.log.append(entry)
         return entry
 
+    def pop_log(self) -> Optional[dict[str, Any]]:
+        if not self.log:
+            return None
+        entry = self.log.pop()
+        if self.notes is not None:
+            self.notes.delete_note(int(entry["id"]))
+        return entry
+
+    def update_last_log(self, text: str) -> Optional[dict[str, Any]]:
+        if not self.log:
+            return None
+        entry = self.log[-1]
+        entry["text"] = text
+        if self.notes is not None:
+            self.notes.update_text(int(entry["id"]), text)
+        return entry
+
     # --- timers ------------------------------------------------------------
     def add_timer(self, duration_s: int, label: str) -> Timer:
         self._timer_seq += 1

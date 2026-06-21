@@ -60,5 +60,13 @@ class NoteStore:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def delete_note(self, id: int) -> None:
+        self._conn.execute("DELETE FROM notes WHERE id = ?", (id,))
+        self._conn.commit()
+
+    def update_text(self, id: int, text: str) -> None:
+        self._conn.execute("UPDATE notes SET text = ? WHERE id = ?", (text, id))
+        self._conn.commit()
+
     def close(self) -> None:
         self._conn.close()

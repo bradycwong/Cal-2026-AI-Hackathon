@@ -36,3 +36,38 @@ def test_in_memory_default_has_no_persistence(tmp_path):
     handle_command(Command(intent="log_entry", log_text="ephemeral", sample_id=None), s)
     assert s.notes is None
     assert s.log[-1]["id"] == 1
+
+
+def test_undo_log_persists_delete(tmp_path):
+    db = str(tmp_path / "lab.db")
+
+    s1 = SessionState(db_path=db)
+    s1.load_files()
+    handle_command(Command(intent="log_entry", log_text="first note", sample_id=None), s1)
+    removed = s1.pop_log()
+    assert removed["text"] == "first note"
+    assert s1.log == []
+
+    s2 = SessionState(db_path=db)
+    s2.load_files()
+    assert s2.log == []
+
+    handle_command(Command(intent="log_entry", log_text="second note", sample_id=None), s2)
+    assert s2.log[-1]["id"] > removed["id"]
+
+
+def test_correct_log_persists_update(tmp_path):
+    db = str(tmp_path / "lab.db")
+
+    s1 = SessionState(db_path=db)
+    s1.load_files()
+    handle_command(Command(intent="log_entry", log_text="original note", sample_id="A"), s1)
+    updated = s1.update_last_log("corrected note")
+    assert updated["text"] == "corrected note"
+    assert updated["sample_id"] == "A"
+
+    s2 = SessionState(db_path=db)
+    s2.load_files()
+    assert len(s2.log) == 1
+    assert s2.log[0]["text"] == "corrected note"
+    assert s2.log[0]["sample_id"] == "A"
