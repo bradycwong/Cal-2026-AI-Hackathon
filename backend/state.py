@@ -766,6 +766,8 @@ class SessionState:
         self.current_step_index = -1
         self.protocol_complete = False
         self.skipped_steps.clear()
+        self.prep_open = False
+        self.prep_sample_count = None
         self.clear_timers()
 
     # --- demo reset --------------------------------------------------------
@@ -776,6 +778,8 @@ class SessionState:
         self.current_step_index = -1
         self.protocol_complete = False
         self.skipped_steps.clear()
+        self.prep_open = False
+        self.prep_sample_count = None
         self.recent_protocols.clear()
         self.clear_timers()
         self._timer_seq = 0

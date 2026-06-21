@@ -729,7 +729,7 @@ def test_ask_returns_answer(monkeypatch):
 
     state = fresh_state()
     handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
-    monkeypatch.setattr(router, "answer_question", lambda q, p: "Use 200 uL.")
+    monkeypatch.setattr(router, "answer_question", lambda q, p, **kw: "Use 200 uL.")
 
     events = handle_command(Command(intent="ask", question="How much lysis buffer?"), state)
 
@@ -738,6 +738,43 @@ def test_ask_returns_answer(monkeypatch):
         "question": "How much lysis buffer?",
         "answer": "Use 200 uL.",
     }
+
+
+def test_ask_forwards_current_step_index(monkeypatch):
+    from backend import router
+
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    handle_command(Command(intent="next_step"), state)  # advance onto step index 1
+
+    captured = {}
+
+    def fake_answer(question, protocol, *, current_step_index=None):
+        captured["idx"] = current_step_index
+        return "ok"
+
+    monkeypatch.setattr(router, "answer_question", fake_answer)
+    handle_command(Command(intent="ask", question="what's next?"), state)
+
+    assert captured["idx"] == state.current_step_index == 1
+
+
+def test_ask_never_mutates_step_or_timers(monkeypatch):
+    from backend import router
+
+    monkeypatch.setattr(router, "answer_question", lambda q, p, **kw: "Step 2: ...")
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    handle_command(Command(intent="next_step"), state)  # step index 1
+    handle_command(Command(intent="start_timer", duration_s=300), state)
+    idx_before = state.current_step_index
+    timers_before = [t.timer_id for t in state.timers]
+
+    events = handle_command(Command(intent="ask", question="what's next?"), state)
+
+    assert events[0]["payload"]["kind"] == "ask_result"
+    assert state.current_step_index == idx_before  # cursor untouched
+    assert [t.timer_id for t in state.timers] == timers_before  # timers untouched
 
 
 # --- protocol completion on final "next step" -------------------------------
@@ -916,28 +953,23 @@ def test_confirm_prep_starts_run_when_count_set():
     assert state.prep_open is False   # gate lifted -> run started
 
 
-def test_confirm_prep_without_count_requires_one_and_does_not_start():
+def test_confirm_prep_without_count_starts_with_default_one():
+    # Starting without setting a count is not blocked: it defaults to 1 sample.
     state = fresh_state()
     handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
     state.prep_open = True
     assert state.prep_sample_count is None
     events = handle_command(Command(intent="confirm_prep"), state)
-    assert events[0]["payload"]["kind"] == "clarify"  # asks for a count
-    assert state.prep_open is True                     # still gated, not started
+    assert _kind(events, "prep_control")["action"] == "close"  # started, not blocked
+    assert state.prep_open is False
+    assert state.prep_sample_count == 1
 
 
 def test_next_step_while_gated_starts_run_not_advances():
     state = fresh_state()
     handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
     state.prep_open = True
-    # No count yet -> "next step" asks for one and does NOT start or advance.
-    events = handle_command(Command(intent="next_step"), state)
-    assert events[0]["payload"]["kind"] == "clarify"
-    assert state.current_step_index == 0
-    assert state.prep_open is True
-    # With a count set, "next step" starts the run (lifts the gate) without
-    # advancing past step 1.
-    handle_command(Command(intent="set_sample_count", sample_count=12), state)
+    # "next step" while gated starts the run (default 1 sample) instead of advancing.
     events = handle_command(Command(intent="next_step"), state)
     assert _kind(events, "prep_control")["action"] == "close"
     assert state.prep_open is False
@@ -961,20 +993,15 @@ def test_skip_while_gated_starts_run_not_skips():
 
 def test_start_protocol_no_name_while_gated_starts_run():
     # "start protocol" routes to load_protocol with no name; while gated that
-    # means "begin the run" (requires a count), not a reload.
+    # means "begin the run" (default 1 sample), not a reload.
     state = fresh_state()
     handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
     active_before = state.active_protocol
     state.prep_open = True
-    # Without a count, it asks for one and does not start.
-    nostart = handle_command(Command(intent="load_protocol"), state)
-    assert nostart[0]["payload"]["kind"] == "clarify"
-    assert state.prep_open is True
-    # With a count, it starts (lifts the gate), not reloads.
-    state.prep_sample_count = 8
     events = handle_command(Command(intent="load_protocol"), state)
     assert _kind(events, "prep_control")["action"] == "close"
     assert state.prep_open is False
+    assert state.prep_sample_count == 1
     assert state.active_protocol is active_before
 
 

@@ -4,6 +4,7 @@ from backend.scaling import (
     build_prep_table,
     convert_volume,
     find_inventory_group,
+    humanize_metric,
     humanize_volume_text,
     protocol_ingredients,
     scale_reagents,
@@ -59,6 +60,51 @@ def test_humanize_volume_text_idempotent_and_empty_safe():
     assert humanize_volume_text(once) == once
     assert humanize_volume_text("Mix gently") == "Mix gently"
     assert humanize_volume_text("") == ""
+
+
+def test_humanize_metric_volume_matches_display_volume():
+    # The generic engine is exactly the volume humanizer for volume units.
+    assert humanize_metric(50000, "uL") == "50 mL"
+    assert humanize_metric(660, "uL") == "660 uL"
+    assert humanize_metric(2640, "uL") == "2.64 mL"
+    assert humanize_metric(1_000_000, "uL") == "1 L"
+
+
+def test_humanize_metric_steps_up_mass_units():
+    assert humanize_metric(1000, "mg") == "1 g"
+    assert humanize_metric(1500, "mg") == "1.5 g"
+    assert humanize_metric(1000, "g") == "1 kg"      # structured 'g' = grams, not g-force
+    assert humanize_metric(500, "g") == "500 g"
+    assert humanize_metric(1000, "ug") == "1 mg"
+    assert humanize_metric(2_000_000, "ug") == "2 g"
+
+
+def test_humanize_metric_steps_up_moles():
+    assert humanize_metric(1000, "mmol") == "1 mol"
+    assert humanize_metric(1000, "nmol") == "1 umol"
+
+
+def test_humanize_metric_boundary_and_passthrough():
+    assert humanize_metric(999, "mg") == "999 mg"     # below 1000 stays put
+    assert humanize_metric(1000, "milliliters") == "1 L"  # spelled units canonicalize
+    assert humanize_metric(5000, "units") == "5000 units"  # no metric ladder -> unchanged
+    assert humanize_metric("1000", "mL") == "1 L"     # string amount (inventory stores str)
+
+
+def test_humanize_metric_handles_nonnumeric_and_empty_amounts():
+    # Inventory amounts can be ranges/placeholders/blank; leave those as written.
+    assert humanize_metric("1-5", "mL") == "1-5 mL"
+    assert humanize_metric("TBD", "") == "TBD"
+    assert humanize_metric("", "mL") == "mL"
+
+
+def test_humanize_metric_preserves_unit_spelling_when_not_stepped():
+    # No step-up: keep the author's unit spelling (e.g. the pretty micro sign), so
+    # inventory rows aren't churned from "100 µL" to "100 uL".
+    assert humanize_metric("100", "µL") == "100 µL"
+    assert humanize_metric("500", "mL") == "500 mL"
+    # A genuine step-up switches to the canonical unit:
+    assert humanize_metric("1000", "µL") == "1 mL"
 
 
 def test_aggregate_reagents_sums_repeated_reagent():

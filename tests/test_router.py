@@ -199,9 +199,17 @@ def test_find_inventory():
     assert "proteinase" in cmd.reagent_name.lower()
 
 
+def test_find_inventory_with_leading_the():
+    cmd = route("where is the proteinase K")
+    assert cmd.intent == "find_inventory"
+    assert cmd.reagent_name == "proteinase K"  # leading "the" stripped, item kept
+
+
 def test_next_step():
-    assert route("What's next?").intent == "next_step"
+    # Imperative advance phrasings still mutate. (The question "What's next?" now
+    # routes to `ask` — see test_whats_next_is_a_safe_question.)
     assert route("Next step").intent == "next_step"
+    assert route("Next").intent == "next_step"
 
 
 def test_confirm_action_routes_to_next_step():
@@ -365,8 +373,10 @@ def test_broadened_log_phrasing_routes_to_log_entry():
     assert cmd.log_text == "the supernatant is cloudy"
 
 
-def test_existing_next_step_still_wins_over_ask():
-    assert route("What's next?").intent == "next_step"
+def test_whats_next_is_a_safe_question():
+    # Broad question guard: an interrogative never mutates. "What's next?"
+    # previews the next step (routes to `ask`) instead of advancing.
+    assert route("What's next?").intent == "ask"
 
 
 def test_answer_question_fallback_matches_protocol_step(monkeypatch):
@@ -383,6 +393,85 @@ def test_answer_question_fallback_matches_protocol_step(monkeypatch):
 
     assert "Step 1:" in answer
     assert "lysis buffer" in answer.lower()
+
+
+# --- question safety: a question must never mutate protocol state -------------
+
+
+def test_questions_never_trigger_a_mutation():
+    # A question-shaped utterance routes to `ask`, never to a state mutation
+    # (advance/skip/timer/cancel/load), even when it contains a control keyword.
+    # Leading speech-filler ("uh,") is tolerated.
+    for phrase in (
+        "uh, what's next?",
+        "what do I need for the next step?",
+        "should I skip this step?",
+        "can I stop the timer?",
+        "do I need to start a timer?",
+        "should I cancel the protocol?",
+        "should I load the DNA extraction protocol?",
+    ):
+        cmd = route(phrase)
+        assert cmd.intent == "ask", phrase
+        assert cmd.question, phrase  # the user's words are preserved for the UI
+
+
+def test_readonly_question_shortcuts_still_work():
+    # Read-only intents are safe to trigger from a question, so these keep their
+    # direct behavior instead of becoming a generic `ask`.
+    assert route("where is the EDTA?").intent == "find_inventory"
+    assert route("what step am I on?").intent == "show_protocol"
+    assert route("what can I say?").intent == "navigate_page"
+
+
+def test_imperatives_still_mutate():
+    # Non-question commands are unaffected by the question guard.
+    assert route("next step").intent == "next_step"
+    assert route("done").intent == "next_step"
+    assert route("skip").intent == "skip_step"
+    assert route("stop timer").intent == "stop_timer"
+
+
+def test_looks_like_question_detects_filler_led_questions():
+    assert router._looks_like_question("uh, what's next") is True
+    assert router._looks_like_question("should I skip this") is True
+    assert router._looks_like_question("can we stop the timer") is True
+    assert router._looks_like_question("next step") is False
+    assert router._looks_like_question("log the temperature") is False
+
+
+def test_clean_question_strips_filler_keeps_lab_terms():
+    cleaned = router._clean_question("uh, um, how much lysis buffer do I need, please?")
+    low = cleaned.lower()
+    assert "uh" not in low.split()
+    assert "um" not in low.split()
+    assert "please" not in low
+    assert "lysis buffer" in low
+
+    kept = router._clean_question("so, add 200 microliters of proteinase K in 5 minutes")
+    assert "200 uL" in kept
+    assert "proteinase k" in kept.lower()
+    assert "5 minutes" in kept
+
+
+def test_answer_targets_relative_and_numbered_steps(monkeypatch):
+    from backend.state import SessionState
+
+    monkeypatch.setattr(router, "_llm_available", lambda: False)
+    state = SessionState()
+    state.load_files()
+    protocol = state.find_protocol("DNA Extraction")
+    assert protocol is not None
+
+    # "next step" relative to the current cursor (index 0 -> step id 2)
+    nxt = router.answer_question("what's in the next step?", protocol, current_step_index=0)
+    assert nxt.startswith("Step 2:")
+    # "this step" relative to the current cursor (index 2 -> step id 3)
+    cur = router.answer_question("what is this step?", protocol, current_step_index=2)
+    assert cur.startswith("Step 3:")
+    # an explicit numbered step ignores the cursor
+    s3 = router.answer_question("what reagent in step 3?", protocol, current_step_index=0)
+    assert s3.startswith("Step 3:")
 
 
 def test_step_context_humanizes_volume():
