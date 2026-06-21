@@ -768,22 +768,33 @@
 
     const tracker = $("step-tracker");
     if (tracker && Array.isArray(step.all_steps)) {
+      // Steps the user skipped (advanced past without confirming) render yellow
+      // "Skipped" instead of green "Completed". A skipped index is always < idx;
+      // check current first so returning to a step via "prev" shows In Progress.
+      const skipped = new Set(
+        Array.isArray(step.skipped_indices) ? step.skipped_indices : []
+      );
       tracker.innerHTML = step.all_steps
         .map((s, i) => {
           let icon = "circle";
           let cls = "border-outline-variant opacity-50";
           let label = "Pending";
           let labelCls = "text-on-surface-variant";
-          if (i < idx) {
-            icon = "check_circle";
-            cls = "border-secondary";
-            label = "Completed";
-            labelCls = "text-secondary";
-          } else if (i === idx) {
+          if (i === idx) {
             icon = "pending";
             cls = "border-primary";
             label = "In Progress";
             labelCls = "text-primary";
+          } else if (skipped.has(i)) {
+            icon = "skip_next";
+            cls = "border-tertiary";
+            label = "Skipped";
+            labelCls = "text-tertiary";
+          } else if (i < idx) {
+            icon = "check_circle";
+            cls = "border-secondary";
+            label = "Completed";
+            labelCls = "text-secondary";
           }
           return `<div class="flex items-center gap-3 p-3 bg-surface-container-low rounded-lg border-l-4 ${cls}">
         <span class="material-symbols-outlined text-sm">${icon}</span>

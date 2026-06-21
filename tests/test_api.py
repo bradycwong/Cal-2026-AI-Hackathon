@@ -83,15 +83,19 @@ def test_step_next_endpoint_logs_by_default(client):
     assert log[-1]["text"].startswith("Completed step 1")
 
 
-def test_step_next_endpoint_skip_does_not_log(client):
-    # Skip (log=False) advances without writing a note.
+def test_step_next_endpoint_skip_logs_skipped(client):
+    # Skip (log=False) advances AND writes a "Skipped step N" note.
     client.post("/api/protocols/dna_extraction/load")
     r = client.post("/api/step/next", json={"log": False})
     assert r.status_code == 200
-    kinds = [e["payload"].get("kind") for e in r.json()["events"]]
+    events = r.json()["events"]
+    kinds = [e["payload"].get("kind") for e in events]
     assert "step_change" in kinds
-    assert "log_entry" not in kinds
-    assert client.get("/api/log").json()["log"] == []
+    assert "log_entry" in kinds
+    log = client.get("/api/log").json()["log"]
+    assert log[-1]["text"].startswith("Skipped step 1")
+    step_change = next(e["payload"] for e in events if e["payload"]["kind"] == "step_change")
+    assert step_change["skipped_indices"] == [0]
 
 
 def test_post_log_persists_and_lists(client):
@@ -136,3 +140,13 @@ def test_state_step_has_tracker_fields(client):
     assert step["all_steps"]
     assert step["current_index"] == 0
     assert step["protocol_name"] == "DNA Extraction"
+    assert step["skipped_indices"] == []
+
+
+def test_state_step_reflects_skipped_indices(client):
+    # A refresh (/api/state) keeps a skipped step marked so the tracker stays yellow.
+    client.post("/api/protocols/dna_extraction/load")
+    client.post("/api/step/next", json={"log": False})  # skip step 1 (index 0)
+    step = client.get("/api/state").json()["step"]
+    assert step["skipped_indices"] == [0]
+    assert step["current_index"] == 1

@@ -69,6 +69,14 @@ def test_app_renders_reproducibility_flag():
     assert 'flag.status === "ok"' in js
 
 
+def test_app_renders_skipped_step_status():
+    # A skipped step renders a yellow "Skipped" label driven by skipped_indices.
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert "skipped_indices" in js
+    assert '"Skipped"' in js
+    assert "border-tertiary" in js  # yellow accent for the skipped tracker row
+
+
 def test_notebook_css_has_flag_classes():
     css = (FT / "notebook.css").read_text(encoding="utf-8")
     assert ".log-flag" in css

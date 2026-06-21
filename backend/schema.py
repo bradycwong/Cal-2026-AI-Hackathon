@@ -85,11 +85,14 @@ def step_change_event(
     all_steps: Optional[list[dict[str, Any]]] = None,
     current_index: Optional[int] = None,
     protocol_name: Optional[str] = None,
+    skipped_indices: Optional[list[int]] = None,
     loaded: bool = False,
 ) -> dict[str, Any]:
     # ``loaded`` is True only when a protocol was just LOADED (not on step nav),
     # so the frontend can route to the active-protocol page without bouncing the
     # user around on every "next step".
+    # ``skipped_indices`` are step indices the user skipped past; the tracker
+    # renders those rows yellow ("Skipped") instead of green ("Completed").
     return command_result(
         "step_change",
         prev_step=prev_step,
@@ -98,6 +101,7 @@ def step_change_event(
         all_steps=all_steps if all_steps is not None else [],
         current_index=current_index,
         protocol_name=protocol_name,
+        skipped_indices=skipped_indices if skipped_indices is not None else [],
         loaded=loaded,
     )
 

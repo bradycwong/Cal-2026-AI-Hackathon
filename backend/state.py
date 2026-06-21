@@ -183,6 +183,10 @@ class SessionState:
         self._inventory = InventoryStore(data_dir)
         self.active_protocol: Optional[Protocol] = None
         self.current_step_index: int = -1
+        # Indices of steps the user skipped (advanced past without confirming).
+        # In-memory like the cursor; surfaced on step_change so the tracker can
+        # render them yellow instead of green.
+        self.skipped_steps: set[int] = set()
         self.log: list[dict[str, Any]] = []
         self.timers: list[Timer] = []
         self._log_seq = 0
@@ -496,6 +500,7 @@ class SessionState:
         Leaves the log, protocols, and inventory untouched."""
         self.active_protocol = None
         self.current_step_index = -1
+        self.skipped_steps.clear()
         self.clear_timers()
         self._timer_seq = 0
 
