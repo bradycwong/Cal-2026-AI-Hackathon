@@ -182,6 +182,9 @@
       setImportResult("Paste at least one step or drop a PDF.", "text-tertiary");
       return;
     }
+    // Disable the submit button for the in-flight request so a second click
+    // can't fire a duplicate upload (imports are slow LLM/PDF calls).
+    setImportSubmitDisabled(true);
     setImportLoading(file ? "Reading PDF…" : "Importing…");
     try {
       const data = file
@@ -201,7 +204,14 @@
       }
     } catch (e) {
       setImportResult("Import failed: " + e.message, "text-tertiary");
+    } finally {
+      setImportSubmitDisabled(false);
     }
+  }
+
+  function setImportSubmitDisabled(disabled) {
+    const submit = $("import-submit");
+    if (submit) submit.disabled = disabled;
   }
 
   function openImportModal() {
