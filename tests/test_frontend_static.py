@@ -361,9 +361,17 @@ def test_notebook_manual_entry_has_related_protocol_field():
 
 def test_notebook_renderer_shows_newest_entries_first_without_mutating_log():
     js = (FT / "app.js").read_text(encoding="utf-8")
+<<<<<<< HEAD
     # Ordering moved to sortLog (default "date-desc" = newest first), which copies
     # the array (const arr = [...log]) and never mutates logCache.
     assert "const displayLog = sortLog(log, logSortMode);" in js
+=======
+    # Default sort is newest-first; the renderer sorts a copy (sortLog does
+    # `const arr = [...log]`) so the live log is never mutated in place.
+    assert 'let logSortMode = "date-desc";' in js
+    assert "const displayLog = sortLog(log, logSortMode);" in js
+    assert "const arr = [...log];" in js
+>>>>>>> origin/main
     assert "host.innerHTML = displayLog" in js
     assert "log.reverse()" not in js
 
