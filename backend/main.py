@@ -30,6 +30,7 @@ from .schema import (
     Command,
     error_event,
     log_entry_event,
+    notebook_list_event,
     protocol_imported_event,
     reset_event,
     timer_removed_event,
@@ -240,6 +241,41 @@ async def list_inventory() -> dict[str, Any]:
 @app.get("/api/log")
 async def list_log() -> dict[str, Any]:
     return {"log": state.log}
+
+
+@app.get("/api/notebooks")
+async def list_notebooks() -> dict[str, Any]:
+    return {"notebooks": state.notebooks_view(), "active_id": state.active_notebook_id}
+
+
+class NotebookIn(BaseModel):
+    name: str | None = None
+
+
+@app.post("/api/notebooks", status_code=201)
+async def create_notebook(body: NotebookIn) -> dict[str, Any]:
+    """Create a notebook and make it active; new log entries land in it."""
+    notebook = state.create_notebook(body.name or "")
+    await manager.broadcast(
+        [notebook_list_event(state.notebooks_view(), state.active_notebook_id)]
+    )
+    return {
+        "ok": True,
+        "notebook": notebook,
+        "notebooks": state.notebooks_view(),
+        "active_id": state.active_notebook_id,
+    }
+
+
+@app.post("/api/notebooks/{notebook_id}/select")
+async def select_notebook(notebook_id: int) -> dict[str, Any]:
+    """Switch the active notebook; the log feed follows it."""
+    if not state.select_notebook(notebook_id):
+        raise HTTPException(status_code=404, detail="no such notebook")
+    await manager.broadcast(
+        [notebook_list_event(state.notebooks_view(), state.active_notebook_id)]
+    )
+    return {"ok": True, "active_id": state.active_notebook_id, "log": state.log}
 
 
 class LogEntryIn(BaseModel):
