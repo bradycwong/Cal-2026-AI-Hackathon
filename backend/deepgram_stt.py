@@ -24,9 +24,10 @@ import websockets
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 DEEPGRAM_URL = "wss://api.deepgram.com/v1/listen"
-DEEPGRAM_MODEL = os.getenv("DEEPGRAM_MODEL", "nova-2")
+DEEPGRAM_MODEL = os.getenv("DEEPGRAM_MODEL", "nova-3")
 
-# Rare lab nouns that general STT mangles (PDF §3.3.6). keyword:boost for nova-2.
+# Rare lab nouns that general STT mangles (PDF §3.3.6). Boost weights apply to
+# nova-2 (keyword:boost); nova-3 uses the bare term via keyterm (see _build_url).
 # Only boost distinctive domain terms — boosting common verbs ("load", "log")
 # pulls neighbouring words toward them and hurts overall accuracy.
 KEYWORDS = [
@@ -79,7 +80,13 @@ def _build_url() -> str:
         ("utterance_end_ms", "1000"),
         ("vad_events", "true"),
     ]
-    params += [("keywords", f"{kw}:{boost}") for kw, boost in KEYWORDS]
+    if DEEPGRAM_MODEL.lower().startswith("nova-3"):
+        # Nova-3 uses keyterm prompting (no per-term boost weight); it rejects
+        # the legacy `keywords` param with HTTP 400.
+        params += [("keyterm", kw) for kw, _boost in KEYWORDS]
+    else:
+        # Nova-2 and earlier: keyword boosting with an intensifier.
+        params += [("keywords", f"{kw}:{boost}") for kw, boost in KEYWORDS]
     return f"{DEEPGRAM_URL}?{urlencode(params)}"
 
 
