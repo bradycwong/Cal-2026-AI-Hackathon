@@ -262,8 +262,10 @@ function onVoiceState(p) {
   if (micStream) {
     els.mic.textContent = voiceMuted ? "muted" : "listening";
     els.mic.className = "chip " + (voiceMuted ? "chip-warn" : "chip-ok");
-    setState(voiceMuted ? "muted" : "listening", "chip-warn");
   }
+  // Reflect mute even with no active mic session (e.g. typed "mute").
+  setState(voiceMuted ? "muted" : (micStream ? "listening" : "idle"),
+           voiceMuted ? "chip-warn" : "chip-ok");
   announce(voiceMuted ? "Voice muted" : "Voice listening");
 }
 
