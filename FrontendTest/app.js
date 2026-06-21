@@ -1292,6 +1292,11 @@
     });
   }
 
+  // Last sample count used in the prep modal (for auto-deduct on protocol end).
+  let _lastPrepSamples = 1;
+  // Guard: auto-deduct fires once per protocol run, not on every WS render.
+  let _deductTriggeredForRun = false;
+
   function renderPrepTable(data) {
     const mount = $("prep-table");
     if (!mount) return;
@@ -1302,25 +1307,23 @@
       return;
     }
 
-    // Rebuild priority state from fresh data (preserving any existing user order).
+    // Build priority state directly from source_details (ids are already resolved).
     const existing = _prepPriorityState;
     _prepPriorityState = {};
     for (const row of rows) {
-      const sources = (row.sources || []);
-      if (sources.length === 0) continue;
-      // Map source names to ids via the inventory (names are unique enough for the session).
-      // The backend returns sources in anchor-first order already.
+      const details = row.source_details || [];
+      if (!details.length) continue;
+      // Preserve any drag-reorder the user made in a previous render.
       const prev = existing[row.reagent];
-      const prevIds = prev ? prev.map((b) => b.id) : [];
-      // Build bottles list: prefer user's previous order if ids match.
-      const bottlesByName = {};
-      sources.forEach((name, i) => {
-        // We don't have ids here yet — the prep table rows only carry names.
-        // Use name as a stable key; real ids come from /api/scale/with-priority.
-        bottlesByName[name] = { id: null, name };
-      });
-      // We'll fill ids lazily when the user hits "Confirm & Deduct".
-      _prepPriorityState[row.reagent] = sources.map((name) => ({ id: null, name }));
+      if (prev && prev.length === details.length) {
+        const detailById = Object.fromEntries(details.map((d) => [d.id, d]));
+        const allMatch = prev.every((b) => detailById[b.id]);
+        if (allMatch) {
+          _prepPriorityState[row.reagent] = prev;
+          continue;
+        }
+      }
+      _prepPriorityState[row.reagent] = details.map((d) => ({ id: d.id, name: d.name }));
     }
 
     const tableHtml = `
@@ -1331,21 +1334,34 @@
               <th class="py-2 pr-3">Reagent</th>
               <th class="py-2 pr-3">Per sample</th>
               <th class="py-2 pr-3">Samples</th>
-              <th class="py-2 pr-3">Total</th>
+              <th class="py-2 pr-3">Total needed</th>
               <th class="py-2 pr-3">Availability</th>
             </tr>
           </thead>
           <tbody>
             ${rows.map((row) => {
-              const sources = row.sources || [];
-              const multiBottle = sources.length > 1;
-              const priorityRows = multiBottle ? sources.map((name, i) => `
-                <div draggable="true" data-bottle-id="" data-bottle-name="${escapeHtml(name)}"
-                     class="flex items-center gap-2 px-2 py-1 rounded cursor-grab text-xs text-on-surface border border-outline-variant/40 mb-1 transition-colors">
-                  <span class="material-symbols-outlined text-sm text-on-surface-variant select-none">drag_indicator</span>
-                  <span class="font-mono text-[10px] text-on-surface-variant w-4 shrink-0">${i + 1}</span>
-                  <span class="truncate">${escapeHtml(name)}</span>
+              const details = row.source_details || [];
+              const multiBottle = details.length > 1;
+              // Use the user's current priority order if available.
+              const orderedDetails = (() => {
+                const state = _prepPriorityState[row.reagent];
+                if (!state || !multiBottle) return details;
+                const byId = Object.fromEntries(details.map((d) => [d.id, d]));
+                return state.map((b) => byId[b.id]).filter(Boolean);
+              })();
+              const priorityRows = multiBottle ? orderedDetails.map((d, i) => `
+                <div draggable="true" data-bottle-id="${escapeHtml(String(d.id))}" data-bottle-name="${escapeHtml(d.name)}"
+                     class="flex items-center gap-2 px-2 py-1.5 rounded cursor-grab text-xs border border-outline-variant/40 mb-1 transition-colors bg-surface-container-lowest">
+                  <span class="material-symbols-outlined text-sm text-on-surface-variant select-none shrink-0">drag_indicator</span>
+                  <span class="font-mono text-[10px] text-primary font-bold w-4 shrink-0">${i + 1}</span>
+                  <div class="flex flex-col min-w-0 flex-1">
+                    <span class="font-medium text-on-surface truncate">${escapeHtml(d.name)}</span>
+                    <span class="text-on-surface-variant text-[10px]">${escapeHtml(d.amount_display)}${d.location ? ` · ${escapeHtml(d.location)}` : ""}</span>
+                  </div>
                 </div>`).join("") : "";
+              const singleDisplay = details.length === 1 && details[0]
+                ? `<div class="text-xs text-on-surface-variant mt-0.5">${escapeHtml(details[0].amount_display)}${details[0].location ? ` · ${escapeHtml(details[0].location)}` : ""}</div>`
+                : "";
               return `
               <tr class="border-b border-outline-variant/60">
                 <td class="py-3 pr-3 text-on-surface font-medium">${escapeHtml(row.reagent)}</td>
@@ -1355,9 +1371,10 @@
                 <td class="py-3 pr-3">
                   <div class="${prepVerdictClass(row.verdict)} font-bold">${escapeHtml(prepVerdictLabel(row))}</div>
                   <div class="text-xs text-on-surface-variant">${escapeHtml(row.match_name || "No inventory match")}</div>
+                  ${singleDisplay}
                   ${multiBottle ? `
                   <div class="mt-2">
-                    <div class="text-[10px] uppercase text-on-surface-variant mb-1 tracking-wide">Use order (drag to reorder)</div>
+                    <div class="text-[10px] uppercase text-on-surface-variant mb-1 tracking-wide">Use order — drag to reorder</div>
                     <div class="priority-list" data-reagent="${escapeHtml(row.reagent)}">${priorityRows}</div>
                   </div>` : ""}
                 </td>
@@ -1367,11 +1384,11 @@
         </table>
       </div>
       <div class="mt-4 pt-4 border-t border-outline-variant flex items-center justify-between gap-3">
-        <p class="text-xs text-on-surface-variant">After the run, deduct used amounts from inventory.</p>
+        <p class="text-xs text-on-surface-variant">Deduct used amounts from inventory after the run.</p>
         <button id="prep-deduct" type="button"
           class="flex items-center gap-1.5 bg-secondary text-on-secondary px-4 py-2 rounded-lg font-bold text-sm hover:bg-secondary/90 transition-all">
           <span class="material-symbols-outlined text-base">remove_circle</span>
-          Confirm &amp; Deduct
+          Deduct from Inventory
         </button>
       </div>
     `;
@@ -1384,39 +1401,32 @@
       _wirePriorityDrag(listEl, reagentName);
     });
 
-    // Wire the deduct button.
+    // Wire the manual deduct button.
     const deductBtn = $("prep-deduct");
     if (deductBtn) {
-      deductBtn.addEventListener("click", () => handleDeductReagents(data));
+      deductBtn.addEventListener("click", () => handleDeductReagents());
     }
   }
 
-  async function handleDeductReagents(prepData) {
+  async function handleDeductReagents() {
     const deductBtn = $("prep-deduct");
-    if (deductBtn) { deductBtn.disabled = true; deductBtn.innerHTML = '<span class="material-symbols-outlined text-base animate-spin">refresh</span> Computing…'; }
+    if (deductBtn) { deductBtn.disabled = true; deductBtn.innerHTML = '<span class="material-symbols-outlined text-base">hourglass_empty</span> Computing…'; }
     try {
-      const samples = Number($("prep-samples")?.value || 1);
-
-      // Collect the current user-defined priority order from the DOM
-      // (ids are already back-filled by _backfillBottleIds).
-      const priorityOrder = _getPriorityOrder();
-
-      // Re-fetch a fresh deduction plan with the final priority order.
+      const samples = _lastPrepSamples || Number($("prep-samples")?.value || 1);
       const plan = await fetchScaleWithPriority({
         sample_count: samples,
         overage_percent: 0,
-        priority_order: priorityOrder,
+        priority_order: _getPriorityOrder(),
       });
 
       const deductions = plan.deductions || [];
       if (!deductions.length) {
-        alert("No inventory items to deduct from for this run.");
+        alert("No inventory items to deduct (all reagents missing or have non-volume units).");
         return;
       }
 
-      // Show confirmation summary.
       const lines = deductions.map(
-        (d) => `• ${d.name}: −${d.deduct_ul} uL  →  ${d.new_amount > 0 ? d.new_amount + " " + d.new_unit + " remaining" : "EMPTY (will be removed)"}`
+        (d) => `• ${d.name}: −${d.deduct_ul} uL  →  ${d.new_amount > 0 ? d.new_amount + " " + d.new_unit + " remaining" : "EMPTY — will be removed"}`
       );
       const ok = confirm(
         `Deduct reagents from inventory?\n\n${lines.join("\n")}\n\nThis cannot be undone.`
@@ -1424,60 +1434,63 @@
       if (!ok) return;
 
       await consumeReagents(deductions);
-
-      // Refresh prep table to show new amounts.
       await handlePrepCompute();
     } catch (err) {
       alert(`Deduction failed: ${err.message || err}`);
     } finally {
       if (deductBtn) {
         deductBtn.disabled = false;
-        deductBtn.innerHTML = '<span class="material-symbols-outlined text-base">remove_circle</span> Confirm &amp; Deduct';
+        deductBtn.innerHTML = '<span class="material-symbols-outlined text-base">remove_circle</span> Deduct from Inventory';
       }
+    }
+  }
+
+  // Called automatically when a protocol finishes. Skips silently if there is
+  // nothing to deduct. The _deductTriggeredForRun guard prevents re-firing on
+  // subsequent WS renders of the same finished state.
+  async function autoDeductOnComplete() {
+    if (_deductTriggeredForRun) return;
+    _deductTriggeredForRun = true;
+    try {
+      const samples = _lastPrepSamples || 1;
+      const plan = await fetchScaleWithPriority({
+        sample_count: samples,
+        overage_percent: 0,
+        priority_order: _getPriorityOrder(),
+      });
+      const deductions = plan.deductions || [];
+      if (!deductions.length) return;
+
+      const lines = deductions.map(
+        (d) => `• ${d.name}: −${d.deduct_ul} uL  →  ${d.new_amount > 0 ? d.new_amount + " " + d.new_unit + " remaining" : "EMPTY — will be removed"}`
+      );
+      const ok = confirm(
+        `Protocol complete! Deduct reagents from inventory?\n\n${lines.join("\n")}\n\nThis cannot be undone. Click Cancel to skip.`
+      );
+      if (!ok) return;
+      await consumeReagents(deductions);
+    } catch (err) {
+      // Non-blocking: auto-deduct failure doesn't interrupt the protocol flow.
+      console.warn("Auto-deduct failed:", err);
     }
   }
 
   async function handlePrepCompute() {
     const table = $("prep-table");
     if (!table) return;
-    const samples = Number($("prep-samples")?.value || 0);
+    const samples = Number($("prep-samples")?.value || 1);
+    _lastPrepSamples = samples;
     table.textContent = "Calculating reagent prep...";
     try {
-      // Use the priority endpoint so we get deductions (with item ids) back.
       const data = await fetchScaleWithPriority({
         sample_count: samples,
         overage_percent: 0,
         priority_order: _getPriorityOrder(),
       });
       renderPrepTable(data);
-      // Back-fill item ids into the priority-list rows from the deductions plan.
-      _backfillBottleIds(data.deductions || []);
     } catch (err) {
       table.innerHTML = `<div class="text-error">${escapeHtml(err.message || String(err))}</div>`;
     }
-  }
-
-  function _backfillBottleIds(deductions) {
-    // deductions: [{item_id, name, ...}] — gives us the id for each bottle name.
-    const nameToId = {};
-    for (const d of deductions) nameToId[d.name] = d.item_id;
-    const mount = $("prep-table");
-    if (!mount) return;
-    mount.querySelectorAll("[data-bottle-name]").forEach((el) => {
-      const name = el.dataset.bottleName;
-      if (name && nameToId[name] != null) {
-        el.dataset.bottleId = nameToId[name];
-        // Also sync _prepPriorityState so _getPriorityOrder() works immediately.
-        const listEl = el.closest(".priority-list");
-        if (listEl) {
-          const reagent = listEl.dataset.reagent;
-          if (_prepPriorityState[reagent]) {
-            const entry = _prepPriorityState[reagent].find((b) => b.name === name);
-            if (entry) entry.id = nameToId[name];
-          }
-        }
-      }
-    });
   }
 
   // --- reagent prep modal ---------------------------------------------------
@@ -1996,22 +2009,8 @@
     }
     renderResumeRun(step);
 
-    // Show/hide the post-protocol deduct banner in the main card.
-    const deductBanner = $("complete-deduct-banner");
-    if (deductBanner) {
-      if (finished) {
-        deductBanner.classList.remove("hidden");
-        const btn = deductBanner.querySelector("#complete-deduct-btn");
-        if (btn && !btn.dataset.wired) {
-          btn.dataset.wired = "1";
-          btn.addEventListener("click", () => {
-            openPrepModal(step.protocol_name);
-          });
-        }
-      } else {
-        deductBanner.classList.add("hidden");
-      }
-    }
+    // Auto-deduct when the protocol finishes (fires once per run via guard).
+    if (finished) autoDeductOnComplete();
   }
 
   // A muted, non-interactive hint row marking how many steps the window hides
@@ -2396,6 +2395,7 @@
         if (p.loaded) {
           // A load (incl. voice) changes recency: refresh the dashboard panel.
           refreshRecent();
+          _deductTriggeredForRun = false; // new protocol — allow one auto-deduct
           openPrepModal(p.protocol_name);
         } else if (prepModalOpen()) handlePrepCompute();
         return;
