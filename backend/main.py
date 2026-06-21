@@ -320,4 +320,11 @@ async def index() -> FileResponse:
     return FileResponse(FRONTEND_DIR / "index.html")
 
 
+@app.get("/sw.js")
+async def service_worker() -> FileResponse:
+    # Served from the root so the worker's default scope is the whole origin
+    # (a worker under /static would only control /static).
+    return FileResponse(FRONTEND_DIR / "sw.js", media_type="application/javascript")
+
+
 app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")

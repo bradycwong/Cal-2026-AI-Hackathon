@@ -571,3 +571,11 @@ function chime() {
 }
 
 connect();
+
+// Cache the app shell for instant/offline loads. Registration is best-effort:
+// unsupported browsers or insecure contexts just fall back to network loads.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
