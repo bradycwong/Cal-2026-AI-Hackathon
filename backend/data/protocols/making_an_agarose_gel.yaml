@@ -1,0 +1,118 @@
+protocol:
+  id: making_an_agarose_gel
+  name: Making an Agarose Gel
+  version: '1.0'
+  description: Protocol for preparing agarose gels of various concentrations (0.8%,
+    1.0%, or 2.0%) and running them for electrophoresis
+  category: Imported
+  status: READY
+  aliases:
+  - agarose gel preparation
+  - gel electrophoresis setup
+  - agarose gel casting
+  - gel running
+  steps:
+  - id: 1
+    text: Take a 250 ml flask and fill with 50 ml of 0.5% TBE
+    duration_s: null
+    parameters:
+      volume_ul: 50000
+      reagent: 0.5% TBE
+  - id: 2
+    text: Add 0.4 g of agarose from upper cabinet in media prep room
+    duration_s: null
+    parameters:
+      reagent: agarose
+      volume_ul: null
+  - id: 3
+    text: Swirl the agarose evenly in the liquid
+    duration_s: null
+    parameters: {}
+  - id: 4
+    text: Microwave solution for 1 min
+    duration_s: 60
+    parameters: {}
+    timer_label: microwave
+  - id: 5
+    text: Swirl 250 ml flask for a few seconds (flask will be hot, use a heat protective
+      glove)
+    duration_s: null
+    parameters: {}
+  - id: 6
+    text: Microwave solution for 1 more min
+    duration_s: 60
+    parameters: {}
+    timer_label: microwave
+  - id: 7
+    text: Take out flask and make sure all agarose has dissolved (no clear flakes)
+    duration_s: null
+    parameters: {}
+  - id: 8
+    text: Wearing gloves, open GelRed container from in upper cabinet in media prep
+      room
+    duration_s: null
+    parameters: {}
+  - id: 9
+    text: Add 1.5 uL of GelRed to your solution in the 250 ml flask
+    duration_s: null
+    parameters:
+      volume_ul: 1.5
+      reagent: GelRed
+  - id: 10
+    text: Swirl GelRed into solution
+    duration_s: null
+    parameters: {}
+  - id: 11
+    text: Wet down rubber ends of gel rig tray with 0.5% TBE and wet the gel rig walls
+      with 0.5% TBE
+    duration_s: null
+    parameters:
+      reagent: 0.5% TBE
+  - id: 12
+    text: Make sure the rubber seal has not come loose to prevent leaking
+    duration_s: null
+    parameters: {}
+  - id: 13
+    text: Pour solution into gel tray
+    duration_s: null
+    parameters: {}
+  - id: 14
+    text: Add comb into tray for well creation
+    duration_s: null
+    parameters: {}
+  - id: 15
+    text: Allow gel solidifying for 20-25 min
+    duration_s: 1500
+    parameters: {}
+    timer_label: solidification
+  - id: 16
+    text: Remove tray from gel rig and place back in gel rig with wells on top
+    duration_s: null
+    parameters: {}
+  - id: 17
+    text: Pull out plastic comb
+    duration_s: null
+    parameters: {}
+  - id: 18
+    text: Add 0.5% TBE into gel rig until liquid is over gel
+    duration_s: null
+    parameters:
+      reagent: 0.5% TBE
+  - id: 19
+    text: Load lanes
+    duration_s: null
+    parameters: {}
+  - id: 20
+    text: Place lids on gel rigs with black (negative) on top and red (positive) on
+      bottom
+    duration_s: null
+    parameters: {}
+  - id: 21
+    text: Set gel machine to 96 volts and start
+    duration_s: null
+    parameters: {}
+  - id: 22
+    text: Run gel for 45 min
+    duration_s: 2700
+    parameters: {}
+    timer_label: electrophoresis

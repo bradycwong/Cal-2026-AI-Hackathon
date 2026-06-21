@@ -1417,7 +1417,7 @@
   // Newest-first and capped so the dashboard stays tidy ("View All" covers the
   // rest). No-ops on pages without the mount, so it's safe to call from the
   // shared hydrate path and the notebook_list event.
-  const DASHBOARD_NOTEBOOKS_LIMIT = 6;
+  const DASHBOARD_NOTEBOOKS_LIMIT = 3;
   function renderDashboardNotebooks(data) {
     const host = $("dashboard-notebooks");
     if (!host) return;
