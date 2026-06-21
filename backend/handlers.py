@@ -18,6 +18,7 @@ from .schema import (
     Command,
     ask_result_event,
     clarify_event,
+    inventory_added_event,
     inventory_result_event,
     log_entry_event,
     log_removed_event,
@@ -198,6 +199,35 @@ def _handle_find_inventory(cmd: Command, state: SessionState) -> list[dict[str, 
     return [inventory_result_event(item.name, item.location, item.quantity_approx)]
 
 
+def _handle_add_inventory(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    """Add a reagent to inventory from a voice/typed command.
+
+    The NAME is required: with no name we add nothing and clarify. Per the
+    product rule, any other missing field defaults to "TBD" (amount/unit/
+    location) and a missing expiration defaults to "N/A" — never a guess.
+    """
+    name = (cmd.reagent_name or "").strip()
+    if not name:
+        msg = cmd.clarify_prompt or "What's the name of the reagent to add to the inventory?"
+        return [clarify_event(msg)]
+    amount = (cmd.amount or "").strip() or "TBD"
+    unit = (cmd.unit or "").strip() or "TBD"
+    location = (cmd.location or "").strip() or "TBD"
+    expiration = (cmd.expiration or "").strip() or "N/A"
+    item = state.add_inventory_item(
+        name,
+        location=location,
+        expiration=expiration,
+        amount=amount,
+        unit=unit,
+    )
+    return [
+        inventory_added_event(
+            item.name, item.amount, item.unit, item.location, item.expiration
+        )
+    ]
+
+
 def _handle_ask(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
     if not cmd.question:
         return [clarify_event("What would you like to ask about the protocol?")]
@@ -223,6 +253,7 @@ _DISPATCH = {
     "start_timer": _handle_start_timer,
     "stop_timer": _handle_stop_timer,
     "find_inventory": _handle_find_inventory,
+    "add_inventory": _handle_add_inventory,
     "ask": _handle_ask,
     "unknown": _handle_unknown,
 }
