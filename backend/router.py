@@ -434,14 +434,61 @@ def _parse_add_inventory(body: str) -> Command:
     )
 
 
+# --- question safety -----------------------------------------------------------
+# A read-only intent is safe to trigger from a question ("where is X?", "what step
+# am I on?"); every other intent mutates state, so a question must NOT reach it.
+_READONLY_INTENTS = frozenset(
+    {"find_inventory", "show_protocol", "navigate_page", "repeat_step"}
+)
+
+# Leading speech-fillers, so "uh, what's next" is still recognized as a question.
+_LEAD_FILLER_RE = re.compile(
+    r"^(?:uh+|um+|er|hmm+|so|well|okay|ok|hey|yeah|please)[\s,]+"
+)
+# Opens with an interrogative. ("do/does/did" are deliberately NOT here so an
+# imperative like "do the next step" stays a command; "do I/we/you ..." is caught
+# by the advice probe below.)
+_QUESTION_LEAD_RE = re.compile(
+    r"^(?:how|what|whats|what's|why|which|when|who|whom|whose|is|are|am|was|were|"
+    r"can|could|should|would|will|shall|may|might|where)\b"
+)
+# ...or contains an explicit advice/permission probe ("should I", "can we", "do you").
+_ADVICE_Q_RE = re.compile(r"\b(?:should|can|could|would|do|does|did)\s+(?:i|we|you)\b")
+
+
+def _looks_like_question(text: str) -> bool:
+    """True if ``text`` is phrased as a question/advice probe (filler-tolerant)."""
+    s = normalize_ascii(text).lower().strip()
+    while True:  # peel leading fillers: "uh, um, what's next" -> "what's next"
+        stripped = _LEAD_FILLER_RE.sub("", s, count=1).strip()
+        if stripped == s:
+            break
+        s = stripped
+    return bool(_QUESTION_LEAD_RE.match(s)) or bool(_ADVICE_Q_RE.search(s))
+
+
 def deterministic_route(transcript: str) -> Command:
-    """Network-free parser for the demo set. Never raises; worst case -> unknown."""
+    """Network-free parser for the demo set. Never raises; worst case -> unknown.
+
+    A question-shaped utterance is diverted to ``ask`` unless it already matched a
+    read-only intent (find/show/navigate/repeat), so a question can never trigger a
+    state mutation (advance, skip, timer change, cancel, load).
+    """
     raw = normalize_ascii(transcript)
     t = raw.lower()
-
     if not t:
         return Command(intent="unknown", clarify_prompt="I didn't catch that. Could you repeat?")
+    cmd = _match_command(raw, t)
+    if cmd.intent not in _READONLY_INTENTS and _looks_like_question(t):
+        return Command(intent="ask", question=raw)
+    return cmd
 
+
+def _match_command(raw: str, t: str) -> Command:
+    """Ordered regex matchers (``raw`` ASCII-normalized, ``t`` its lowercase).
+
+    First match wins; the order encodes priority. Returns ``unknown`` if nothing hits.
+    """
     # add_inventory - "add 5g of EDTA on shelf 4 to the inventory". Must precede
     # log_entry/find so the "inventory" verb wins; requires the word "inventory"
     # (or its common shorthand "inv").
@@ -722,31 +769,25 @@ def _llm_available() -> bool:
     return True
 
 
-def _humanize_vol(ul: float) -> str:
-    if ul >= 1_000_000:
-        return f"{ul / 1_000_000:g} L"
-    if ul >= 1000:
-        return f"{ul / 1000:g} mL"
-    return f"{ul:g} uL"
+def _step_row(step) -> str:
+    from . import scaling  # deferred: scaling imports router, so avoid a top-level cycle
+
+    params = ""
+    if step.parameters:
+        pairs = []
+        for key, value in sorted(step.parameters.items()):
+            # Show the volume the way a human reads it ("50 mL", not the raw
+            # 50000 microliters) so the model's answer doesn't echo a crazy number.
+            if key == "volume_ul" and isinstance(value, (int, float)) and not isinstance(value, bool):
+                pairs.append(f"volume={scaling._display_volume(float(value))}")
+            else:
+                pairs.append(f"{key}={value}")
+        params = " Parameters: " + ", ".join(pairs)
+    return f"Step {step.id}: {step.text}{params}"
 
 
 def _step_context(protocol) -> str:
-    rows: list[str] = []
-    for step in protocol.steps:
-        params = ""
-        if step.parameters:
-            pairs = []
-            for key, value in sorted(step.parameters.items()):
-                if key == "volume_ul":
-                    try:
-                        pairs.append(f"volume={_humanize_vol(float(value))}")
-                    except (TypeError, ValueError):
-                        pairs.append(f"{key}={value}")
-                else:
-                    pairs.append(f"{key}={value}")
-            params = " Parameters: " + ", ".join(pairs)
-        rows.append(f"Step {step.id}: {step.text}{params}")
-    return "\n".join(rows)
+    return "\n".join(_step_row(step) for step in protocol.steps)
 
 
 def _question_tokens(text: str) -> set[str]:
@@ -762,7 +803,64 @@ def _question_tokens(text: str) -> set[str]:
     }
 
 
-def _fallback_answer_question(question: str, protocol) -> str:
+# Conversational filler dropped before matching/answering. Lab terms, reagent
+# names, numbers, and units are NOT in this list, so they survive.
+_FILLER_RE = re.compile(
+    r"\b(?:uh+|um+|er|hmm+|well|okay|ok|so|like|just|actually|really|kinda|sorta|"
+    r"please|can you (?:please )?tell me|could you tell me|do i|right now|real quick|"
+    r"for me)\b",
+    re.IGNORECASE,
+)
+
+
+def _clean_question(question: str) -> str:
+    """ASCII-normalize and strip conversational filler, preserving lab terms.
+
+    Used for both the LLM prompt and the deterministic fallback matcher. The UI
+    still shows the user's original words (the handler passes ``cmd.question``).
+    """
+    s = normalize_ascii(question)
+    s = _FILLER_RE.sub(" ", s)
+    s = re.sub(r"\s+", " ", s).strip(" ,.?!")
+    return s
+
+
+def _detect_step_target(clean: str, protocol, current_step_index):
+    """Pick the one step a question refers to, or None for whole-protocol.
+
+    Recognizes an explicit "step N" and cursor-relative "next/this/previous step".
+    Pure read: indexes ``protocol.steps`` and never moves the cursor.
+    """
+    s = _replace_number_words(clean.lower())
+    m = re.search(r"\bstep\s+(\d+)\b", s)
+    if m:
+        sid = int(m.group(1))
+        return next((st for st in protocol.steps if st.id == sid), None)
+    idx = current_step_index
+    if idx is None or idx < 0 or not protocol.steps:
+        return None
+    steps = protocol.steps
+    if re.search(r"\bnext\b", s):
+        return steps[idx + 1] if idx + 1 < len(steps) else None
+    # "previous/prior/earlier step" -> the step before the cursor. ("last step"
+    # is deliberately excluded: it usually means the FINAL step, not the prior one.)
+    if re.search(r"\b(?:previous|prior|earlier)\b", s):
+        return steps[idx - 1] if idx - 1 >= 0 else None
+    if re.search(r"\b(?:this|current)\s+step\b", s):
+        return steps[idx] if idx < len(steps) else None
+    return None
+
+
+def _answer_context(protocol, target=None) -> str:
+    """Step context for the answer prompt: just ``target`` if set, else all steps."""
+    if target is None:
+        return _step_context(protocol)
+    return "The user is asking about this one step.\n" + _step_row(target)
+
+
+def _fallback_answer_question(question: str, protocol, target=None) -> str:
+    if target is not None:
+        return f"Step {target.id}: {target.text}"
     q_tokens = _question_tokens(question)
     best_step = None
     best_score = 0
@@ -779,26 +877,31 @@ def _fallback_answer_question(question: str, protocol) -> str:
     return "I can only answer detailed questions when the AI model is connected."
 
 
-def answer_question(question: str, protocol) -> str:
+def answer_question(question: str, protocol, *, current_step_index: Optional[int] = None) -> str:
     """Answer a read-only protocol question.
 
     This is a second model call, but it is gated behind an explicit `ask` command.
     With no key, missing SDK, or provider error, it falls back to deterministic
     step matching and stays free.
+
+    The spoken question is cleaned of filler before matching, and a relative or
+    numbered step reference ("the next step", "step 3") narrows the answer to that
+    one step using ``current_step_index`` — without ever moving the cursor.
     """
-    clean_question = normalize_ascii(question)
+    clean = _clean_question(question)
+    target = _detect_step_target(clean, protocol, current_step_index)
     if not _llm_available():
-        return _fallback_answer_question(clean_question, protocol)
+        return _fallback_answer_question(clean, protocol, target)
     try:
         import anthropic
 
         client = anthropic.Anthropic()
         system_prompt = (
-            "Answer ONLY from the protocol steps below in 1-2 sentences. "
-            "If the answer is not in the steps, say you do not see it.\n\n"
-            f"{_step_context(protocol)}"
+            "Answer ONLY from the protocol step(s) below in 1-2 sentences. "
+            "If the answer is not in the step(s), say you do not see it.\n\n"
+            f"{_answer_context(protocol, target)}"
         )
-        messages = [{"role": "user", "content": clean_question}]
+        messages = [{"role": "user", "content": clean}]
         # Manual LLM span (the auto-instrumentor is unusable on the pinned SDK);
         # nests under the ingest CHAIN span. No-op when tracing is off.
         with llm_span(
@@ -817,9 +920,9 @@ def answer_question(question: str, protocol) -> str:
                     parts.append(text)
             answer = normalize_ascii(" ".join(parts))
             span.record_response(answer, usage=getattr(resp, "usage", None))
-        return answer or _fallback_answer_question(clean_question, protocol)
+        return answer or _fallback_answer_question(clean, protocol, target)
     except Exception:
-        return _fallback_answer_question(clean_question, protocol)
+        return _fallback_answer_question(clean, protocol, target)
 
 
 # Unambiguous lab controls: matched deterministically BEFORE any LLM call so

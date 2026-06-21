@@ -584,3 +584,18 @@ def test_app_wires_notebook_export():
         "sortLog(logCache",
     ):
         assert token in js, f"app.js missing {token}"
+
+
+def test_app_wires_reagent_prep_voice_control():
+    # The reagent prep popup is controllable hands-free: the client dispatches the
+    # prep_control command_result and mirrors the gate + sample count to the backend.
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    for token in ('"prep_control"', "postPrepState", "/api/prep/state", "determineSamples"):
+        assert token in js, f"app.js missing {token}"
+
+
+def test_commands_page_documents_reagent_prep():
+    html = (FT / "commands.html").read_text(encoding="utf-8")
+    assert "Reagent Prep" in html, "commands.html missing Reagent Prep category"
+    assert "Set samples to 24" in html, "commands.html missing set-samples reference"
+    assert "Start protocol" in html, "commands.html missing start/close-prep reference"

@@ -48,12 +48,49 @@ def _format_amount(value: float, unit: str) -> str:
     return f"{value:g} {unit}" if isinstance(value, float) else f"{value} {unit}"
 
 
+# Metric ladders for humanizing a structured amount+unit: each ordered small->large
+# with the unit's factor in the ladder's smallest unit. NOTE: "g" here is grams (a
+# structured inventory unit), NOT centrifuge g-force (RCF) -- which is exactly why
+# humanize_metric is applied to amount+unit fields ONLY, never to free step text.
+_METRIC_LADDERS = (
+    (("uL", 1.0), ("mL", 1e3), ("L", 1e6)),
+    (("ug", 1.0), ("mg", 1e3), ("g", 1e6), ("kg", 1e9)),
+    (("nmol", 1.0), ("umol", 1e3), ("mmol", 1e6), ("mol", 1e9)),
+)
+_LADDER_BY_UNIT = {unit: ladder for ladder in _METRIC_LADDERS for unit, _ in ladder}
+
+
+def humanize_metric(value: Any, unit: str) -> str:
+    """Render a structured amount+unit at its most readable metric step.
+
+    Steps up the ladder once a value reaches 1000 of a unit: 50000 uL -> "50 mL",
+    1000 mg -> "1 g", 1000 g -> "1 kg". Units outside a known metric ladder (e.g.
+    "units") and non-numeric amounts (ranges, "TBD", blank) are returned as written.
+    Applied to STRUCTURED amount+unit fields only, so "g" means grams (not g-force).
+    """
+    try:
+        amount = float(value)
+    except (TypeError, ValueError):
+        return f"{str(value).strip()} {(unit or '').strip()}".strip()
+    raw_unit = (unit or "").strip()
+    canon = _canon_unit(normalize_ascii(raw_unit))
+    ladder = _LADDER_BY_UNIT.get(canon)
+    if ladder is None or amount <= 0:
+        return _format_amount(amount, raw_unit) if raw_unit else f"{_round_number(amount):g}"
+    base = amount * dict(ladder)[canon]
+    chosen_unit, chosen_factor = ladder[0]
+    for unit_name, factor in ladder:
+        if base >= factor:
+            chosen_unit, chosen_factor = unit_name, factor
+    # Keep the author's unit spelling (e.g. the pretty "µL") when the scale is
+    # unchanged; only switch to the canonical unit on an actual step up/down.
+    out_unit = raw_unit if chosen_unit == canon else chosen_unit
+    return _format_amount(base / chosen_factor, out_unit)
+
+
 def _display_volume(total_ul: float) -> str:
-    if total_ul >= FACTORS_TO_UL["L"]:
-        return _format_amount(total_ul / FACTORS_TO_UL["L"], "L")
-    if total_ul >= FACTORS_TO_UL["mL"]:
-        return _format_amount(total_ul / FACTORS_TO_UL["mL"], "mL")
-    return _format_amount(total_ul, "uL")
+    # Volume-specialized name kept for readability; the generic engine does the walk.
+    return humanize_metric(total_ul, "uL")
 
 
 # Matches a microliter quantity in normalize_ascii'd prose (the unit is always
@@ -241,6 +278,7 @@ def build_prep_table(
         row.update(
             {
                 "match_name": None,
+                "location": None,
                 "match_count": 0,
                 "sources": [],
                 "location": None,
@@ -254,6 +292,11 @@ def build_prep_table(
         )
         if anchor is None:
             continue
+
+        # Surface the anchor (best-match) bottle's location at the row level so the
+        # prep table can show where to grab the reagent. Empty location -> None
+        # (nothing to show); unmatched rows keep the None default set above.
+        row["location"] = anchor.location or None
 
         # Pool every bottle of this reagent: a protocol's need is met if the
         # COMBINED volume across bottles covers it, even when no single bottle

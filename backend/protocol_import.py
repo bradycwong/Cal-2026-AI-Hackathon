@@ -23,20 +23,6 @@ from . import router, scaling
 from .instrumentation import llm_span
 from .state import Protocol, SessionState, load_protocol_file
 
-_VOL_UL_MENTION_RE = re.compile(r"(\d+(?:\.\d+)?)\s*uL", re.IGNORECASE)
-
-
-def _humanize_volume_mentions(text: str) -> str:
-    """Replace bare uL mentions >= 1000 with mL/L so display text is readable."""
-    def _sub(m: re.Match) -> str:
-        val = float(m.group(1))
-        if val >= 1_000_000:
-            return f"{val / 1_000_000:g} L"
-        if val >= 1000:
-            return f"{val / 1000:g} mL"
-        return m.group(0)
-    return _VOL_UL_MENTION_RE.sub(_sub, text)
-
 
 class ParsedStep(BaseModel):
     text: str
@@ -132,7 +118,7 @@ def _fallback_parse(text: str, name: Optional[str]) -> ParsedProtocol:
     # is reflowed upstream into one logical step per line before it reaches here.)
     steps: list[ParsedStep] = []
     for raw_line in text.splitlines():
-        line = _humanize_volume_mentions(
+        line = scaling.humanize_volume_text(
             router.normalize_ascii(_NUM_MARKER.sub("", raw_line).strip())
         )
         if not line:
@@ -194,16 +180,21 @@ def _validate_parsed(raw_json: str, name: Optional[str]) -> ParsedProtocol:
     if not parsed.steps:
         raise ValueError("LLM returned a protocol with no steps")
     for step in parsed.steps:
-        step.text = _humanize_volume_mentions(router.normalize_ascii(step.text))
+        # normalize_ascii canonicalizes unit spellings; humanize_volume_text then
+        # collapses any inflated ">=1000 uL" the model wrote (e.g. "50000 uL" for
+        # "50 mL") back to mL/L so the displayed prose isn't crazy. volume_ul is
+        # extracted separately and stays in microliters for scaling math.
+        step.text = scaling.humanize_volume_text(router.normalize_ascii(step.text))
         if step.duration_s:
             step.timer_label = step.timer_label or _verb_label(step.text)
         else:
             # Keep the contract: a label is only meaningful on a timed step.
             step.timer_label = None
+    parsed.description = scaling.humanize_volume_text(
+        router.normalize_ascii(parsed.description)
+    )
     if name and name.strip():
         parsed.name = name.strip()
-    if parsed.description:
-        parsed.description = _humanize_volume_mentions(parsed.description)
     return parsed
 
 

@@ -29,12 +29,13 @@ from fastapi import (
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from .deepgram_stt import run_deepgram_session, set_custom_keywords
 from .router import ROUTER_MODE, route
 from .protocol_import import import_protocol
 from .pdf_extract import PdfExtractError, extract_pdf_text, reflow_pdf_text
-from .scaling import apply_reagent_deductions, build_prep_table
+from .scaling import apply_reagent_deductions, build_prep_table, humanize_metric
 from .reproducibility import check as check_reproducibility
 from .schema import (
     Command,
@@ -106,6 +107,13 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+# Serializes the offloaded handle_command below. The threadpool frees the event
+# loop during the blocking `ask` LLM call, but two overlapping ingests could then
+# mutate the shared (non-thread-safe) SessionState from two worker threads. This
+# async lock keeps ingest-vs-ingest serialized WITHOUT re-blocking the loop: the
+# timer loop, other routes, and the WS keep running while it is held.
+ingest_lock = asyncio.Lock()
+
 
 async def ingest(
     transcript: str, *, echo_transcript: bool = True, do_route: bool = True
@@ -143,7 +151,14 @@ async def ingest(
                 span.set_attribute("lab.alias_trigger", text)
             cmd = route(route_text)
             span.set_attribute("lab.intent", str(cmd.intent))
-            events.extend(handle_command(cmd, state))
+            # handle_command stays synchronous + deterministic (the locked spine);
+            # we only change HOW it is invoked. The `ask` intent reaches a blocking
+            # Anthropic call, so run it off the event loop or it stalls EVERY client
+            # (timers, navigation, both WebSockets) for the whole 1-2s Haiku call.
+            # run_in_threadpool -> anyio.to_thread.run_sync copies the contextvars
+            # context, so the manual Arize chain/LLM span nesting is preserved.
+            async with ingest_lock:
+                events.extend(await run_in_threadpool(handle_command, cmd, state))
             span.set_output(cmd.intent)
     await manager.broadcast(events)
     return events
@@ -460,6 +475,25 @@ async def scale_protocol(body: ScaleIn) -> dict[str, Any]:
     }
 
 
+class PrepStateIn(BaseModel):
+    open: bool | None = None
+    sample_count: int | None = None
+
+
+@app.post("/api/prep/state")
+async def set_prep_state(body: PrepStateIn) -> dict[str, Any]:
+    """Mirror the reagent-prep modal's open/close + the operator's determined
+    sample count to the backend. The prep popup is a gate: the run does not start
+    until a count is set, so "start protocol"/"done" reads this state. Single-
+    operator session state like the rest of SessionState; no broadcast (the modal
+    is per-browser)."""
+    if body.open is not None:
+        state.prep_open = body.open
+    if body.sample_count is not None:
+        state.prep_sample_count = body.sample_count
+    return {"ok": True, "prep_open": state.prep_open, "sample_count": state.prep_sample_count}
+
+
 class ScaleWithPriorityIn(BaseModel):
     sample_count: int
     overage_percent: float = 10.0
@@ -691,6 +725,7 @@ def _inventory_item_payload(item: Any) -> dict[str, Any]:
         "location": item.location,
         "amount": item.amount,
         "unit": item.unit,
+        "amount_display": humanize_metric(item.amount, item.unit),
         "quantity_approx": item.quantity_approx,
         "notes": item.notes,
         "date": item.date,

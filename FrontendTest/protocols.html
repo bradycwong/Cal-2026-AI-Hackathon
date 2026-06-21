@@ -13,7 +13,7 @@
 <!-- SideNavBar -->
 <aside class="h-screen w-64 fixed left-0 top-0 border-r border-outline-variant flex flex-col py-gutter px-unit z-50 bg-surface-container-low" id="side-nav">
 <a href="dashboard.html" class="px-gutter mb-8 block hover:opacity-80 transition-opacity cursor-pointer">
-<h1 class="font-headline-md text-headline-md text-primary">Lab</h1>
+<h1 class="font-headline-md text-headline-md text-primary">BenchPilot</h1>
 <p class="text-on-surface-variant text-sm">AI Assistant</p>
 </a>
 <nav class="flex-1 space-y-1" id="main-nav">
@@ -34,12 +34,12 @@
 <!-- Canvas -->
 <section class="p-gutter max-w-7xl mx-auto w-full">
 <!-- Header Section -->
-<div class="mb-10 flex flex-col md:flex-row md:items-start justify-between gap-6">
+<div class="mb-10 flex flex-col md:flex-row items-end justify-between gap-6">
 <div>
 <h2 class="font-headline-lg text-headline-lg mb-2">Protocol Library</h2>
 <p class="text-on-surface-variant max-w-2xl">Select a standard operation procedure to begin. The AI assistant will provide step-by-step guidance, voice-controlled timers, and automated data logging.</p>
 </div>
-<button id="import-protocol" class="shrink-0 inline-flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-lg font-bold hover:bg-primary/90 transition-all active:opacity-80"><span class="material-symbols-outlined">upload</span>Import Protocol</button>
+<button id="import-protocol" class="bg-primary px-6 py-2 text-on-primary font-bold rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"><span class="material-symbols-outlined text-sm">upload</span>Import Protocol</button>
 </div>
 <!-- Bento Grid of Protocol Cards (live: populated by app.js) -->
 <div id="protocol-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
