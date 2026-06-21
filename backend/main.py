@@ -352,7 +352,6 @@ class InventoryItemIn(BaseModel):
     unit: str = ""
     notes: str = ""
     date: str = ""
-    expiration: str = ""
 
 
 class InventoryItemEdit(BaseModel):
@@ -362,7 +361,6 @@ class InventoryItemEdit(BaseModel):
     amount: Optional[str] = None
     unit: Optional[str] = None
     date: Optional[str] = None
-    expiration: Optional[str] = None
 
 
 def _inventory_item_payload(item: Any) -> dict[str, Any]:
@@ -375,7 +373,6 @@ def _inventory_item_payload(item: Any) -> dict[str, Any]:
         "quantity_approx": item.quantity_approx,
         "notes": item.notes,
         "date": item.date,
-        "expiration": item.expiration,
     }
 
 
@@ -389,7 +386,6 @@ async def add_inventory(body: InventoryItemIn) -> dict[str, Any]:
             body.quantity_approx,
             body.notes,
             date=body.date,
-            expiration=(body.expiration.strip() or "N/A"),
             amount=body.amount,
             unit=body.unit,
         )
@@ -405,9 +401,6 @@ async def add_inventory(body: InventoryItemIn) -> dict[str, Any]:
 @app.put("/api/inventory/{item_id}")
 async def edit_inventory(item_id: int, body: InventoryItemEdit) -> dict[str, Any]:
     """Edit fields of the inventory item with ``item_id`` (stable id, not position)."""
-    expiration = body.expiration
-    if expiration is not None:
-        expiration = expiration.strip() or "N/A"
     try:
         item = state.update_inventory_item(
             item_id,
@@ -416,7 +409,6 @@ async def edit_inventory(item_id: int, body: InventoryItemEdit) -> dict[str, Any
             amount=body.amount,
             unit=body.unit,
             date=body.date,
-            expiration=expiration,
         )
     except IndexError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

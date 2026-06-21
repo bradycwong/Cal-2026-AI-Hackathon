@@ -61,9 +61,11 @@ def test_add_inventory_item_persists_structured_amount(tmp_path):
 
 
 def test_add_inventory_item_migrates_legacy_csv_columns(tmp_path):
+    # Legacy CSV still carries an `expiration` column with a value; the loader
+    # tolerates it and the next write drops the column (and the value) entirely.
     (tmp_path / "inventory.csv").write_text(
         "name,location,quantity_approx,notes,code,category,date,expiration,status\n"
-        "Proteinase K,Freezer 2 shelf B,~4 doses,10 mg/mL aliquots,PRK-2001-A,Enzyme,2024-02-10,,low\n",
+        "Proteinase K,Freezer 2 shelf B,~4 doses,10 mg/mL aliquots,PRK-2001-A,Enzyme,2024-02-10,2025-01-01,low\n",
         encoding="utf-8",
     )
     state = fresh_state(tmp_path)
@@ -71,8 +73,9 @@ def test_add_inventory_item_migrates_legacy_csv_columns(tmp_path):
 
     csv_text = (tmp_path / "inventory.csv").read_text(encoding="utf-8")
     assert csv_text.splitlines()[0] == (
-        "name,amount,unit,location,quantity_approx,notes,code,category,date,expiration,status"
+        "name,amount,unit,location,quantity_approx,notes,code,category,date,status"
     )
+    assert "2025-01-01" not in csv_text  # legacy expiration value was dropped
 
     reloaded = SessionState(data_dir=tmp_path)
     reloaded.load_files()
@@ -164,10 +167,10 @@ def test_inventory_view_shape():
         "amount",
         "unit",
         "date",
-        "expiration",
         "status",
         "notes",
     } <= set(items[0])
+    assert "expiration" not in items[0]
     assert items[0]["status"] in {"ok", "low", "critical", "expiring"}
 
 

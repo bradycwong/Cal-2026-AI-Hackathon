@@ -52,7 +52,6 @@ class Command(BaseModel):
     amount: Optional[str] = None          # add_inventory (numeric quantity, e.g. "5")
     unit: Optional[str] = None            # add_inventory (e.g. "g", "mL", "uL")
     location: Optional[str] = None        # add_inventory (e.g. "shelf 4", "Fridge 1")
-    expiration: Optional[str] = None      # add_inventory (expiration date if stated)
     question: Optional[str] = None      # ask
     clarify_prompt: Optional[str] = None  # unknown / missing param -> clarification area
 
@@ -172,7 +171,7 @@ def inventory_result_event(
 
 
 def inventory_added_event(
-    name: str, amount: str, unit: str, location: str, expiration: str
+    name: str, amount: str, unit: str, location: str
 ) -> dict[str, Any]:
     """A reagent was added to inventory by voice/typed command. Clients refresh
     the inventory feed off this. Additive ``kind`` on the locked envelope."""
@@ -182,7 +181,6 @@ def inventory_added_event(
         amount=amount,
         unit=unit,
         location=location,
-        expiration=expiration,
     )
 
 

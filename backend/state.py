@@ -263,7 +263,6 @@ class SessionState:
         code: str = "",
         category: str = "General",
         date: str = "",
-        expiration: str = "",
         status: str = "ok",
         amount: str = "",
         unit: str = "",
@@ -277,7 +276,6 @@ class SessionState:
             code,
             category,
             date,
-            expiration,
             status,
             amount,
             unit,
@@ -291,7 +289,6 @@ class SessionState:
         amount: Optional[str] = None,
         unit: Optional[str] = None,
         date: Optional[str] = None,
-        expiration: Optional[str] = None,
     ) -> InventoryItem:
         """Edit an item by stable id (delegates to the InventoryStore)."""
         return self._inventory.update(
@@ -301,7 +298,6 @@ class SessionState:
             amount=amount,
             unit=unit,
             date=date,
-            expiration=expiration,
         )
 
     def delete_inventory_item(self, item_id: int) -> InventoryItem:

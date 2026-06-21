@@ -229,7 +229,7 @@ def _handle_add_inventory(cmd: Command, state: SessionState) -> list[dict[str, A
 
     The NAME is required: with no name we add nothing and clarify. Per the
     product rule, any other missing field defaults to "TBD" (amount/unit/
-    location) and a missing expiration defaults to "N/A" — never a guess.
+    location) — never a guess.
     """
     name = (cmd.reagent_name or "").strip()
     if not name:
@@ -238,18 +238,14 @@ def _handle_add_inventory(cmd: Command, state: SessionState) -> list[dict[str, A
     amount = (cmd.amount or "").strip() or "TBD"
     unit = (cmd.unit or "").strip() or "TBD"
     location = (cmd.location or "").strip() or "TBD"
-    expiration = (cmd.expiration or "").strip() or "N/A"
     item = state.add_inventory_item(
         name,
         location=location,
-        expiration=expiration,
         amount=amount,
         unit=unit,
     )
     return [
-        inventory_added_event(
-            item.name, item.amount, item.unit, item.location, item.expiration
-        )
+        inventory_added_event(item.name, item.amount, item.unit, item.location)
     ]
 
 

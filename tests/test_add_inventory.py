@@ -29,7 +29,6 @@ def test_route_add_inventory_full_phrase():
     assert cmd.amount == "5"
     assert cmd.unit == "g"
     assert cmd.location == "shelf 4"
-    assert cmd.expiration is None
 
 
 def test_route_add_inventory_spelled_out_unit():
@@ -41,12 +40,15 @@ def test_route_add_inventory_spelled_out_unit():
     assert cmd.location == "Fridge 1"
 
 
-def test_route_add_inventory_with_expiration():
+def test_route_add_inventory_ignores_expiration_phrase():
+    # The "expires ..." phrase is stripped so it can't pollute location/name;
+    # expiration itself is no longer parsed or stored.
     cmd = route("Add 100 uL of Taq polymerase on shelf 2 expires 2026-12-01 to the inventory.")
     assert cmd.intent == "add_inventory"
     assert cmd.reagent_name.lower() == "taq polymerase"
+    assert cmd.amount == "100"
+    assert cmd.unit == "uL"
     assert cmd.location == "shelf 2"
-    assert cmd.expiration == "2026-12-01"
 
 
 def test_route_add_inventory_name_only():
@@ -86,7 +88,6 @@ def test_handle_add_inventory_persists_and_emits_event(tmp_path):
     assert p["amount"] == "5"
     assert p["unit"] == "g"
     assert p["location"] == "shelf 4"
-    assert p["expiration"] == "N/A"  # not provided -> N/A
 
     # Persisted: a fresh state reading the same dir sees the row.
     reloaded = SessionState(data_dir=tmp_path)
@@ -102,11 +103,10 @@ def test_handle_add_inventory_missing_fields_default_to_tbd(tmp_path):
     )
     p = events[0]["payload"]
     assert p["kind"] == "inventory_added"
-    # Everything but expiration defaults to TBD; expiration defaults to N/A.
+    # Every unspecified field defaults to TBD.
     assert p["amount"] == "TBD"
     assert p["unit"] == "TBD"
     assert p["location"] == "TBD"
-    assert p["expiration"] == "N/A"
 
 
 def test_handle_add_inventory_no_name_adds_nothing(tmp_path):
@@ -128,4 +128,3 @@ def test_route_then_handle_end_to_end(tmp_path):
     assert state.inventory[-1].amount == "5"
     assert state.inventory[-1].unit == "g"
     assert state.inventory[-1].location == "shelf 4"
-    assert state.inventory[-1].expiration == "N/A"

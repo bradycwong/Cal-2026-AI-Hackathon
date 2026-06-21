@@ -19,7 +19,7 @@ _INVENTORY_STATUSES = {"ok", "low", "critical", "expiring"}
 
 _INVENTORY_COLUMNS = [
     "name", "amount", "unit", "location", "quantity_approx", "notes", "code",
-    "category", "date", "expiration", "status",
+    "category", "date", "status",
 ]
 
 
@@ -35,7 +35,6 @@ class InventoryItem:
     code: str = ""
     category: str = "General"
     date: str = ""
-    expiration: str = ""
     amount: str = ""
     unit: str = ""
     status: str = "ok"
@@ -68,7 +67,6 @@ def load_inventory_file(path: Path) -> list[InventoryItem]:
                     code=(row.get("code") or "").strip(),
                     category=(row.get("category") or "General").strip() or "General",
                     date=(row.get("date") or "").strip(),
-                    expiration=(row.get("expiration") or "").strip(),
                     status=status,
                     amount=(row.get("amount") or "").strip(),
                     unit=(row.get("unit") or "").strip(),
@@ -89,7 +87,6 @@ def _inventory_row(item: InventoryItem) -> list[str]:
         item.code,
         item.category,
         item.date,
-        item.expiration,
         item.status,
     ]
 
@@ -154,7 +151,6 @@ class InventoryStore:
                 "amount": item.amount,
                 "unit": item.unit,
                 "date": item.date,
-                "expiration": item.expiration,
                 "status": item.status,
                 "notes": item.notes,
             }
@@ -170,7 +166,6 @@ class InventoryStore:
         code: str = "",
         category: str = "General",
         date: str = "",
-        expiration: str = "",
         status: str = "ok",
         amount: str = "",
         unit: str = "",
@@ -196,7 +191,6 @@ class InventoryStore:
             code=code.strip(),
             category=(category or "General").strip() or "General",
             date=date.strip(),
-            expiration=expiration.strip(),
             status=status,
             amount=amount,
             unit=unit,
@@ -228,7 +222,6 @@ class InventoryStore:
         amount: Optional[str] = None,
         unit: Optional[str] = None,
         date: Optional[str] = None,
-        expiration: Optional[str] = None,
     ) -> InventoryItem:
         """Edit fields of the item with ``item_id`` and persist the whole CSV.
 
@@ -250,8 +243,6 @@ class InventoryStore:
             item.quantity_approx = _quantity_from_parts("", item.amount, item.unit)
         if date is not None:
             item.date = date.strip()
-        if expiration is not None:
-            item.expiration = expiration.strip()
         self._write()
         return item
 

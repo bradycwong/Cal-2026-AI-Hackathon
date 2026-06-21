@@ -48,12 +48,11 @@ SYSTEM_PROMPT = (
     "'add a new reagent X' to add_inventory. Extract these fields when spoken: "
     "reagent_name (the item's name, e.g. 'EDTA'), amount (the numeric quantity as "
     "a string with no unit, e.g. '5'), unit (the unit alone, e.g. 'g', 'mL', "
-    "'uL'), location (where it's stored, e.g. 'shelf 4', 'Fridge 1'), and "
-    "expiration (an expiry date only if one is stated). For add_inventory the "
-    "item NAME is required: if no name is clearly stated, return intent='unknown' "
-    "with a clarify_prompt asking for the reagent name. Leave any other missing "
-    "field null (do NOT guess a quantity, unit, location, or date that was not "
-    "said). "
+    "'uL'), and location (where it's stored, e.g. 'shelf 4', 'Fridge 1'). For "
+    "add_inventory the item NAME is required: if no name is clearly stated, return "
+    "intent='unknown' with a clarify_prompt asking for the reagent name. Leave any "
+    "other missing field null (do NOT guess a quantity, unit, or location that was "
+    "not said). "
     "If the intent is clear but a required parameter is missing or ambiguous, do "
     "NOT guess: leave that field null (or return intent='unknown') and put a "
     "one-line question in clarify_prompt. Never invent a protocol name, reagent, "
@@ -158,16 +157,16 @@ def _canon_unit(unit: str) -> str:
 
 
 def _parse_add_inventory(body: str) -> Command:
-    """Pull reagent_name/amount/unit/location/expiration out of the phrase between
-    'add' and 'to the inventory'. Name is required; anything not said stays null
-    (the handler fills TBD / N/A). Never guesses a value that was not spoken."""
+    """Pull reagent_name/amount/unit/location out of the phrase between 'add' and
+    'to the inventory'. Name is required; anything not said stays null (the handler
+    fills TBD). Never guesses a value that was not spoken."""
     text = body.strip().rstrip(".")
-    amount = unit = location = expiration = None
+    amount = unit = location = None
 
-    # Expiration first, so its trailing date isn't captured as the location.
+    # Strip any "expires ..." phrase first so its trailing date isn't captured as
+    # the location. Expiration is no longer parsed or stored, so the value is dropped.
     m = re.search(r"\b(?:that\s+)?(?:expir\w*|exp)\b\s*(?:on|date|in|:)?\s*(.+)$", text, flags=re.IGNORECASE)
     if m:
-        expiration = m.group(1).strip().rstrip(".") or None
         text = text[: m.start()].strip()
 
     # Location: "on shelf 4", "in Fridge 1", "at bench 3".
@@ -199,7 +198,6 @@ def _parse_add_inventory(body: str) -> Command:
         amount=amount,
         unit=unit,
         location=location,
-        expiration=expiration,
     )
 
 
