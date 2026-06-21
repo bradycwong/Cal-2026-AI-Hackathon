@@ -58,10 +58,11 @@ Type each into the command box at the bottom:
 Clarification path (never fails silently): `Load a protocol.` → clarification
 area asks "Which protocol?" (listing the loaded protocols) instead of guessing.
 
-**Auto-timers.** Steps that declare a `duration_s` start their countdown
-automatically when they become the current step (on load or "what's next"),
-labelled from the step's `timer_label`. You can still start ad-hoc timers by
-voice/typing. Disable with `LAB_AUTO_TIMERS=false`.
+**Manual timers.** Steps that declare a `duration_s` do **not** start their
+countdown automatically. When you reach a timed step, say (or type) **"start
+timer"** to begin its countdown, labelled from the step's `timer_label`. You can
+still start ad-hoc timers with a spoken duration ("start a 10-minute timer").
+Opt back into auto-start on step change with `LAB_AUTO_TIMERS=true`.
 
 **Protocols.** Four ship in `backend/data/protocols/` (DNA Extraction, PCR Setup,
 Bacterial Transformation, Plasmid Miniprep). Add another by dropping a YAML file
