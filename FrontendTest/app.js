@@ -283,6 +283,75 @@
       .join("");
   }
 
+  // --- notebooks (multi-notebook log) ---------------------------------------
+  async function fetchNotebooks() {
+    return await getJSON("/api/notebooks");
+  }
+  function renderNotebooks(data) {
+    const nbs = (data && data.notebooks) || [];
+    const title = $("notebook-title");
+    if (title) {
+      const active = nbs.find((n) => n.active);
+      title.textContent = active ? active.name : "Notebook";
+    }
+    const host = $("notebook-list");
+    if (!host) return;
+    host.innerHTML = nbs
+      .map((n) => {
+        const count = `${n.entry_count} ${n.entry_count === 1 ? "entry" : "entries"}`;
+        return `<button type="button" data-nb-id="${n.id}" class="nb-item w-full text-left px-4 py-3 rounded-xl border transition-colors flex items-center justify-between gap-3 ${
+          n.active
+            ? "border-primary bg-primary/10"
+            : "border-outline-variant hover:bg-surface-variant"
+        }">
+        <span class="flex items-center gap-3 min-w-0">
+          <span class="material-symbols-outlined ${
+            n.active ? "text-primary" : "text-on-surface-variant"
+          }">${n.active ? "menu_book" : "book"}</span>
+          <span class="truncate font-medium text-on-surface">${escapeHtml(n.name)}</span>
+        </span>
+        <span class="text-xs font-data-label text-on-surface-variant shrink-0">${count}</span>
+      </button>`;
+      })
+      .join("");
+    host.querySelectorAll(".nb-item").forEach((b) =>
+      b.addEventListener("click", () => selectNotebook(b.getAttribute("data-nb-id")))
+    );
+  }
+  async function refreshNotebookFeed() {
+    if ($("notebook-list") || $("notebook-title")) renderNotebooks(await fetchNotebooks());
+    if ($("log-rows")) {
+      logCache = await fetchLog();
+      renderLog(logCache);
+    }
+  }
+  async function createNotebook(name) {
+    await fetch(API + "/api/notebooks", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    await refreshNotebookFeed();
+  }
+  async function selectNotebook(id) {
+    await fetch(API + "/api/notebooks/" + id + "/select", { method: "POST" });
+    await refreshNotebookFeed();
+  }
+  function refreshNotebookCounts() {
+    // A new/removed log entry changes the active notebook's count; keep the
+    // list in sync without disturbing the feed.
+    if ($("notebook-list")) fetchNotebooks().then(renderNotebooks).catch(() => {});
+  }
+  function wireNotebookNew() {
+    const btn = $("notebook-new");
+    if (!btn || btn.dataset.wired) return;
+    btn.dataset.wired = "1";
+    btn.addEventListener("click", () => {
+      const name = window.prompt("Name your new notebook:");
+      if (name && name.trim()) createNotebook(name.trim());
+    });
+  }
+
   function renderStep(step) {
     if (!step) return;
     const cur = $("step-current");
@@ -475,10 +544,12 @@
     if (i >= 0) logCache[i] = entry;
     else logCache.push(entry);
     renderLog(logCache);
+    refreshNotebookCounts();
   }
   function applyLogRemoved(id) {
     logCache = logCache.filter((e) => e.id !== id);
     renderLog(logCache);
+    refreshNotebookCounts();
   }
   function applyLogUpdate(p) {
     const e = logCache.find((x) => x.id === p.id);
@@ -528,6 +599,15 @@
         return onTimerRemoved(p.timer_id);
       case "protocol_imported":
         return refreshProtocols();
+      case "notebook_list":
+        renderNotebooks(p);
+        if ($("log-rows")) {
+          fetchLog().then((l) => {
+            logCache = l;
+            renderLog(logCache);
+          });
+        }
+        return;
       case "reset":
         clearTransientState({ notesCleared: p.notes_cleared });
         return hydrate();
@@ -757,6 +837,12 @@
       if ($("log-rows")) {
         logCache = await fetchLog();
         renderLog(logCache);
+      }
+    } catch (_) {}
+    try {
+      if ($("notebook-list") || $("notebook-title")) {
+        renderNotebooks(await fetchNotebooks());
+        wireNotebookNew();
       }
     } catch (_) {}
     try {

@@ -17,7 +17,7 @@ from typing import Any, Optional
 
 import yaml
 
-from .db import NoteStore
+from .db import _DEFAULT_NOTEBOOK_NAME, NoteStore
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -228,6 +228,20 @@ class SessionState:
         self._log_seq = 0
         self._timer_seq = 0
         self.notes = NoteStore(db_path) if db_path else None
+        # Multi-notebook log. DB-backed: the NoteStore owns notebooks + the
+        # active pointer. In-memory (tests): mirror that with plain dicts/lists,
+        # and ``self.log`` always *is* the active notebook's list.
+        self.active_notebook_id: int = 0
+        self._notebooks: list[dict[str, Any]] = []          # in-memory only
+        self._notebook_notes: dict[int, list[dict[str, Any]]] = {}  # in-memory only
+        self._notebook_seq = 0
+        if self.notes is not None:
+            self.active_notebook_id = int(self.notes.get_active_notebook_id())
+            self.log = self.notes.all_notes(self.active_notebook_id)
+        else:
+            default = self._create_notebook_inmem(_DEFAULT_NOTEBOOK_NAME)
+            self.active_notebook_id = default["id"]
+            self.log = self._notebook_notes[default["id"]]
 
     def load_files(self) -> None:
         proto_dir = self.data_dir / "protocols"
@@ -238,8 +252,10 @@ class SessionState:
         if inv_path.exists():
             self.inventory = load_inventory_file(inv_path)
         if self.notes is not None:
-            self.log = self.notes.all_notes()
-            self._log_seq = self.log[-1]["id"] if self.log else 0
+            self.active_notebook_id = int(self.notes.get_active_notebook_id())
+            self.log = self.notes.all_notes(self.active_notebook_id)
+            last = self.notes.all_notes()  # global max id keeps ids monotonic
+            self._log_seq = last[-1]["id"] if last else 0
 
     # --- snapshot helpers (read-only views for the REST endpoints) ---------
     def protocol_catalog(self) -> list[dict[str, Any]]:
@@ -380,6 +396,55 @@ class SessionState:
             return self.active_protocol.steps[index]
         return None
 
+    # --- notebooks ---------------------------------------------------------
+    def _create_notebook_inmem(self, name: str) -> dict[str, Any]:
+        self._notebook_seq += 1
+        nb = {"id": self._notebook_seq, "name": name, "created_at": utc_now_iso()}
+        self._notebooks.append(nb)
+        self._notebook_notes[nb["id"]] = []
+        return nb
+
+    def _notebook_id_set(self) -> set[int]:
+        if self.notes is not None:
+            return self.notes.notebook_ids()
+        return {nb["id"] for nb in self._notebooks}
+
+    def notebooks_view(self) -> list[dict[str, Any]]:
+        """Read-only list of notebooks (with entry counts + active flag)."""
+        if self.notes is not None:
+            nbs = self.notes.list_notebooks()
+        else:
+            nbs = [
+                {**nb, "entry_count": len(self._notebook_notes[nb["id"]])}
+                for nb in self._notebooks
+            ]
+        for nb in nbs:
+            nb["active"] = nb["id"] == self.active_notebook_id
+        return nbs
+
+    def create_notebook(self, name: str) -> dict[str, Any]:
+        """Create a notebook and make it active (so new logs land in it)."""
+        name = (name or "").strip() or "Untitled Notebook"
+        if self.notes is not None:
+            nb = self.notes.create_notebook(name)
+        else:
+            nb = self._create_notebook_inmem(name)
+        self.select_notebook(nb["id"])
+        return nb
+
+    def select_notebook(self, notebook_id: int) -> bool:
+        """Switch the active notebook; the log feed follows it. False if unknown."""
+        notebook_id = int(notebook_id)
+        if notebook_id not in self._notebook_id_set():
+            return False
+        self.active_notebook_id = notebook_id
+        if self.notes is not None:
+            self.notes.set_active_notebook(notebook_id)
+            self.log = self.notes.all_notes(notebook_id)
+        else:
+            self.log = self._notebook_notes[notebook_id]
+        return True
+
     # --- log ---------------------------------------------------------------
     def append_log(
         self,
@@ -392,7 +457,10 @@ class SessionState:
         timestamp = utc_now_iso()
         step_ref = step.id if step else None
         if self.notes is not None:
-            entry = self.notes.add_note(text, timestamp, sample_id, step_ref, category, flag)
+            entry = self.notes.add_note(
+                text, timestamp, sample_id, step_ref, category, flag,
+                notebook_id=self.active_notebook_id,
+            )
             self._log_seq = entry["id"]
         else:
             self._log_seq += 1
@@ -476,8 +544,13 @@ class SessionState:
         self._timer_seq = 0
 
     def clear_log(self) -> None:
-        """Wipe the lab notes in memory and on disk (LAB_DEMO_MODE only)."""
-        self.log = []
+        """Wipe the lab notes for every notebook, in memory and on disk
+        (LAB_DEMO_MODE only)."""
         self._log_seq = 0
         if self.notes is not None:
             self.notes.clear_all()
+            self.log = self.notes.all_notes(self.active_notebook_id)
+        else:
+            for notes in self._notebook_notes.values():
+                notes.clear()
+            self.log = self._notebook_notes[self.active_notebook_id]

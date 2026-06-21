@@ -174,6 +174,14 @@ def reset_event(notes_cleared: bool) -> dict[str, Any]:
     return command_result("reset", notes_cleared=notes_cleared)
 
 
+def notebook_list_event(
+    notebooks: list[dict[str, Any]], active_id: int
+) -> dict[str, Any]:
+    """Notebooks changed (created/selected): clients refresh the list + active
+    feed. Additive ``kind`` on the locked command_result envelope."""
+    return command_result("notebook_list", notebooks=notebooks, active_id=active_id)
+
+
 def timer_update_event(
     timer_id: str, label: str, remaining_s: int, expired: bool, paused: bool = False
 ) -> dict[str, Any]:
