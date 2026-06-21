@@ -48,7 +48,7 @@ No API key? The router automatically uses a **deterministic fallback** that
 covers the five demo lines, so the typed demo always works. Set
 `ANTHROPIC_API_KEY` (and keep `ROUTER_MODE=auto`) to route via Claude.
 
-## The 5 typed demo lines
+## Demo
 
 Type these into the command box at the bottom:
 
