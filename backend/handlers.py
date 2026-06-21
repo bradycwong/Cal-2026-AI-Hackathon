@@ -18,6 +18,8 @@ from .schema import (
     clarify_event,
     inventory_result_event,
     log_entry_event,
+    log_removed_event,
+    log_update_event,
     step_change_event,
     timer_update_event,
 )
@@ -100,6 +102,22 @@ def _handle_log_entry(cmd: Command, state: SessionState) -> list[dict[str, Any]]
     return [log_entry_event(**entry)]
 
 
+def _handle_undo_log(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    entry = state.pop_log()
+    if entry is None:
+        return [clarify_event("There's nothing to undo.")]
+    return [log_removed_event(int(entry["id"]))]
+
+
+def _handle_correct_log(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    if not cmd.log_text:
+        return [clarify_event("What should I change the last note to?")]
+    entry = state.update_last_log(cmd.log_text)
+    if entry is None:
+        return [clarify_event("There's nothing to correct.")]
+    return [log_update_event(int(entry["id"]), str(entry["text"]))]
+
+
 def _handle_start_timer(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
     duration_s = cmd.duration_s
     label = cmd.timer_label
@@ -145,6 +163,8 @@ _DISPATCH = {
     "prev_step": _handle_prev_step,
     "repeat_step": _handle_repeat_step,
     "log_entry": _handle_log_entry,
+    "undo_log": _handle_undo_log,
+    "correct_log": _handle_correct_log,
     "start_timer": _handle_start_timer,
     "find_inventory": _handle_find_inventory,
     "unknown": _handle_unknown,

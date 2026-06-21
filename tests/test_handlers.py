@@ -242,3 +242,53 @@ def test_prev_onto_timed_step_does_not_start_duplicate_timer(monkeypatch):
     assert events[0]["payload"]["current_step"]["id"] == 2
     assert all(e["type"] != "timer_update" for e in events)
     assert len(state.timers) == timer_count
+
+
+def test_undo_log_removes_last_entry():
+    state = fresh_state()
+    handle_command(Command(intent="log_entry", log_text="first", sample_id=None), state)
+    entry_id = state.log[-1]["id"]
+
+    events = handle_command(Command(intent="undo_log"), state)
+
+    assert state.log == []
+    assert events[0]["payload"] == {"kind": "log_removed", "id": entry_id}
+
+
+def test_undo_log_on_empty_log_clarifies():
+    state = fresh_state()
+
+    events = handle_command(Command(intent="undo_log"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert "nothing to undo" in events[0]["payload"]["message"].lower()
+
+
+def test_correct_log_updates_last_entry():
+    state = fresh_state()
+    handle_command(Command(intent="log_entry", log_text="original", sample_id="A"), state)
+    entry_id = state.log[-1]["id"]
+
+    events = handle_command(Command(intent="correct_log", log_text="corrected"), state)
+
+    assert state.log[-1]["text"] == "corrected"
+    assert events[0]["payload"] == {"kind": "log_update", "id": entry_id, "text": "corrected"}
+
+
+def test_correct_log_without_replacement_clarifies():
+    state = fresh_state()
+    handle_command(Command(intent="log_entry", log_text="original", sample_id=None), state)
+
+    events = handle_command(Command(intent="correct_log"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert "change the last note" in events[0]["payload"]["message"].lower()
+
+
+def test_correct_log_on_empty_log_clarifies():
+    state = fresh_state()
+
+    events = handle_command(Command(intent="correct_log", log_text="replacement"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert "nothing to correct" in events[0]["payload"]["message"].lower()

@@ -64,7 +64,8 @@ def make_event(type: EventType, payload: dict[str, Any]) -> dict[str, Any]:
 
 
 # --- command_result kinds ---------------------------------------------------
-# kind in { step_change, log_entry, inventory_result, clarify, voice_state }
+# kind in { step_change, log_entry, log_removed, log_update, inventory_result,
+#           clarify, voice_state, ask_result }
 
 
 def command_result(kind: str, **fields: Any) -> dict[str, Any]:
@@ -99,6 +100,14 @@ def log_entry_event(
         sample_id=sample_id,
         step_ref=step_ref,
     )
+
+
+def log_removed_event(id: int) -> dict[str, Any]:
+    return command_result("log_removed", id=id)
+
+
+def log_update_event(id: int, text: str) -> dict[str, Any]:
+    return command_result("log_update", id=id, text=text)
 
 
 def inventory_result_event(
