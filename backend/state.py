@@ -8,7 +8,6 @@ feed survives refresh/restart. With ``db_path=None`` (tests) it's pure in-memory
 
 from __future__ import annotations
 
-import csv
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -18,6 +17,7 @@ from typing import Any, Optional
 import yaml
 
 from .db import _DEFAULT_NOTEBOOK_NAME, NoteStore
+from .inventory import InventoryItem, InventoryStore
 
 DATA_DIR = Path(__file__).parent / "data"
 
@@ -47,26 +47,7 @@ class Protocol:
     reagents: list[str] = field(default_factory=list)
 
 
-@dataclass
-class InventoryItem:
-    name: str
-    location: str
-    quantity_approx: str
-    # In-memory stable identity for edit/delete; assigned per session, NOT
-    # persisted to the CSV (the UI always re-fetches fresh ids on hydrate).
-    id: int = 0
-    notes: str = ""
-    code: str = ""
-    category: str = "General"
-    date: str = ""
-    expiration: str = ""
-    amount: str = ""
-    unit: str = ""
-    status: str = "ok"
-
-
 _PROTOCOL_STATUSES = {"READY", "LOW_REAGENTS", "ARCHIVED"}
-_INVENTORY_STATUSES = {"ok", "low", "critical", "expiring"}
 
 
 def _duration_label(seconds: int) -> str:
@@ -193,95 +174,19 @@ def load_protocol_file(path: Path) -> Protocol:
     return parse_protocol_text(path.read_text(encoding="utf-8"))
 
 
-def load_inventory_file(path: Path) -> list[InventoryItem]:
-    items: list[InventoryItem] = []
-    with path.open(newline="", encoding="utf-8") as fh:
-        for row in csv.DictReader(fh):
-            status = (row.get("status") or "ok").strip().lower()
-            if status not in _INVENTORY_STATUSES:
-                status = "ok"
-            items.append(
-                InventoryItem(
-                    name=row["name"].strip(),
-                    location=row.get("location", "").strip(),
-                    quantity_approx=row.get("quantity_approx", "").strip(),
-                    notes=row.get("notes", "").strip(),
-                    code=(row.get("code") or "").strip(),
-                    category=(row.get("category") or "General").strip() or "General",
-                    date=(row.get("date") or "").strip(),
-                    expiration=(row.get("expiration") or "").strip(),
-                    status=status,
-                    amount=(row.get("amount") or "").strip(),
-                    unit=(row.get("unit") or "").strip(),
-                )
-            )
-    return items
-
-
-_INVENTORY_COLUMNS = [
-    "name", "amount", "unit", "location", "quantity_approx", "notes", "code",
-    "category", "date", "expiration", "status",
-]
-
-
-def _quantity_from_parts(quantity_approx: str, amount: str, unit: str) -> str:
-    quantity = quantity_approx.strip()
-    if quantity:
-        return quantity
-    amount = amount.strip()
-    unit = unit.strip()
-    if amount and unit:
-        return f"{amount} {unit}"
-    return amount
-
-
-def _inventory_row(item: InventoryItem) -> list[str]:
-    """One CSV row for an item, in ``_INVENTORY_COLUMNS`` order."""
-    return [
-        item.name,
-        item.amount,
-        item.unit,
-        item.location,
-        item.quantity_approx,
-        item.notes,
-        item.code,
-        item.category,
-        item.date,
-        item.expiration,
-        item.status,
-    ]
-
-
-def _inventory_file_has_current_columns(path: Path) -> bool:
-    if not path.exists() or path.stat().st_size == 0:
-        return True
-    with path.open(newline="", encoding="utf-8") as fh:
-        reader = csv.reader(fh)
-        return next(reader, []) == _INVENTORY_COLUMNS
-
-
-def _write_inventory_file(path: Path, items: list[InventoryItem]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.writer(fh)
-        writer.writerow(_INVENTORY_COLUMNS)
-        writer.writerows(_inventory_row(item) for item in items)
-
-
 class SessionState:
     """Singleton-per-session state. One protocol loaded at a time (v1)."""
 
     def __init__(self, data_dir: Path = DATA_DIR, db_path: Optional[str] = None) -> None:
         self.data_dir = data_dir
         self.protocols: dict[str, Protocol] = {}
-        self.inventory: list[InventoryItem] = []
+        self._inventory = InventoryStore(data_dir)
         self.active_protocol: Optional[Protocol] = None
         self.current_step_index: int = -1
         self.log: list[dict[str, Any]] = []
         self.timers: list[Timer] = []
         self._log_seq = 0
         self._timer_seq = 0
-        self._inventory_seq = 0
         self.notes = NoteStore(db_path) if db_path else None
         # Multi-notebook log. DB-backed: the NoteStore owns notebooks + the
         # active pointer. In-memory (tests): mirror that with plain dicts/lists,
@@ -298,16 +203,18 @@ class SessionState:
             self.active_notebook_id = default["id"]
             self.log = self._notebook_notes[default["id"]]
 
+    @property
+    def inventory(self) -> list[InventoryItem]:
+        """Reagent list, owned by the InventoryStore. Read-only view kept so
+        handlers/tests can still iterate ``state.inventory`` directly."""
+        return self._inventory.items
+
     def load_files(self) -> None:
         proto_dir = self.data_dir / "protocols"
         for path in sorted(proto_dir.glob("*.yaml")):
             proto = load_protocol_file(path)
             self.protocols[proto.id] = proto
-        inv_path = self.data_dir / "inventory.csv"
-        if inv_path.exists():
-            self.inventory = load_inventory_file(inv_path)
-            for item in self.inventory:
-                item.id = self._next_inventory_id()
+        self._inventory.load()
         if self.notes is not None:
             self.active_notebook_id = int(self.notes.get_active_notebook_id())
             self.log = self.notes.all_notes(self.active_notebook_id)
@@ -344,35 +251,7 @@ class SessionState:
 
     def inventory_view(self) -> list[dict[str, Any]]:
         """Read-only view of inventory for ``GET /api/inventory``."""
-        return [
-            {
-                "id": item.id,
-                "name": item.name,
-                "code": item.code,
-                "location": item.location,
-                "category": item.category,
-                "quantity_approx": item.quantity_approx,
-                "amount": item.amount,
-                "unit": item.unit,
-                "date": item.date,
-                "expiration": item.expiration,
-                "status": item.status,
-                "notes": item.notes,
-            }
-            for item in self.inventory
-        ]
-
-    def _next_inventory_id(self) -> int:
-        """Monotonic per-session id so edit/delete target an item by identity
-        rather than list position (positions shift as items are added/removed)."""
-        self._inventory_seq += 1
-        return self._inventory_seq
-
-    def _inventory_index_by_id(self, item_id: int) -> int:
-        for i, item in enumerate(self.inventory):
-            if item.id == item_id:
-                return i
-        raise IndexError(f"no inventory item with id {item_id}")
+        return self._inventory.view()
 
     # --- mutating writers (upload protocol / add inventory item) -----------
     def add_inventory_item(
@@ -389,56 +268,20 @@ class SessionState:
         amount: str = "",
         unit: str = "",
     ) -> InventoryItem:
-        """Append a manually-entered item to memory and persist it to the CSV.
-
-        The CSV is the file-driven inventory store; appending here mirrors how
-        ``load_inventory_file`` reads it back, so the item survives a restart.
-        """
-        name = name.strip()
-        if not name:
-            raise ValueError("inventory item requires a name")
-        status = (status or "ok").strip().lower()
-        if status not in _INVENTORY_STATUSES:
-            status = "ok"
-        amount = amount.strip()
-        unit = unit.strip()
-        item = InventoryItem(
-            name=name,
-            location=location.strip(),
-            quantity_approx=_quantity_from_parts(quantity_approx, amount, unit),
-            notes=notes.strip(),
-            code=code.strip(),
-            category=(category or "General").strip() or "General",
-            date=date.strip(),
-            expiration=expiration.strip(),
-            status=status,
-            amount=amount,
-            unit=unit,
+        """Add a reagent (delegates to the InventoryStore)."""
+        return self._inventory.add(
+            name,
+            location,
+            quantity_approx,
+            notes,
+            code,
+            category,
+            date,
+            expiration,
+            status,
+            amount,
+            unit,
         )
-        item.id = self._next_inventory_id()
-        self.inventory.append(item)
-        inv_path = self.data_dir / "inventory.csv"
-        if not _inventory_file_has_current_columns(inv_path):
-            _write_inventory_file(inv_path, self.inventory)
-            return item
-        write_header = not inv_path.exists() or inv_path.stat().st_size == 0
-        inv_path.parent.mkdir(parents=True, exist_ok=True)
-        with inv_path.open("a", newline="", encoding="utf-8") as fh:
-            writer = csv.writer(fh)
-            if write_header:
-                writer.writerow(_INVENTORY_COLUMNS)
-            writer.writerow(_inventory_row(item))
-        return item
-
-    def _write_inventory(self) -> None:
-        """Rewrite the whole inventory CSV from memory (used by edit/delete)."""
-        inv_path = self.data_dir / "inventory.csv"
-        inv_path.parent.mkdir(parents=True, exist_ok=True)
-        with inv_path.open("w", newline="", encoding="utf-8") as fh:
-            writer = csv.writer(fh)
-            writer.writerow(_INVENTORY_COLUMNS)
-            for it in self.inventory:
-                writer.writerow(_inventory_row(it))
 
     def update_inventory_item(
         self,
@@ -450,38 +293,20 @@ class SessionState:
         date: Optional[str] = None,
         expiration: Optional[str] = None,
     ) -> InventoryItem:
-        """Edit fields of the item with ``item_id`` and persist the whole CSV.
-
-        Keyed by stable id (not list position), so a concurrent add/delete that
-        reorders the list can't make an edit land on the wrong row. Only
-        non-None fields are changed, so partial updates are safe.
-        """
-        item = self.inventory[self._inventory_index_by_id(item_id)]
-        if name is not None:
-            new_name = name.strip()
-            if not new_name:
-                raise ValueError("inventory item requires a name")
-            item.name = new_name
-        if location is not None:
-            item.location = location.strip()
-        if amount is not None:
-            item.amount = str(amount).strip()
-        if unit is not None:
-            item.unit = str(unit).strip()
-        if amount is not None or unit is not None:
-            item.quantity_approx = _quantity_from_parts("", item.amount, item.unit)
-        if date is not None:
-            item.date = date.strip()
-        if expiration is not None:
-            item.expiration = expiration.strip()
-        self._write_inventory()
-        return item
+        """Edit an item by stable id (delegates to the InventoryStore)."""
+        return self._inventory.update(
+            item_id,
+            name=name,
+            location=location,
+            amount=amount,
+            unit=unit,
+            date=date,
+            expiration=expiration,
+        )
 
     def delete_inventory_item(self, item_id: int) -> InventoryItem:
-        """Remove the item with ``item_id`` (by stable id) and persist the CSV."""
-        removed = self.inventory.pop(self._inventory_index_by_id(item_id))
-        self._write_inventory()
-        return removed
+        """Delete an item by stable id (delegates to the InventoryStore)."""
+        return self._inventory.delete(item_id)
 
     def add_protocol_from_text(self, text: str) -> Protocol:
         """Validate an uploaded protocol document, register it, and persist it.
