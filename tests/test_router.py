@@ -56,6 +56,29 @@ def test_start_timer_seconds():
     assert cmd.duration_s == 30
 
 
+def test_start_timer_compound_durations():
+    # Minutes + seconds in one utterance must sum, not truncate to the first part.
+    cases = {
+        "Start a 1 minute 30 timer.": 90,
+        "Set a timer for a minute 30.": 90,
+        "Start a one minute thirty second timer.": 90,
+        "Start a 1 minute 30 second timer.": 90,
+        "Set a timer for 1:30.": 90,
+        "Start a 90 second timer.": 90,
+        "Start a 1.5 minute timer.": 90,
+        "Set a timer for two and a half minutes.": 150,
+        "Start a timer for a minute and a half.": 90,
+        "Set a timer for half a minute.": 30,
+        "Start a half hour timer.": 1800,
+        "Set a timer for an hour and a half.": 5400,
+        "Start a twenty five minute timer.": 1500,
+    }
+    for phrase, expected in cases.items():
+        cmd = route(phrase)
+        assert cmd.intent == "start_timer", phrase
+        assert cmd.duration_s == expected, (phrase, cmd.duration_s)
+
+
 def test_start_timer_no_duration_defers_to_handler():
     # Bare "start timer" carries no duration so the handler can use the step's.
     cmd = route("Start timer")

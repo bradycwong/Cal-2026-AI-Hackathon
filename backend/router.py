@@ -42,6 +42,12 @@ SYSTEM_PROMPT = (
     "(advances WITHOUT marking the step done). "
     "Map 'stop timer', 'cancel the timer', 'stop the alarm', or 'stop beeping' "
     "to stop_timer. "
+    "For start_timer, set duration_s to the TOTAL number of seconds in the "
+    "spoken duration, summing every part. Examples: '5 minutes' -> 300; "
+    "'30 seconds' -> 30; 'a minute' -> 60; 'a minute 30' / 'one minute thirty "
+    "seconds' / '1:30' -> 90; 'two and a half minutes' -> 150; 'half an hour' "
+    "-> 1800; 'an hour and a half' -> 5400. If no duration is spoken, leave "
+    "duration_s null so the current step's declared time is used. "
     "Map 'go back' or 'previous step' to prev_step. "
     "Map 'repeat that', 'say that again', or 'what step am I on' to repeat_step. "
     "Map 'scratch that', 'delete that', or 'undo the last note' to undo_log. "
@@ -97,33 +103,176 @@ def normalize_ascii(text: str) -> str:
 
 # --- deterministic fallback (the five demo lines + obvious variants) --------
 
-_NUM_WORDS = {
-    "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
-    "eight": 8, "nine": 9, "ten": 10, "fifteen": 15, "twenty": 20, "thirty": 30,
-    "forty": 40, "forty-five": 45, "sixty": 60,
+# Spelled-out numbers for the duration parser (covers 0-99 via tens + ones).
+_ONES = {
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
+    "seven": 7, "eight": 8, "nine": 9,
+}
+_TEENS = {
+    "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+    "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
+}
+_TENS = {
+    "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60,
+    "seventy": 70, "eighty": 80, "ninety": 90,
 }
 
+# Duration units -> seconds. Listed longest-first in the regex so "minutes"
+# wins over "min", etc.
+_DURATION_UNITS = {
+    "hours": 3600, "hour": 3600, "hrs": 3600, "hr": 3600,
+    "minutes": 60, "minute": 60, "mins": 60, "min": 60,
+    "seconds": 1, "second": 1, "secs": 1, "sec": 1,
+}
+_UNIT_RE = (
+    r"hours?|hrs?|minutes?|mins?|seconds?|secs?"
+)
 
-def _to_int(token: str) -> Optional[int]:
-    token = token.strip().lower()
-    if token.isdigit():
-        return int(token)
-    return _NUM_WORDS.get(token)
+
+def _unit_seconds(unit: str) -> int:
+    return _DURATION_UNITS[unit.lower()]
 
 
-def _parse_duration(text: str) -> Optional[int]:
-    m = re.search(
-        r"(\d+|[a-z\-]+)\s*[- ]?\s*(minute|minutes|min|second|seconds|sec)\b",
+def _num_token(token: str) -> Optional[float]:
+    """A single digit/spelled number token -> float, else None."""
+    t = token.strip(",.").lower()
+    if re.fullmatch(r"\d+(?:\.\d+)?", t):
+        return float(t)
+    if t in _ONES:
+        return float(_ONES[t])
+    if t in _TEENS:
+        return float(_TEENS[t])
+    if t in _TENS:
+        return float(_TENS[t])
+    return None
+
+
+def _expand_halves(text: str) -> str:
+    """Rewrite "half" phrases into explicit numeric amounts.
+
+    Runs BEFORE number-word/"a"->1 substitution so it can see the original
+    wording: "two and a half minutes" -> "2.5 minutes", "a minute and a half" ->
+    "a minute 30 seconds", "half an hour" -> "0.5 hour".
+    """
+    def _and_a_half_num(m: re.Match) -> str:
+        n = _num_token(m.group(1))
+        if n is None:
+            return m.group(0)
+        return f"{n + 0.5:g} {m.group(2)}"
+
+    def _and_a_half_unit(m: re.Match) -> str:
+        secs = _unit_seconds(m.group(1))
+        if secs == 3600:
+            return f"{m.group(1)} 30 minutes"
+        if secs == 60:
+            return f"{m.group(1)} 30 seconds"
+        return f"{m.group(1)} 0.5 seconds"
+
+    # "<n> and a half <unit>" -> "<n.5> <unit>".
+    text = re.sub(
+        rf"\b([\w.]+)\s+and\s+(?:a\s+)?half\s+({_UNIT_RE})\b",
+        _and_a_half_num,
         text,
         flags=re.IGNORECASE,
     )
-    if not m:
+    # "<unit> and a half" -> "<unit> <half-of-unit>".
+    text = re.sub(
+        rf"\b({_UNIT_RE})\s+and\s+(?:a\s+)?half\b",
+        _and_a_half_unit,
+        text,
+        flags=re.IGNORECASE,
+    )
+    # "half a(n) <unit>" / "half <unit>" -> "0.5 <unit>".
+    text = re.sub(
+        rf"\bhalf\s+(?:an?\s+)?({_UNIT_RE})\b",
+        r"0.5 \1",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return text
+
+
+def _replace_number_words(text: str) -> str:
+    """Turn spelled-out numbers into digits so the scanner only sees digits.
+
+    Handles compound tens ("twenty five" -> "25") and treats "a"/"an" before a
+    duration unit as 1 ("a minute" -> "1 minute"). Non-number tokens pass
+    through untouched.
+    """
+    words = text.split()
+    out: list[str] = []
+    i = 0
+    while i < len(words):
+        raw = words[i]
+        w = raw.strip(",.").lower()
+        nxt = words[i + 1].strip(",.").lower() if i + 1 < len(words) else ""
+        if w in _TENS:
+            val = _TENS[w]
+            if nxt in _ONES and _ONES[nxt] != 0:
+                val += _ONES[nxt]
+                i += 1
+            out.append(str(val))
+        elif w in _TEENS:
+            out.append(str(_TEENS[w]))
+        elif w in _ONES:
+            out.append(str(_ONES[w]))
+        elif w in {"a", "an"} and re.fullmatch(_UNIT_RE, nxt):
+            out.append("1")
+        else:
+            out.append(raw)
+        i += 1
+    return " ".join(out)
+
+
+def _parse_duration(text: str) -> Optional[int]:
+    """Parse an arbitrary spoken/typed duration into whole seconds.
+
+    Supports compound durations ("1 minute 30 seconds", "a minute thirty",
+    "two and a half minutes"), clock notation ("1:30", "1:05:00"), fractions
+    ("1.5 minutes", "half a minute") and bare trailing seconds after a minute
+    ("a minute 30"). Returns None when no duration is present.
+    """
+    t = text.lower().strip()
+
+    # Clock notation: mm:ss or hh:mm:ss.
+    m = re.search(r"(?<!\d)(\d{1,3}):([0-5]?\d)(?::([0-5]?\d))?(?!\d)", t)
+    if m:
+        nums = [int(g) for g in m.groups() if g is not None]
+        if len(nums) == 3:
+            total = nums[0] * 3600 + nums[1] * 60 + nums[2]
+        else:
+            total = nums[0] * 60 + nums[1]
+        return total or None
+
+    t = _expand_halves(t)
+    t = _replace_number_words(t)
+
+    pat = re.compile(rf"(\d+(?:\.\d+)?)[\s-]*({_UNIT_RE})\b")
+    total = 0.0
+    found = False
+    last_unit: Optional[str] = None
+    last_end = 0
+    for mm in pat.finditer(t):
+        total += float(mm.group(1)) * _unit_seconds(mm.group(2))
+        found = True
+        last_unit = mm.group(2)
+        last_end = mm.end()
+
+    if not found:
         return None
-    n = _to_int(m.group(1))
-    if n is None:
-        return None
-    unit = m.group(2).lower()
-    return n * 60 if unit.startswith("min") else n
+
+    # Bare trailing number after the last unit names the next-smaller unit:
+    # "1 minute 30" -> 30 seconds, "1 hour 30" -> 30 minutes.
+    if last_unit is not None and _unit_seconds(last_unit) >= 60:
+        tail = re.match(
+            rf"\s+(?:and\s+)?(\d+(?:\.\d+)?)\b(?!\s*-?\s*(?:{_UNIT_RE}))",
+            t[last_end:],
+        )
+        if tail:
+            sub = 1 if _unit_seconds(last_unit) == 60 else 60
+            total += float(tail.group(1)) * sub
+
+    return int(round(total)) or None
 
 
 def _parse_sample_id(text: str) -> Optional[str]:
@@ -133,7 +282,10 @@ def _parse_sample_id(text: str) -> Optional[str]:
 
 def _parse_timer_label(text: str) -> str:
     m = re.search(r"\b(?:a|an)?\s*([A-Za-z]+)\s+timer\b", text, flags=re.IGNORECASE)
-    if m and m.group(1).lower() not in {"minute", "second", "the", "new", "start", "stop"}:
+    if m and m.group(1).lower() not in {
+        "a", "an", "the", "for", "minute", "minutes", "second", "seconds",
+        "hour", "hours", "half", "new", "start", "set", "stop", "another",
+    }:
         return m.group(1).lower()
     return "timer"
 
