@@ -1,16 +1,18 @@
 name,amount,unit,location,quantity_approx,notes,code,category,date,status
 Proteinase K,2,uL,Freezer 2 shelf B,2 uL,10 mg/mL aliquots,PRK-2001-A,Enzyme,2024-02-10,low
-Ethanol 70%,1000,mL,Cabinet 3,2 bottles,,ETH-3003-C,Solvent,2024-03-01,ok
+Ethanol 70%,997.6,mL,Cabinet 3,997.6 mL,,ETH-3003-C,Solvent,2024-03-01,ok
 EDTA,50,mL,Fridge 1 shelf B,~50 mL,see also: Ethylenediaminetetraacetic acid,EDT-1004-B,Buffer,2024-01-20,ok
-Nuclease-free water,500,mL,Fridge 1 shelf C,~500 mL,,NFW-1005-C,Molecular Reagent,2024-02-01,ok
+Nuclease-free water,499.4,mL,Fridge 1 shelf C,499.4 mL,,NFW-1005-C,Molecular Reagent,2024-02-01,ok
 2X master mix,1.5,mL,Freezer 1 shelf A,~30 reactions,Taq polymerase mix for PCR,MMX-1006-A,Enzyme,2024-02-15,ok
 Forward primer,100,µL,Freezer 2 shelf A,~20 µM stock,store at -20 C,FWP-2007-A,Oligo,2024-03-05,ok
 Reverse primer,100,µL,Freezer 2 shelf A,~20 µM stock,store at -20 C,RVP-2008-A,Oligo,2024-03-05,ok
 Template DNA,50,µL,Freezer 2 shelf C,~10 aliquots,genomic/plasmid template,TPL-2009-C,Nucleic Acid,2024-02-20,ok
 Competent cells,1.2,mL,Freezer -80 box 4,~12 aliquots,DH5-alpha; keep on ice,CMP-8010-D,Cells,2024-01-10,critical
-Plasmid DNA,150,µL,Freezer 2 shelf C,~15 aliquots,,PLM-2011-C,Nucleic Acid,2024-02-22,ok
-SOC medium,100,mL,Fridge 1 shelf D,~100 mL,recovery medium,SOC-1012-D,Media,2024-03-10,ok
-LB agar,500,mL,Fridge 2 shelf A,~20 plates,with antibiotic,LBA-1013-A,Media,2024-02-28,expiring
+Plasmid DNA,148.0,µL,Freezer 2 shelf C,148.0 µL,,PLM-2011-C,Nucleic Acid,2024-02-22,ok
+SOC medium,99.05,mL,Fridge 1 shelf D,99.05 mL,recovery medium,SOC-1012-D,Media,2024-03-10,ok
+LB agar,499.9,mL,Fridge 2 shelf A,499.9 mL,with antibiotic,LBA-1013-A,Media,2024-02-28,expiring
 Resuspension buffer,100,mL,Fridge 1 shelf A,~100 mL,P1; contains RNase A,RSB-1014-A,Buffer,2024-01-25,ok
 Neutralization buffer,100,mL,Fridge 1 shelf A,~100 mL,N3,NTB-1015-A,Buffer,2024-01-25,ok
 Elution buffer,100,mL,Cabinet 3,~100 mL,EB; 10 mM Tris-Cl,ELB-3016-C,Buffer,2024-02-05,ok
+lysis buffer,0.6,mL,,0.6 mL,,,General,2026-06-21,ok
+lysis buffer,0,mL,freezer 1,0 mL,,,General,2026-06-21,ok

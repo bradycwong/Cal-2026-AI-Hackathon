@@ -2207,7 +2207,9 @@
     }
     host.innerHTML = Array.from(timers.values())
       .map(
-        (t) => `<div class="timer-card relative bg-surface-container-low border border-outline-variant rounded-xl p-4 flex flex-col items-center" data-timer-id="${escapeHtml(
+        (t) => `<div class="timer-card relative bg-surface-container-low border ${
+          t.paused ? "border-tertiary" : "border-outline-variant"
+        } rounded-xl p-4 flex flex-col items-center" data-timer-id="${escapeHtml(
           t.timer_id
         )}">
       <button type="button" class="timer-dismiss absolute top-2 right-2 w-7 h-7 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-error/10 hover:text-error transition-colors active:scale-95" data-timer-id="${escapeHtml(
@@ -2274,6 +2276,17 @@
     if (panel) panel.classList.remove("hidden");
   }
 
+  // Keep the transcript pinned to its newest line. Set scrollTop now for the
+  // common case, then again after layout (rAF) so a wrapped long line or a
+  // late-loading font that grows the box still lands at the true bottom.
+  function scrollTranscriptToBottom(el) {
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+  }
+
   // Append a finalized line. role "ai" -> blue + ">" marker (via CSS .transcript-ai);
   // anything else -> white user speech (.transcript-final). An AI reply also closes
   // any dangling interim line. Shared by Deepgram finals and AI messages.
@@ -2286,7 +2299,7 @@
     div.className = "transcript-line " + (role === "ai" ? "transcript-ai" : "transcript-final");
     div.textContent = text;
     el.appendChild(div);
-    el.scrollTop = el.scrollHeight;
+    scrollTranscriptToBottom(el);
   }
 
   // --- "Thinking..." pending indicator --------------------------------------
@@ -2316,7 +2329,7 @@
       thinkingEl.className = "transcript-line transcript-thinking";
       thinkingEl.textContent = "Thinking";
       el.appendChild(thinkingEl);
-      el.scrollTop = el.scrollHeight;
+      scrollTranscriptToBottom(el);
     }, 350);
   }
 
@@ -2346,7 +2359,7 @@
       el.appendChild(interimEl);
     }
     interimEl.textContent = (p && p.text) || "";
-    el.scrollTop = el.scrollHeight;
+    scrollTranscriptToBottom(el);
   }
 
   function clearTranscript() {

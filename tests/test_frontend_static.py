@@ -459,6 +459,28 @@ def test_guide_transcript_box_has_viewport_bounded_height():
     assert "max-height: clamp(12rem, 30vh, 24rem);" in css
 
 
+def test_guide_transcript_is_scrollable_not_clipped():
+    # The Guide transcript must be a real, visible scroll container so it can
+    # auto-follow to the latest line -- not clip its overflow.
+    guide = (FT / "guide.html").read_text(encoding="utf-8")
+    line = next(l for l in guide.splitlines() if 'id="live-transcript"' in l)
+    assert "overflow-y-auto" in line, "guide #live-transcript must be overflow-y-auto"
+    assert "overflow-hidden" not in line, "guide #live-transcript must not clip the transcript"
+
+
+def test_app_auto_follows_transcript_to_bottom():
+    # Bottom-follow is centralized in scrollTranscriptToBottom(), which re-pins
+    # inside requestAnimationFrame so wrapped long lines land at the true bottom.
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert "function scrollTranscriptToBottom(" in js, "app.js must define scrollTranscriptToBottom"
+    helper = js.split("function scrollTranscriptToBottom(", 1)[1].split("\n  }", 1)[0]
+    assert "requestAnimationFrame" in helper, "helper must re-pin after layout via requestAnimationFrame"
+    # The append/update paths delegate to the helper instead of scrolling inline...
+    assert js.count("scrollTranscriptToBottom(el)") >= 3
+    # ...so the only raw scrollTop writes are the two inside the helper.
+    assert js.count("el.scrollTop = el.scrollHeight") == 2
+
+
 def test_app_clears_transcript_when_muted():
     # Muting hides the transcript everywhere: on voice_state with muted=true the
     # client wipes the box so no spoken text lingers while muted.
