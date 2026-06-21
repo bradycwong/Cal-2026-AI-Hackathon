@@ -399,7 +399,7 @@
     const host = $("timer-list");
     if (!host) return;
     if (!timers.size) {
-      host.innerHTML = `<p class="text-on-surface-variant text-xs uppercase tracking-widest">No active timers</p>`;
+      host.innerHTML = `<p class="text-sm text-on-surface-variant">No active timers.</p>`;
       return;
     }
     host.innerHTML = Array.from(timers.values())
