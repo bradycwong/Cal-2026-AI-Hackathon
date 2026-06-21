@@ -579,7 +579,6 @@ async def consume_reagents(body: ConsumeReagentsIn) -> dict[str, Any]:
     deleted; all others are updated in place.
     """
     updated = []
-    deleted = []
     errors = []
     for entry in body.deductions:
         item_id = int(entry.get("item_id", 0))
@@ -591,25 +590,20 @@ async def consume_reagents(body: ConsumeReagentsIn) -> dict[str, Any]:
             errors.append({"item_id": item_id, "error": "invalid new_amount"})
             continue
         try:
-            if amt <= 0:
-                removed = state.delete_inventory_item(item_id)
-                deleted.append(removed.name)
-            else:
-                item = state.update_inventory_item(
-                    item_id, amount=str(amt), unit=new_unit
-                )
-                updated.append(_inventory_item_payload(item))
+            item = state.update_inventory_item(
+                item_id, amount="0" if amt <= 0 else str(amt), unit=new_unit
+            )
+            updated.append(_inventory_item_payload(item))
         except IndexError:
             errors.append({"item_id": item_id, "error": "not found"})
 
     await manager.broadcast(
         [{"type": "command_result", "payload": {"kind": "inventory_consumed",
-          "updated": updated, "deleted": deleted}}]
+          "updated": updated}}]
     )
     return {
         "ok": True,
         "updated": updated,
-        "deleted": deleted,
         "errors": errors,
         "inventory_count": len(state.inventory),
     }

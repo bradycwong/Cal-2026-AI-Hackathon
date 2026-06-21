@@ -392,16 +392,16 @@ def apply_reagent_deductions(
         if need_ul <= 0:
             continue
 
-        # Build the ordered bottle list for this reagent from the prep-table
-        # sources, then re-sort by user priority if provided.
-        source_names: list[str] = row.get("sources") or []
-        if not source_names:
+        # Build the ordered bottle list using source_details (which carries item
+        # ids). Keying by id avoids the name-collision bug where two bottles
+        # with the same name (e.g. "lysis buffer") would collapse into one entry
+        # in a name-keyed dict, silently dropping the second bottle.
+        source_details: list[dict] = row.get("source_details") or []
+        if not source_details:
             continue
 
-        # Map source names → items, preserving anchor-first order.
-        name_to_item = {item.name: item for item in inventory}
         bottles: list[InventoryItem] = [
-            name_to_item[n] for n in source_names if n in name_to_item
+            id_to_item[d["id"]] for d in source_details if d.get("id") in id_to_item
         ]
 
         user_order: list[int] = priority_order.get(row["reagent"], [])
