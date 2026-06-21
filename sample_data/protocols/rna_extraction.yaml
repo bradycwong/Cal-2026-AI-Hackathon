@@ -1,0 +1,33 @@
+protocol:
+  id: rna_extraction
+  name: RNA Extraction
+  version: "1.0"
+  aliases: ["rna extraction protocol", "rna extraction", "trizol extraction", "rna"]
+  steps:
+    - id: 1
+      text: "Add 1 mL TRIzol reagent to the sample and homogenize thoroughly."
+      duration_s: null            # null = manual advance
+      parameters: { volume_ul: 1000, reagent: "TRIzol reagent" }
+    - id: 2
+      text: "Incubate at room temperature to permit complete dissociation."
+      duration_s: 300             # auto-timer starts on advance
+      timer_label: incubation
+      parameters: {}
+    - id: 3
+      text: "Add 200 µL chloroform, shake vigorously, and incubate 3 minutes."
+      duration_s: 180
+      timer_label: phase separation
+      parameters: { volume_ul: 200, reagent: "chloroform" }
+    - id: 4
+      text: "Centrifuge at 12,000 g for 15 minutes at 4 °C."
+      duration_s: 900
+      timer_label: centrifuge
+      parameters: { speed_g: 12000, temp_c: 4 }
+    - id: 5
+      text: "Transfer the aqueous phase and add 500 µL isopropanol to precipitate RNA."
+      duration_s: null
+      parameters: { volume_ul: 500, reagent: "isopropanol" }
+    - id: 6
+      text: "Wash the pellet with 75% ethanol, air-dry, and resuspend in RNase-free water."
+      duration_s: null
+      parameters: { reagent: "RNase-free water" }

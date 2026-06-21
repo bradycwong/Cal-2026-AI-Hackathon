@@ -1,0 +1,31 @@
+protocol:
+  id: bca_protein_assay
+  name: BCA Protein Assay
+  version: "1.0"
+  aliases: ["bca protein assay protocol", "bca protein assay", "bca assay", "protein assay", "bca"]
+  steps:
+    - id: 1
+      text: "Prepare BSA standards by serial dilution from the 2 mg/mL stock."
+      duration_s: null            # null = manual advance
+      parameters: { reagent: "BSA standard" }
+    - id: 2
+      text: "Prepare BCA working reagent: mix 50 parts reagent A with 1 part reagent B."
+      duration_s: null
+      parameters: { reagent: "BCA reagent A", ratio: "50:1" }
+    - id: 3
+      text: "Pipette 25 µL of each standard and sample into a 96-well plate."
+      duration_s: null
+      parameters: { volume_ul: 25 }
+    - id: 4
+      text: "Add 200 µL of BCA working reagent to every well."
+      duration_s: null
+      parameters: { volume_ul: 200, reagent: "BCA reagent A" }
+    - id: 5
+      text: "Incubate the plate at 37 °C."
+      duration_s: 1800            # auto-timer starts on advance
+      timer_label: incubation
+      parameters: { temp_c: 37 }
+    - id: 6
+      text: "Measure absorbance at 562 nm on the plate reader and fit the standard curve."
+      duration_s: null
+      parameters: { wavelength_nm: 562 }

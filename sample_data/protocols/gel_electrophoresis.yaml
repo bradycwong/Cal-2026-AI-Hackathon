@@ -1,0 +1,37 @@
+protocol:
+  id: gel_electrophoresis
+  name: Gel Electrophoresis
+  version: "1.0"
+  aliases: ["gel electrophoresis protocol", "gel electrophoresis", "agarose gel", "run a gel", "gel"]
+  steps:
+    - id: 1
+      text: "Weigh out agarose and mix with 1X TAE buffer for a 1.5% gel."
+      duration_s: null            # null = manual advance
+      parameters: { reagent: "agarose" }
+    - id: 2
+      text: "Microwave the slurry in short bursts until fully dissolved."
+      duration_s: 120             # auto-timer starts on advance
+      timer_label: microwave
+      parameters: {}
+    - id: 3
+      text: "Cool to ~55 °C, add SYBR Safe stain, and pour into the casting tray with comb."
+      duration_s: null
+      parameters: { temp_c: 55, reagent: "SYBR Safe" }
+    - id: 4
+      text: "Let the gel set at room temperature."
+      duration_s: 1200
+      timer_label: gel set
+      parameters: {}
+    - id: 5
+      text: "Mix samples with 6X loading dye and load wells; load DNA ladder in lane 1."
+      duration_s: null
+      parameters: { reagent: "6X loading dye" }
+    - id: 6
+      text: "Run the gel at 100 V."
+      duration_s: 2400
+      timer_label: electrophoresis
+      parameters: { voltage_v: 100 }
+    - id: 7
+      text: "Visualize bands on a UV or blue-light transilluminator."
+      duration_s: null
+      parameters: {}
