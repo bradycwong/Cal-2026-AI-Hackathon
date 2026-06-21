@@ -1630,12 +1630,23 @@
   }
   function wireStepActions() {
     const skip = $("skip-action");
-    if (!skip || skip.dataset.wired) return;
-    skip.dataset.wired = "1";
-    skip.addEventListener("click", () => {
-      if (skip.disabled) return;
-      advanceStep(false).catch(() => {});
-    });
+    if (skip && !skip.dataset.wired) {
+      skip.dataset.wired = "1";
+      skip.addEventListener("click", () => {
+        if (skip.disabled) return;
+        advanceStep(false).catch(() => {});
+      });
+    }
+    // Previous: click == saying "previous step" — routes through the spine to the
+    // prev_step intent (handlers.py `_handle_prev_step`), same as voice.
+    const prev = $("prev-step");
+    if (prev && !prev.dataset.wired) {
+      prev.dataset.wired = "1";
+      prev.addEventListener("click", () => {
+        if (prev.disabled) return;
+        ingestCommand("previous step").catch(() => {});
+      });
+    }
   }
 
   function renderStep(step) {
@@ -1681,6 +1692,10 @@
     if (confirmBtn) confirmBtn.disabled = idx < 0 || finished;
     const skipBtn = $("skip-action");
     if (skipBtn) skipBtn.disabled = idx < 0 || finished;
+    // Previous only makes sense past the first step (works even when finished,
+    // since the cursor is pinned to the last step).
+    const prevBtn = $("prev-step");
+    if (prevBtn) prevBtn.disabled = idx <= 0;
 
     const tracker = $("step-tracker");
     if (tracker && Array.isArray(step.all_steps)) {
@@ -1916,6 +1931,8 @@
     if (confirmBtn) confirmBtn.disabled = true;
     const skipBtn = $("skip-action");
     if (skipBtn) skipBtn.disabled = true;
+    const prevBtn = $("prev-step");
+    if (prevBtn) prevBtn.disabled = true;
     const prev = $("step-prev");
     if (prev) prev.textContent = "";
     const nxt = $("step-next");
