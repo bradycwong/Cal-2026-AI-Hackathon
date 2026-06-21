@@ -81,7 +81,11 @@ def step_change_event(
     all_steps: Optional[list[dict[str, Any]]] = None,
     current_index: Optional[int] = None,
     protocol_name: Optional[str] = None,
+    loaded: bool = False,
 ) -> dict[str, Any]:
+    # ``loaded`` is True only when a protocol was just LOADED (not on step nav),
+    # so the frontend can route to the active-protocol page without bouncing the
+    # user around on every "next step".
     return command_result(
         "step_change",
         prev_step=prev_step,
@@ -90,6 +94,7 @@ def step_change_event(
         all_steps=all_steps if all_steps is not None else [],
         current_index=current_index,
         protocol_name=protocol_name,
+        loaded=loaded,
     )
 
 
