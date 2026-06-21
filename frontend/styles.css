@@ -207,6 +207,46 @@ body {
 .inv-loc { font-size: 16px; color: var(--accent); }
 .inv-qty { font-size: 14px; color: var(--muted); }
 
+/* Manual entry forms: add-inventory-item + protocol upload. */
+.mini-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.mini-form-title {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--muted);
+}
+.mini-form input {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 9px 11px;
+  font-size: 14px;
+}
+.mini-form input[type="file"] { padding: 8px; cursor: pointer; }
+.mini-form button {
+  align-self: flex-start;
+  background: var(--accent);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  padding: 9px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mini-form button:hover { filter: brightness(1.1); }
+.mini-form-status { font-size: 13px; color: var(--ok); min-height: 1em; }
+.mini-form-status.error { color: var(--err); }
+
 .clarify-panel.active { border-color: var(--warn); }
 .clarify-msg { font-size: 22px; color: var(--warn); }
 .clarify-msg.error { color: var(--err); }

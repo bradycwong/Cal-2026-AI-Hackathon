@@ -50,6 +50,30 @@
     <section class="panel" role="region" aria-labelledby="title-inventory">
       <h2 class="panel-title" id="title-inventory">Inventory</h2>
       <div class="inventory" id="inventory"><div class="muted">No lookups yet.</div></div>
+
+      <form class="mini-form" id="inv-form" autocomplete="off">
+        <h3 class="mini-form-title">Add item</h3>
+        <label class="sr-only" for="inv-name">Reagent name</label>
+        <input id="inv-name" name="name" type="text" placeholder="Name (required) — e.g. Agarose" required />
+        <label class="sr-only" for="inv-location">Location</label>
+        <input id="inv-location" name="location" type="text" placeholder="Location — e.g. Cabinet 2" />
+        <label class="sr-only" for="inv-qty">Approx. quantity</label>
+        <input id="inv-qty" name="quantity_approx" type="text" placeholder="Approx. quantity — e.g. ~500 g" />
+        <label class="sr-only" for="inv-notes">Notes</label>
+        <input id="inv-notes" name="notes" type="text" placeholder="Notes (optional)" />
+        <button type="submit">Add to inventory</button>
+        <div class="mini-form-status" id="inv-status" role="status" aria-live="polite"></div>
+      </form>
+    </section>
+
+    <section class="panel" role="region" aria-labelledby="title-upload">
+      <h2 class="panel-title" id="title-upload">Upload protocol</h2>
+      <form class="mini-form" id="proto-form" autocomplete="off">
+        <label class="sr-only" for="proto-file">Protocol YAML file</label>
+        <input id="proto-file" name="file" type="file" accept=".yaml,.yml,text/yaml" required />
+        <button type="submit">Upload protocol</button>
+        <div class="mini-form-status" id="proto-status" role="status" aria-live="polite"></div>
+      </form>
     </section>
 
     <!-- never-fail-silently: clarification area -->

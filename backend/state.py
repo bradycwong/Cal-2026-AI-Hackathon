@@ -83,25 +83,56 @@ def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-def load_protocol_file(path: Path) -> Protocol:
-    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+class ProtocolParseError(ValueError):
+    """Raised when an uploaded/loaded protocol document is malformed."""
+
+
+def parse_protocol_text(text: str) -> Protocol:
+    """Validate a protocol YAML *document* (the same shape files use) -> Protocol.
+
+    Shared by the on-disk loader and the upload endpoint so a file dropped in
+    ``data/protocols`` and a file POSTed to ``/api/protocols`` are validated by
+    exactly one code path. Raises ``ProtocolParseError`` on any malformed input.
+    """
+    try:
+        raw = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise ProtocolParseError(f"not valid YAML: {exc}") from exc
+    if not isinstance(raw, dict) or not isinstance(raw.get("protocol"), dict):
+        raise ProtocolParseError("missing top-level 'protocol:' mapping")
     p = raw["protocol"]
-    steps = [
-        Step(
-            id=int(s["id"]),
-            text=str(s["text"]),
-            duration_s=s.get("duration_s"),
-            timer_label=s.get("timer_label"),
-            parameters=s.get("parameters") or {},
+    for key in ("id", "name", "steps"):
+        if not p.get(key):
+            raise ProtocolParseError(f"protocol is missing required field '{key}'")
+    if not isinstance(p["steps"], list):
+        raise ProtocolParseError("'steps' must be a list")
+    steps: list[Step] = []
+    for s in p["steps"]:
+        if not isinstance(s, dict) or s.get("id") is None or not s.get("text"):
+            raise ProtocolParseError("each step needs an 'id' and 'text'")
+        try:
+            step_id = int(s["id"])
+        except (TypeError, ValueError) as exc:
+            raise ProtocolParseError(f"step id {s.get('id')!r} is not an integer") from exc
+        steps.append(
+            Step(
+                id=step_id,
+                text=str(s["text"]),
+                duration_s=s.get("duration_s"),
+                timer_label=s.get("timer_label"),
+                parameters=s.get("parameters") or {},
+            )
         )
-        for s in p["steps"]
-    ]
     return Protocol(
         id=str(p["id"]),
         name=str(p["name"]),
         steps=steps,
-        aliases=[a.lower() for a in (p.get("aliases") or [])],
+        aliases=[str(a).lower() for a in (p.get("aliases") or [])],
     )
+
+
+def load_protocol_file(path: Path) -> Protocol:
+    return parse_protocol_text(path.read_text(encoding="utf-8"))
 
 
 def load_inventory_file(path: Path) -> list[InventoryItem]:
@@ -145,6 +176,49 @@ class SessionState:
         if self.notes is not None:
             self.log = self.notes.all_notes()
             self._log_seq = self.log[-1]["id"] if self.log else 0
+
+    # --- mutating writers (upload protocol / add inventory item) -----------
+    def add_inventory_item(
+        self, name: str, location: str = "", quantity_approx: str = "", notes: str = ""
+    ) -> InventoryItem:
+        """Append a manually-entered item to memory and persist it to the CSV.
+
+        The CSV is the file-driven inventory store; appending here mirrors how
+        ``load_inventory_file`` reads it back, so the item survives a restart.
+        """
+        name = name.strip()
+        if not name:
+            raise ValueError("inventory item requires a name")
+        item = InventoryItem(
+            name=name,
+            location=location.strip(),
+            quantity_approx=quantity_approx.strip(),
+            notes=notes.strip(),
+        )
+        self.inventory.append(item)
+        inv_path = self.data_dir / "inventory.csv"
+        write_header = not inv_path.exists() or inv_path.stat().st_size == 0
+        inv_path.parent.mkdir(parents=True, exist_ok=True)
+        with inv_path.open("a", newline="", encoding="utf-8") as fh:
+            writer = csv.writer(fh)
+            if write_header:
+                writer.writerow(["name", "location", "quantity_approx", "notes"])
+            writer.writerow([item.name, item.location, item.quantity_approx, item.notes])
+        return item
+
+    def add_protocol_from_text(self, text: str) -> Protocol:
+        """Validate an uploaded protocol document, register it, and persist it.
+
+        Saved as ``data/protocols/<id>.yaml`` (same dir ``load_files`` globs) so
+        it is loadable immediately and after a restart. Re-uploading the same id
+        overwrites it. Raises ``ProtocolParseError`` for malformed input.
+        """
+        proto = parse_protocol_text(text)
+        proto_dir = self.data_dir / "protocols"
+        proto_dir.mkdir(parents=True, exist_ok=True)
+        (proto_dir / f"{proto.id}.yaml").write_text(text, encoding="utf-8")
+        self.protocols[proto.id] = proto
+        return proto
 
     # --- protocol cursor ---------------------------------------------------
     def find_protocol(self, name: str) -> Optional[Protocol]:

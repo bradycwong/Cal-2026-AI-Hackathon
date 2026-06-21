@@ -331,6 +331,69 @@ els.form.addEventListener("submit", async (e) => {
   }
 });
 
+// --- add inventory item (manual entry) -------------------------------------
+const invForm = $("inv-form");
+if (invForm) {
+  const invStatus = $("inv-status");
+  invForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const body = {
+      name: $("inv-name").value.trim(),
+      location: $("inv-location").value.trim(),
+      quantity_approx: $("inv-qty").value.trim(),
+      notes: $("inv-notes").value.trim(),
+    };
+    if (!body.name) { setMiniStatus(invStatus, "Name is required.", true); return; }
+    setMiniStatus(invStatus, "Adding…");
+    try {
+      const r = await fetch("/api/inventory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || "Add failed");
+      invForm.reset();
+      setMiniStatus(invStatus, `Added "${data.item.name}" (${data.inventory_count} items total).`);
+      announce(`Added ${data.item.name} to inventory`);
+    } catch (err) {
+      setMiniStatus(invStatus, String(err.message || err), true);
+    }
+  });
+}
+
+// --- upload protocol (file) -------------------------------------------------
+const protoForm = $("proto-form");
+if (protoForm) {
+  const protoStatus = $("proto-status");
+  const protoFile = $("proto-file");
+  protoForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const file = protoFile.files && protoFile.files[0];
+    if (!file) { setMiniStatus(protoStatus, "Choose a .yaml file first.", true); return; }
+    const fd = new FormData();
+    fd.append("file", file);
+    setMiniStatus(protoStatus, "Uploading…");
+    try {
+      const r = await fetch("/api/protocols", { method: "POST", body: fd });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || "Upload failed");
+      protoForm.reset();
+      const p = data.protocol;
+      setMiniStatus(protoStatus, `Uploaded "${p.name}" (${p.steps} steps). Say or type "load ${p.name}".`);
+      announce(`Uploaded protocol ${p.name}`);
+    } catch (err) {
+      setMiniStatus(protoStatus, String(err.message || err), true);
+    }
+  });
+}
+
+function setMiniStatus(el, msg, isError) {
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.toggle("error", !!isError);
+}
+
 // --- helpers ----------------------------------------------------------------
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => (
