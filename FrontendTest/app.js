@@ -750,6 +750,155 @@
     return r.json();
   }
 
+  // --- export the active notebook (client-side, no backend call) -------------
+  // Serializes the in-memory logCache — the active notebook's entries, in the same
+  // order the Activity Stream shows (sortLog) — to a downloadable Markdown/CSV file
+  // or a print-to-PDF window. The typed/voice spine is untouched; this is read-only
+  // over data already hydrated, so it can't break the demo.
+  function notebookTitle() {
+    const el = $("notebook-title");
+    return (((el && el.textContent) || "").trim()) || "Notebook";
+  }
+  function notebookExportBase() {
+    const safe = notebookTitle().replace(/[^\w-]+/g, "_").replace(/^_+|_+$/g, "");
+    const date = new Date().toISOString().slice(0, 10);
+    return `${safe || "Notebook"}_${date}`;
+  }
+  // Provenance/context chips for one entry, shared by the Markdown and print views.
+  function exportEntryMeta(e) {
+    const meta = [e.entry_type === "manual" ? "Manual" : "Automatic"];
+    if (e.category) meta.push(e.category);
+    if (e.step_ref != null) meta.push("Step " + e.step_ref);
+    if (e.sample_id) meta.push("Sample " + e.sample_id);
+    if (e.edited) meta.push("edited");
+    if (e.flag && e.flag.status)
+      meta.push(e.flag.status === "mismatch" ? "reproducibility mismatch" : "reproducibility ok");
+    return meta;
+  }
+  function exportNotebookMarkdown(rows) {
+    const n = rows.length;
+    const lines = [
+      `# ${notebookTitle()}`,
+      "",
+      `_Exported ${fmtTime(new Date().toISOString())} • ${n} ${n === 1 ? "entry" : "entries"}_`,
+      "",
+    ];
+    for (const e of rows) {
+      lines.push(`### ${fmtTime(e.timestamp)}`);
+      lines.push(`*${exportEntryMeta(e).join(" • ")}*`);
+      lines.push("");
+      lines.push((e.text || "").trim());
+      lines.push("");
+    }
+    return lines.join("\n");
+  }
+  function csvCell(v) {
+    const s = v == null ? "" : String(v);
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }
+  function exportNotebookCSV(rows) {
+    const cols = ["timestamp", "entry_type", "category", "step_ref", "sample_id", "flag", "edited", "text"];
+    const out = [cols.join(",")];
+    for (const e of rows) {
+      out.push(
+        [
+          e.timestamp,
+          e.entry_type,
+          e.category,
+          e.step_ref,
+          e.sample_id,
+          e.flag && e.flag.status ? e.flag.status : "",
+          e.edited ? "yes" : "no",
+          e.text,
+        ]
+          .map(csvCell)
+          .join(","),
+      );
+    }
+    return out.join("\r\n");
+  }
+  // Open a clean, self-contained print window and trigger the browser print dialog
+  // (the user picks "Save as PDF"). No reportlab/server round-trip needed.
+  function printNotebook(rows) {
+    const title = notebookTitle();
+    const n = rows.length;
+    const articles = rows
+      .map(
+        (e) =>
+          `<article><h3>${escapeHtml(fmtTime(e.timestamp))}</h3>` +
+          `<p class="meta">${escapeHtml(exportEntryMeta(e).join(" • "))}</p>` +
+          `<p class="text">${escapeHtml((e.text || "").trim())}</p></article>`,
+      )
+      .join("");
+    const sub = `Exported ${fmtTime(new Date().toISOString())} • ${n} ${n === 1 ? "entry" : "entries"}`;
+    const doc =
+      `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title>` +
+      `<style>body{font:14px/1.55 system-ui,-apple-system,sans-serif;margin:2.5rem;color:#111}` +
+      `h1{margin:0 0 .25rem;font-size:1.6rem}.sub{color:#666;margin:0 0 1.5rem}` +
+      `article{border-top:1px solid #ddd;padding:.85rem 0;break-inside:avoid}` +
+      `h3{margin:0 0 .2rem;font-size:1rem}.meta{color:#666;font-size:.78rem;margin:0 0 .4rem}` +
+      `.text{margin:0;white-space:pre-wrap}@media print{body{margin:1rem}}</style></head>` +
+      `<body><h1>${escapeHtml(title)}</h1><p class="sub">${escapeHtml(sub)}</p>${articles}` +
+      `<script>window.onload=function(){window.focus();window.print();}<\/script></body></html>`;
+    const w = window.open("", "_blank");
+    if (!w) {
+      alert("Pop-up blocked — allow pop-ups to export the notebook as PDF.");
+      return;
+    }
+    w.document.open();
+    w.document.write(doc);
+    w.document.close();
+  }
+  function downloadBlob(filename, mime, text) {
+    const blob = new Blob([text], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+  function exportNotebook(format) {
+    const rows = sortLog(logCache, logSortMode);
+    const base = notebookExportBase();
+    if (format === "csv") {
+      downloadBlob(base + ".csv", "text/csv;charset=utf-8", exportNotebookCSV(rows));
+    } else if (format === "pdf") {
+      printNotebook(rows);
+    } else {
+      downloadBlob(base + ".md", "text/markdown;charset=utf-8", exportNotebookMarkdown(rows));
+    }
+  }
+  function wireNotebookExport() {
+    const btn = $("log-export");
+    const menu = $("log-export-menu");
+    if (!btn || !menu) return; // page without the export control opts out
+    const close = () => {
+      menu.classList.add("hidden");
+      btn.setAttribute("aria-expanded", "false");
+    };
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation(); // don't let the outside-click handler immediately re-close
+      const opening = menu.classList.contains("hidden");
+      menu.classList.toggle("hidden", !opening);
+      btn.setAttribute("aria-expanded", String(opening));
+    });
+    menu.querySelectorAll("[data-export]").forEach((item) =>
+      item.addEventListener("click", () => {
+        exportNotebook(item.getAttribute("data-export"));
+        close();
+      }),
+    );
+    document.addEventListener("click", (e) => {
+      if (!menu.contains(e.target) && e.target !== btn) close();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") close();
+    });
+  }
+
   // --- edit an existing log entry (per-row pencil -> pre-filled modal) -------
   // Any entry is editable; the backend re-tags it manual + edited. Reuses the
   // same modal pattern as "Manual Entry".
@@ -2133,6 +2282,7 @@
     wireEditProtocolModal();
     wireAddItemModal();
     wireLogModal();
+    wireNotebookExport();
     wireLogEditModal();
     wireLogSort();
     wireDemoReset();
@@ -2162,6 +2312,7 @@
     handleProtocolImport,
     postLog,
     patchLog,
+    exportNotebook,
     ingestCommand,
     renderProtocolCards,
     renderRecentProtocols,

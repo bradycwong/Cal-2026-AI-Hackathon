@@ -63,7 +63,7 @@ def _step_change_events(
         label = cur.timer_label or f"step {cur.id}"
         # Timed steps always arrive PAUSED (frozen at full duration) and wait for
         # an explicit "start timer" — they never auto-count-down on step change.
-        timer = state.add_timer(cur.duration_s, label, paused=True)
+        timer = state.add_timer(cur.duration_s, label, paused=True, step_id=cur.id)
         events.append(
             timer_update_event(
                 timer.timer_id, timer.label, timer.remaining_s(),
@@ -142,6 +142,9 @@ def _handle_next_step(
                 entry_type="automatic",
             )
             events.append(log_entry_event(**entry, step_log=True))
+            # Completing the final step clears the step's own timer (if any) too.
+            for tid in state.remove_timers_for_step(leaving.id):
+                events.append(timer_removed_event(tid))
         state.protocol_complete = True
         events.extend(_step_change_events(state, auto_timer=False, finished=True))
         return events
@@ -165,6 +168,10 @@ def _handle_next_step(
         )
         # step_log=True so the frontend logs it without leaving the guide page.
         events.append(log_entry_event(**entry, step_log=True))
+        # Leaving this step clears the step's own timer (if any) — its countdown is
+        # stale once you've completed/skipped past it. (Ad-hoc timers survive.)
+        for tid in state.remove_timers_for_step(leaving.id):
+            events.append(timer_removed_event(tid))
     state.current_step_index += 1
     state.protocol_complete = False
     events.extend(_step_change_events(state))
@@ -279,6 +286,7 @@ def edit_log_entry(
 def _handle_start_timer(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
     duration_s = cmd.duration_s
     label = cmd.timer_label
+    step_id: Optional[int] = None  # ad-hoc by default ("start a 5 minute timer")
     if not duration_s or duration_s <= 0:
         # No explicit duration -> resume the step's paused timer if one is waiting.
         pending = state.start_pending_timer()
@@ -289,10 +297,11 @@ def _handle_start_timer(cmd: Command, state: SessionState) -> list[dict[str, Any
         if cur and cur.duration_s:
             duration_s = cur.duration_s
             label = label or cur.timer_label or f"step {cur.id}"
+            step_id = cur.id  # this timer belongs to the current step
         else:
             msg = cmd.clarify_prompt or "How long should the timer run? (e.g. 'start a 10-minute timer')"
             return [clarify_event(msg)]
-    timer = state.add_timer(duration_s, label or "timer")
+    timer = state.add_timer(duration_s, label or "timer", step_id=step_id)
     return [timer_update_event(timer.timer_id, timer.label, timer.remaining_s(), expired=False, paused=False)]
 
 

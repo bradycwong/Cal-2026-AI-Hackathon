@@ -341,6 +341,78 @@ def test_remove_expired_timers_helper():
     assert state.remove_expired_timers() == []  # idempotent: nothing left to clear
 
 
+def test_completing_timed_step_clears_its_paused_timer():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    handle_command(Command(intent="next_step"), state)  # onto step 2 (timed) -> paused t1
+    assert [t.step_id for t in state.timers] == [2]
+    events = handle_command(Command(intent="next_step"), state)  # leave step 2
+    removed = [e["payload"]["timer_id"] for e in events if e["payload"].get("kind") == "timer_removed"]
+    assert removed == ["t1"]
+    assert state.timers == []
+
+
+def test_completing_timed_step_clears_its_running_timer():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    handle_command(Command(intent="next_step"), state)   # onto step 2 -> paused t1
+    handle_command(Command(intent="start_timer"), state)  # resume -> t1 running, still step_id=2
+    assert state.timers[0].paused is False
+    events = handle_command(Command(intent="next_step"), state)  # leave step 2
+    assert any(e["payload"].get("kind") == "timer_removed" for e in events)
+    assert state.timers == []
+
+
+def test_skipping_timed_step_clears_its_timer():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    handle_command(Command(intent="next_step"), state)  # onto step 2 -> paused t1
+    assert len(state.timers) == 1
+    events = handle_command(Command(intent="skip_step"), state)  # skip step 2
+    assert any(e["payload"].get("kind") == "timer_removed" for e in events)
+    assert state.timers == []
+    assert 1 in state.skipped_steps  # index 1 (step 2) marked skipped
+
+
+def test_finishing_last_timed_step_clears_its_timer():
+    # Synthetic single-timed-step protocol: completing it finishes AND clears.
+    state = fresh_state()
+    state.active_protocol = Protocol(
+        id="solo_timed", name="Solo Timed",
+        steps=[Step(id=1, text="incubate", duration_s=600, timer_label="incubation")],
+    )
+    state.current_step_index = 0
+    state.protocol_complete = False
+    state.add_timer(600, "incubation", paused=True, step_id=1)  # the step's own timer
+    events = handle_command(Command(intent="next_step"), state)  # finish
+    assert _kind(events, "step_change")["finished"] is True
+    assert state.protocol_complete is True
+    assert any(e["payload"].get("kind") == "timer_removed" for e in events)
+    assert state.timers == []
+
+
+def test_ad_hoc_timer_survives_step_advance_while_step_timer_cleared():
+    # The user's exact scenario: a timer started by explicit duration is NOT the
+    # step's own timer, so completing the step leaves it running.
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    handle_command(Command(intent="next_step"), state)  # onto step 2 -> t1 step_id=2
+    handle_command(Command(intent="start_timer", duration_s=300), state)  # t2 ad-hoc, step_id None
+    assert [t.step_id for t in state.timers] == [2, None]
+    events = handle_command(Command(intent="next_step"), state)  # leave step 2
+    removed = [e["payload"]["timer_id"] for e in events if e["payload"].get("kind") == "timer_removed"]
+    assert removed == ["t1"]                              # only the step's own timer
+    assert [t.timer_id for t in state.timers] == ["t2"]  # ad-hoc survives
+    assert state.timers[0].step_id is None
+
+
+def test_completing_untimed_step_emits_no_timer_removed():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    events = handle_command(Command(intent="next_step"), state)  # leave step 1 (untimed)
+    assert all(e["payload"].get("kind") != "timer_removed" for e in events)
+
+
 def test_all_protocols_load_and_advance():
     # Generality: every shipped protocol loads and exposes step 1.
     state = fresh_state()

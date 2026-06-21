@@ -515,3 +515,30 @@ def test_commands_page_documents_jump_to_guide():
     html = (FT / "commands.html").read_text(encoding="utf-8")
     assert "Jump to guide" in html, "commands.html missing Jump to guide reference"
     assert "show_protocol" in html, "commands.html missing show_protocol custom action"
+
+
+def test_notebook_has_export_menu():
+    # The Activity Stream header has an Export button (right of Manual Entry) that
+    # opens a small menu offering Markdown / CSV / PDF(print). The label must avoid
+    # the literal "Export PDF" string guarded by test_dead_controls_removed.
+    notebook = (FT / "notebook.html").read_text(encoding="utf-8")
+    assert 'id="log-export"' in notebook
+    assert 'id="log-export-menu"' in notebook
+    for fmt in ('data-export="md"', 'data-export="csv"', 'data-export="pdf"'):
+        assert fmt in notebook, f"notebook.html missing {fmt}"
+
+
+def test_app_wires_notebook_export():
+    # Client-side export: serialize the in-memory logCache (active notebook, in the
+    # displayed sort order) to a downloadable Blob or a print window. No backend call.
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    for token in (
+        "wireNotebookExport",
+        "exportNotebook",
+        "exportNotebookMarkdown",
+        "exportNotebookCSV",
+        "printNotebook",
+        "URL.createObjectURL",
+        "sortLog(logCache",
+    ):
+        assert token in js, f"app.js missing {token}"

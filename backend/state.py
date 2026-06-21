@@ -107,6 +107,7 @@ class Timer:
     started_at: Optional[float] = None        # monotonic while running; None while paused
     remaining_at_pause: Optional[int] = None  # frozen remaining while paused
     expired: bool = False
+    step_id: Optional[int] = None             # owning protocol step; None = ad-hoc user timer
 
     @property
     def paused(self) -> bool:
@@ -691,7 +692,10 @@ class SessionState:
         return entry
 
     # --- timers ------------------------------------------------------------
-    def add_timer(self, duration_s: int, label: str, *, paused: bool = False) -> Timer:
+    def add_timer(
+        self, duration_s: int, label: str, *, paused: bool = False,
+        step_id: Optional[int] = None,
+    ) -> Timer:
         self._timer_seq += 1
         timer = Timer(
             timer_id=f"t{self._timer_seq}",
@@ -699,6 +703,7 @@ class SessionState:
             duration_s=duration_s,
             started_at=None if paused else time.monotonic(),
             remaining_at_pause=duration_s if paused else None,
+            step_id=step_id,
         )
         self.timers.append(timer)
         return timer
@@ -730,6 +735,14 @@ class SessionState:
         Running/paused timers stay (this is "clear done timers", NOT "stop timer")."""
         removed = [t.timer_id for t in self.timers if t.expired]
         self.timers = [t for t in self.timers if not t.expired]
+        return removed
+
+    def remove_timers_for_step(self, step_id: int) -> list[str]:
+        """Drop timers owned by the given protocol step and return the ids removed
+        (the step's timer is cleared when the step is completed/skipped). Ad-hoc
+        user timers (step_id is None) survive, since None != step_id."""
+        removed = [t.timer_id for t in self.timers if t.step_id == step_id]
+        self.timers = [t for t in self.timers if t.step_id != step_id]
         return removed
 
     def clear_timers(self) -> None:
