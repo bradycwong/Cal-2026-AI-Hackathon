@@ -1,0 +1,136 @@
+INVENTORY PAGE FIX PLAN
+Search-as-filter + replace Category column with "Date Created"
+=============================================================
+
+CONTEXT
+-------
+The Inventory page has two problems:
+
+1. Search highlights instead of filters. Typing in the search box dims
+   non-matching rows (opacity 0.2) but leaves them in place, so the matched
+   item does not rise to the top and the noise is still visible. The user
+   wants matches brought to the top with everything else hidden.
+
+2. The "Category" column is not the information the user wants. They want it
+   replaced with the date the item was created / ordered.
+
+Both are scoped to the served frontend, FrontendTest/ (backend/main.py:46
+sets FRONTEND_DIR = FrontendTest, mounted at line 440). The legacy frontend/
+directory is NOT served and is out of scope.
+
+KEY ARCHITECTURE NOTE (read before editing)
+-------------------------------------------
+The Inventory table is rendered by TWO code paths over the same DOM node
+(#inventory-rows):
+
+  - FrontendTest/inventory.html lines 170-284 contain hardcoded placeholder
+    rows + header. These only show if the API call fails (e.g. opening the
+    file with no backend).
+  - FrontendTest/app.js renderInventory() (lines 219-242) runs on page load
+    via hydrate() -> fetchInventory() -> renderInventory(), and REPLACES
+    #inventory-rows.innerHTML (header included) with live data from
+    GET /api/inventory.
+
+So at runtime the user sees the app.js-generated table, whose columns are:
+    Reagent Name (col-4) | Location (col-3) | Category (col-3) | Status (col-2)
+
+=> app.js is the authoritative fix for the column change. inventory.html's
+static rows are updated too, only to keep the no-backend preview consistent.
+
+The search handler is a SEPARATE inline <script> in inventory.html
+(lines 306-323). It is not deferred, attaches one 'input' listener to the
+text input, and re-queries .inventory-row on each keystroke -- so it keeps
+working after app.js re-renders the rows. Both static and app.js rows carry
+the .inventory-row class, so the handler matches either source.
+
+The date data already exists end-to-end -- NO backend change required:
+  - backend/data/inventory.csv has a `date` column (format YYYY-MM-DD).
+  - backend/state.py InventoryItem.date + inventory_view() returns `date`.
+  - GET /api/inventory already includes `date` in each item.
+
+
+FIX 1 -- Search should filter (match to top, hide the rest)
+-----------------------------------------------------------
+File: FrontendTest/inventory.html  (inline <script>, lines 306-323)
+
+Replace the highlight logic with show/hide filtering. On each input event:
+  - term = input value, lowercased + trimmed.
+  - For each .inventory-row: if term is empty OR row.innerText (lowercased)
+    includes term -> show it (row.style.display = ""); else hide it
+    (row.style.display = "none").
+  - Clear the old dimming: always set row.style.opacity = "1".
+
+Because non-matching rows are display:none, the matching rows collapse to the
+top automatically -- this satisfies "bring it to the top and hide everything
+else" without physically reordering the DOM. (Optional nice-to-have, not
+required: also move exact-name matches to the front with host.prepend.)
+
+Edge cases to keep simple:
+  - Empty search box -> all rows shown (handled by the "term empty" branch).
+  - The static "Inventory End Reached" placeholder (inventory.html:280-283)
+    is not a .inventory-row and is removed by app.js on hydrate, so ignore it.
+  - No-results state is optional for the demo; can be skipped.
+
+
+FIX 2 -- Replace "Category" column with "Date Created"
+------------------------------------------------------
+Target the live renderer first; mirror in the static HTML for consistency.
+
+(a) PRIMARY -- FrontendTest/app.js, renderInventory() (lines 219-242):
+    - Header (line 223): change
+        <div class="col-span-3">Category</div>
+      to
+        <div class="col-span-3">Date Created</div>
+    - Row cell (lines 234-236): replace the category <span> block with a date
+      cell, e.g.:
+        <div class="col-span-3"><p class="font-data-label text-on-surface-variant text-sm">${escapeHtml(it.date || "—")}</p></div>
+      (it.date is the YYYY-MM-DD string from the API; "—" = em dash fallback
+       when a row has no date. Reuse the existing escapeHtml helper, app.js:19.)
+    - Leave the Status column (col-2) as-is.
+    Result: Reagent Name | Location | Date Created | Status.
+
+(b) SECONDARY (consistency only) -- FrontendTest/inventory.html static rows:
+    The static block currently has columns Name | Location | Category(col-3) |
+    BUY/CREATION DATE(col-2). To match the app.js layout above when previewed
+    without a backend:
+      - Header line 175: "Category" -> "Date Created".
+      - In each static row (5 rows: ~lines 192-194, 212-214, 232-234,
+        252-254, 272-274), replace the category <span> in the col-span-3 cell
+        with a date <p> (can reuse the date already shown in that row's col-2).
+      - Change the col-2 header (line 176) and each row's col-2 cell to show
+        Status text, so the static preview mirrors app.js exactly.
+    This is cosmetic (app.js overwrites these on load). If time-constrained,
+    minimally just rename the line-175 header to "Date Created" and leave the
+    rest, since live rendering wins.
+
+Display format decision: show the raw API value (YYYY-MM-DD). It is clear,
+unambiguous, and sortable. Reformatting to MM/DD/YYYY is optional and not
+recommended (avoid Date parsing of date-only strings, which fmtTime would
+render with a spurious 00:00:00 time).
+
+
+FILES TO MODIFY
+---------------
+  - FrontendTest/inventory.html  (Fix 1 inline script; Fix 2b static rows)
+  - FrontendTest/app.js          (Fix 2a renderInventory)
+No backend changes.
+
+
+VERIFICATION
+------------
+1. Start the backend (it serves FrontendTest at /):
+     uvicorn backend.main:app --reload      (or the project's run command)
+   Open http://localhost:8000/inventory.html
+2. Fix 2 check: the third column header reads "Date Created" and each row
+   shows a date (e.g. 2024-02-10) sourced from inventory.csv; no Category
+   badges remain.
+3. Fix 1 check:
+     - Type a reagent name (e.g. "proteinase"): only matching row(s) remain
+      visible, sitting at the top; all others are hidden (not just dimmed).
+     - Clear the box: all rows reappear.
+     - Type gibberish ("zzz"): table goes empty (no dimmed leftovers).
+4. Regression: confirm the live data still loads (rows come from
+   /api/inventory, not the static placeholders) and the voice/WS reset still
+   re-renders the table without breaking search.
+5. Static preview sanity (optional): open FrontendTest/inventory.html as a
+   file with no backend -> header/columns match the wired layout.
