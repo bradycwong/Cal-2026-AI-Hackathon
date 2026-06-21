@@ -31,9 +31,19 @@
 .transcript-interim { opacity: 0.6; font-style: italic; }
 .transcript-final { opacity: 1; }
 
-/* Voice "listening" pulse ring. */
+/* Single voice mic icon: one glyph, color carries the state. The id+class
+   selector outranks the Tailwind text-* utilities the icon would otherwise pick
+   up, so the JS-toggled state color always wins (no !important needed). */
+#voice-mic { transition: color 0.18s ease; }
+#voice-mic.voice-mic-off   { color: #9aa0a6; } /* idle / session off */
+#voice-mic.voice-mic-live  { color: #22c55e; } /* listening (unmuted) */
+#voice-mic.voice-mic-muted { color: #ef4444; } /* muted */
+
+/* Voice "listening" pulse ring — green to match the live mic, and only while
+   actually listening (muting drops the animation via .voice-pulse-on). */
 #voice-pulse.voice-pulse-on {
   opacity: 0.5;
+  border-color: #22c55e;
   animation: voice-ping 1.4s cubic-bezier(0, 0, 0.2, 1) infinite;
 }
 @keyframes voice-ping {

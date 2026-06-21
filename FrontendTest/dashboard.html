@@ -69,17 +69,14 @@
 <div id="voice-dock" class="fixed bottom-8 right-8 z-50 w-80 max-w-[90vw] flex flex-col gap-2 items-end">
 <div id="live-transcript" class="hidden w-full bg-surface-container-lowest border border-outline-variant rounded-xl px-4 py-3 shadow-xl text-sm text-on-surface max-h-40 overflow-y-auto" aria-live="polite"></div>
 <div class="flex items-center gap-2 bg-surface-container-lowest border border-outline-variant rounded-xl px-4 py-3 shadow-xl">
-<button id="voice-toggle" type="button" aria-pressed="false" title="Start voice session" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
-<div class="relative w-8 h-8 flex items-center justify-center shrink-0">
+<button id="voice-mute" type="button" disabled aria-pressed="false" title="Mute" class="relative w-8 h-8 flex items-center justify-center shrink-0 rounded-full hover:opacity-80 transition-opacity disabled:opacity-40">
 <span id="voice-pulse" class="absolute inset-0 rounded-full border border-secondary opacity-0"></span>
-<span class="material-symbols-outlined text-secondary" style="font-size:16px">mic</span>
-</div>
-<div class="flex flex-col items-start">
+<span id="voice-mic" class="material-symbols-outlined voice-mic-off" style="font-size:16px">mic</span>
+</button>
+<button id="voice-toggle" type="button" aria-pressed="false" title="Start voice session" class="flex flex-col items-start hover:opacity-80 transition-opacity">
 <span id="voice-status" class="text-[9px] font-bold text-secondary uppercase tracking-[0.2em] leading-none">Voice off</span>
 <span class="text-xs text-on-surface-variant">Voice Assistant</span>
-</div>
 </button>
-<button id="voice-mute" type="button" disabled title="Mute" class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors disabled:opacity-30">mic</button>
 </div>
 </div>
 <script>

@@ -35,16 +35,20 @@ def test_voice_mute_changes_state_without_reporting_or_routing():
     assert decision.label == "muted"
 
 
-def test_muted_speech_is_ignored_completely():
+def test_muted_speech_is_shown_for_debug_but_not_routed():
+    # Muting gates the command spine, but the transcript is still surfaced so it
+    # stays visible for debugging. The utterance is shown, never acted on.
     vc = VoiceControl()
     vc.set_muted(True)
 
     decision = vc.process_final("Where's the proteinase K?")
 
-    assert not decision.report_transcript
+    assert decision.report_transcript
     assert not decision.route_command
     assert not decision.voice_state_changed
-    assert decision.command_text == ""
+    # command_text is the cleaned utterance (trailing "?" stripped), same as the
+    # normal unmuted path.
+    assert decision.command_text == "Where's the proteinase K"
 
 
 def test_voice_unmute_resumes_without_reporting_or_routing_control_word():
@@ -126,14 +130,14 @@ def test_mute_tolerates_common_stt_variants():
 
 
 def test_muted_mic_keeps_listening_and_only_unmute_resumes():
-    """While muted, every non-unmute final is ignored but still processed, and a
-    spoken unmute (incl. an STT variant) resumes normal operation."""
+    """While muted, every non-unmute final is shown (for debugging) but never
+    routed, and a spoken unmute (incl. an STT variant) resumes normal operation."""
     vc = VoiceControl(muted=True)
 
     for noise in ("where is the proteinase k", "next step", "log a note"):
         decision = vc.process_final(noise)
-        assert not decision.route_command
-        assert not decision.report_transcript
+        assert not decision.route_command  # never acts while muted
+        assert decision.report_transcript  # but stays visible for debugging
         assert vc.muted  # still listening, still muted
 
     decision = vc.process_final("un mute")

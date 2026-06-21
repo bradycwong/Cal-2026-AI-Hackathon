@@ -8,6 +8,12 @@ websockets==14.1           # server-side Deepgram live STT proxy client
 python-dotenv==1.2.2        # load server-side .env keys during local runs
 python-multipart==0.0.20    # parse multipart/form-data for protocol file upload
 
+# observability — Arize AX tracing (auto-instruments the Anthropic SDK; pulls the
+# opentelemetry + grpcio stack as transitive deps). Tracing no-ops at runtime
+# unless ARIZE_SPACE_ID + ARIZE_API_KEY are set, so these are safe to ship.
+arize-otel==0.13.0
+openinference-instrumentation-anthropic==1.0.6
+
 # dev / test
 pytest==8.3.4
 httpx==0.28.1              # FastAPI TestClient dependency
