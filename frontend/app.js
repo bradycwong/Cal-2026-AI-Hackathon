@@ -35,6 +35,7 @@ const DEMO_LINES = [
   "Scratch that",
   "Change that to added 300 uL lysis buffer",
   "Start a 10-minute timer",
+  "Stop timer",
   "Where's the proteinase K?",
   "How much lysis buffer in step 1?"
 ];
@@ -151,6 +152,8 @@ function onCommandResult(p) {
       return onClarify(p);
     case "voice_state":
       return onVoiceState(p);
+    case "timer_removed":
+      return onTimerRemoved(p);
     default:
       console.warn("unknown command_result kind", p);
   }
@@ -289,13 +292,46 @@ function onTimerUpdate(p) {
   el.classList.toggle("paused", !!p.paused);
   const labelExtra = p.paused ? ` · paused` : "";
   el.innerHTML =
+    `<button class="timer-close" type="button" aria-label="Stop timer" title="Stop timer">×</button>` +
     `<div class="timer-label">${escapeHtml(p.label)}${labelExtra}</div>` +
     `<div class="timer-clock">${p.expired ? "DONE" : fmtClock(p.remaining_s)}</div>`;
+  const closeBtn = el.querySelector(".timer-close");
+  if (closeBtn) closeBtn.addEventListener("click", () => stopTimerRequest(p.timer_id));
   if (p.expired && !wasExpired) {
-    chime();
-    showTimerAlert(p.label); // visible + role="alert" announces it
+    Alarm.start(p.timer_id);   // beeps up to 30s or until stopped
+    showTimerAlert(p.label);   // visible + role="alert" announces it
   }
   setState("done", "chip-ok");
+}
+
+function onTimerRemoved(p) {
+  const el = timers.get(p.timer_id);
+  if (el) el.remove();
+  timers.delete(p.timer_id);
+  Alarm.stop(p.timer_id);
+  if (timers.size === 0) ensureNoTimersPlaceholder();
+  announce("Timer stopped");
+  setState("done", "chip-ok");
+}
+
+function ensureNoTimersPlaceholder() {
+  if (timers.size === 0 && !els.timers.querySelector(".muted")) {
+    const m = document.createElement("div");
+    m.className = "muted";
+    m.textContent = "No active timers.";
+    els.timers.appendChild(m);
+  }
+}
+
+// Stop one timer early via its card "x". The server broadcasts timer_removed
+// (which removes the card); silence its alarm immediately for responsiveness.
+async function stopTimerRequest(timerId) {
+  Alarm.stop(timerId);
+  try {
+    await fetch(`/api/timers/${encodeURIComponent(timerId)}/stop`, { method: "POST" });
+  } catch (err) {
+    onError({ message: String(err) });
+  }
 }
 
 let alertTimeout = null;
@@ -555,7 +591,7 @@ populateDemoLines();
 hydrate();
 
 let audioCtx;
-function chime() {
+function beep() {
   try {
     audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
     const o = audioCtx.createOscillator();
@@ -564,11 +600,37 @@ function chime() {
     o.connect(g);
     g.connect(audioCtx.destination);
     g.gain.setValueAtTime(0.25, audioCtx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.6);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
     o.start();
-    o.stop(audioCtx.currentTime + 0.6);
+    o.stop(audioCtx.currentTime + 0.35);
   } catch (_) { /* no-op */ }
 }
+
+// End-of-timer alarm: repeats a beep until every ringing timer is stopped (via
+// "stop timer", the card "x", or a server timer_removed) or 30s elapses, max.
+const ALARM_MAX_MS = 30000;
+const ALARM_BEEP_MS = 800;
+const Alarm = {
+  ringing: new Set(),
+  intervalId: null,
+  timeoutId: null,
+  start(id) {
+    this.ringing.add(id);
+    if (this.intervalId) return;   // already beeping for another timer
+    beep();
+    this.intervalId = setInterval(beep, ALARM_BEEP_MS);
+    this.timeoutId = setTimeout(() => this._silence(), ALARM_MAX_MS);
+  },
+  stop(id) {
+    this.ringing.delete(id);
+    if (this.ringing.size === 0) this._silence();
+  },
+  _silence() {
+    if (this.intervalId) { clearInterval(this.intervalId); this.intervalId = null; }
+    if (this.timeoutId) { clearTimeout(this.timeoutId); this.timeoutId = null; }
+    this.ringing.clear();
+  },
+};
 
 connect();
 

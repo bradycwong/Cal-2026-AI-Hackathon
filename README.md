@@ -69,7 +69,10 @@ area asks "Which protocol?" (listing the loaded protocols) instead of guessing.
 **paused** timer card appears (frozen at the step's full duration, labelled from
 its `timer_label`) instead of counting down. It never auto-starts on step
 change — say (or type) **"start timer"** to begin the countdown. You can still
-start ad-hoc timers with a spoken duration ("start a 10-minute timer").
+start ad-hoc timers with a spoken duration ("start a 10-minute timer"). When a
+timer ends it **beeps** (for up to 30s). Say or type **"stop timer"**, or click
+the **×** on a timer card, to silence the alarm and/or cancel a running timer
+early.
 
 **Protocols.** Four ship in `backend/data/protocols/` (DNA Extraction, PCR Setup,
 Bacterial Transformation, Plasmid Miniprep). Add another by dropping a YAML file

@@ -26,6 +26,7 @@ from .deepgram_stt import run_deepgram_session
 from .router import ROUTER_MODE, route
 from .schema import (
     error_event,
+    timer_removed_event,
     timer_update_event,
     transcript_update_event,
     voice_state_event,
@@ -238,6 +239,17 @@ async def upload_protocol(file: UploadFile = File(...)) -> dict[str, Any]:
         "protocol": {"id": proto.id, "name": proto.name, "steps": len(proto.steps)},
         "protocols": list(state.protocols.keys()),
     }
+
+
+@app.post("/api/timers/{timer_id}/stop")
+async def stop_timer(timer_id: str) -> dict[str, Any]:
+    """Stop one timer early (the clicked card "x"); broadcasts so every client
+    drops the card and silences its alarm. Same gate voice/typed "stop timer" use."""
+    if not state.remove_timer(timer_id):
+        raise HTTPException(status_code=404, detail="No such timer.")
+    ev = timer_removed_event(timer_id)
+    await manager.broadcast([ev])
+    return {"ok": True, "events": [ev]}
 
 
 @app.get("/api/health")

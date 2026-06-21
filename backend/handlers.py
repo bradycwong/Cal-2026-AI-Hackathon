@@ -22,6 +22,7 @@ from .schema import (
     log_removed_event,
     log_update_event,
     step_change_event,
+    timer_removed_event,
     timer_update_event,
 )
 from .state import SessionState
@@ -140,6 +141,15 @@ def _handle_start_timer(cmd: Command, state: SessionState) -> list[dict[str, Any
     return [timer_update_event(timer.timer_id, timer.label, timer.remaining_s(), expired=False, paused=False)]
 
 
+def _handle_stop_timer(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    """Cancel every active timer (and thereby silence any alarm). Same gate a
+    clicked timer "x" hits, just for all of them at once."""
+    ids = state.remove_all_timers()
+    if not ids:
+        return [clarify_event("There are no active timers to stop.")]
+    return [timer_removed_event(tid) for tid in ids]
+
+
 def _handle_find_inventory(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
     if not cmd.reagent_name:
         msg = cmd.clarify_prompt or "Which reagent are you looking for?"
@@ -181,6 +191,7 @@ _DISPATCH = {
     "undo_log": _handle_undo_log,
     "correct_log": _handle_correct_log,
     "start_timer": _handle_start_timer,
+    "stop_timer": _handle_stop_timer,
     "find_inventory": _handle_find_inventory,
     "ask": _handle_ask,
     "unknown": _handle_unknown,

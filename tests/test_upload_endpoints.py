@@ -81,3 +81,18 @@ def test_upload_protocol_non_utf8_422(client):
         files={"file": ("bad.yaml", b"\xff\xfe\x00bad", "application/x-yaml")},
     )
     assert r.status_code == 422
+
+
+def test_stop_timer_endpoint_removes_one(client):
+    timer = main.state.add_timer(600, "incubation")
+    r = client.post(f"/api/timers/{timer.timer_id}/stop")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is True
+    assert body["events"][0]["payload"] == {"kind": "timer_removed", "timer_id": timer.timer_id}
+    assert main.state.timers == []
+
+
+def test_stop_timer_endpoint_unknown_id_404(client):
+    r = client.post("/api/timers/does-not-exist/stop")
+    assert r.status_code == 404

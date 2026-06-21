@@ -131,6 +131,34 @@ def test_start_timer_without_duration_on_untimed_step_clarifies():
     assert events[0]["payload"]["kind"] == "clarify"
 
 
+def test_stop_timer_cancels_all_active_timers():
+    state = fresh_state()
+    state.add_timer(600, "incubation")
+    state.add_timer(45, "heat shock")
+    assert len(state.timers) == 2
+    events = handle_command(Command(intent="stop_timer"), state)
+    assert len(events) == 2
+    assert all(e["payload"]["kind"] == "timer_removed" for e in events)
+    assert {e["payload"]["timer_id"] for e in events} == {"t1", "t2"}
+    assert state.timers == []
+
+
+def test_stop_timer_with_no_timers_clarifies():
+    state = fresh_state()
+    events = handle_command(Command(intent="stop_timer"), state)
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert "no active timers" in events[0]["payload"]["message"].lower()
+
+
+def test_remove_timer_by_id():
+    state = fresh_state()
+    state.add_timer(600, "incubation")  # t1
+    state.add_timer(45, "heat shock")   # t2
+    assert state.remove_timer("t1") is True
+    assert [t.timer_id for t in state.timers] == ["t2"]
+    assert state.remove_timer("nope") is False
+
+
 def test_all_protocols_load_and_advance():
     # Generality: every shipped protocol loads and exposes step 1.
     state = fresh_state()

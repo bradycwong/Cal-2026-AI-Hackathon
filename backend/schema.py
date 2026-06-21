@@ -25,6 +25,7 @@ Intent = Literal[
     "undo_log",
     "correct_log",
     "start_timer",
+    "stop_timer",
     "find_inventory",
     "ask",
     "unknown",
@@ -65,7 +66,7 @@ def make_event(type: EventType, payload: dict[str, Any]) -> dict[str, Any]:
 
 # --- command_result kinds ---------------------------------------------------
 # kind in { step_change, log_entry, log_removed, log_update, inventory_result,
-#           clarify, voice_state, ask_result }
+#           clarify, voice_state, ask_result, timer_removed }
 
 
 def command_result(kind: str, **fields: Any) -> dict[str, Any]:
@@ -147,6 +148,11 @@ def timer_update_event(
             "paused": paused,
         },
     )
+
+
+def timer_removed_event(timer_id: str) -> dict[str, Any]:
+    """A timer was stopped early / dismissed: drop its card and silence its alarm."""
+    return command_result("timer_removed", timer_id=timer_id)
 
 
 def transcript_update_event(text: str, is_final: bool) -> dict[str, Any]:
