@@ -29,13 +29,13 @@ DEEPGRAM_MODEL = os.getenv("DEEPGRAM_MODEL", "nova-3")
 # Rare lab nouns that general STT mangles (PDF §3.3.6). Boost weights apply to
 # nova-2 (keyword:boost); nova-3 uses the bare term via keyterm (see _build_url).
 # We boost distinctive domain nouns plus the command-trigger words "protocol",
-# "inventory", and "log": these gate routing, so Deepgram mishearing them breaks
-# whole commands — worth the slight pull on neighbouring words.
+# "inventory", "log", and "load": these gate routing, so Deepgram mishearing
+# them breaks whole commands — worth the slight pull on neighbouring words.
 KEYWORDS = [
     ("microliters", 2), ("proteinase", 3), ("lysis", 2), ("PCR", 2),
     ("centrifuge", 2), ("pipette", 2), ("aliquot", 2), ("incubate", 1),
     ("ethanol", 1), ("EDTA", 2), ("nuclease", 1), ("DNA", 2), ("Lab", 2),
-    ("protocol", 3), ("inventory", 3), ("log", 3),
+    ("protocol", 3), ("inventory", 3), ("log", 3), ("load", 3),
 ]
 
 OnText = Callable[[str], Awaitable[None]]
