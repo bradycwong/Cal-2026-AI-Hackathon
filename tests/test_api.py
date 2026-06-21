@@ -126,6 +126,57 @@ def test_ingest_start_timer_resumes_paused_step_timer(client, monkeypatch):
     assert timers and timers[-1]["paused"] is False  # resumed, now running
 
 
+def test_prep_state_endpoint_tracks_gate_and_count(client):
+    # The front end mirrors the prep modal's open/close + the determined sample
+    # count to the backend so "start protocol"/"done" can gate on a real count.
+    r = client.post("/api/prep/state", json={"open": True})
+    assert r.status_code == 200
+    assert r.json()["prep_open"] is True
+    assert main.state.prep_open is True
+
+    r = client.post("/api/prep/state", json={"sample_count": 24})
+    assert r.status_code == 200
+    assert main.state.prep_sample_count == 24
+
+    client.post("/api/prep/state", json={"open": False})
+    assert main.state.prep_open is False
+
+
+def test_ingest_set_sample_count_emits_prep_control(client):
+    r = client.post("/api/ingest", json={"transcript": "set samples to 30"})
+    events = r.json()["events"]
+    prep = next(e["payload"] for e in events if e["payload"].get("kind") == "prep_control")
+    assert prep["action"] == "set_samples"
+    assert prep["sample_count"] == 30
+    assert main.state.prep_sample_count == 30
+
+
+def test_prep_gate_end_to_end(client, monkeypatch):
+    # Full hands-free gate: load opens the popup, the run will NOT start until a
+    # sample count is determined, then "start protocol" begins the run.
+    monkeypatch.setattr(router, "ROUTER_MODE", "deterministic")
+    client.post("/api/protocols/dna_extraction/load")
+    client.post("/api/prep/state", json={"open": True})  # front end raises the gate
+
+    # "start protocol" before a count -> clarify; the run stays gated.
+    r = client.post("/api/ingest", json={"transcript": "start protocol"})
+    kinds = [e["payload"].get("kind") for e in r.json()["events"]]
+    assert "clarify" in kinds
+    assert main.state.prep_open is True
+
+    # Determine the count by voice, then start.
+    client.post("/api/ingest", json={"transcript": "set samples to 24"})
+    assert main.state.prep_sample_count == 24
+    r = client.post("/api/ingest", json={"transcript": "start protocol"})
+    actions = [
+        e["payload"].get("action")
+        for e in r.json()["events"]
+        if e["payload"].get("kind") == "prep_control"
+    ]
+    assert "close" in actions
+    assert main.state.prep_open is False
+
+
 def test_post_log_persists_and_lists(client):
     r = client.post("/api/log", json={"text": "added 200 uL", "category": "Note"})
     assert r.status_code == 200

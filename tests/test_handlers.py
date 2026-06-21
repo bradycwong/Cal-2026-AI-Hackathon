@@ -729,7 +729,7 @@ def test_ask_returns_answer(monkeypatch):
 
     state = fresh_state()
     handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
-    monkeypatch.setattr(router, "answer_question", lambda q, p: "Use 200 uL.")
+    monkeypatch.setattr(router, "answer_question", lambda q, p, **kw: "Use 200 uL.")
 
     events = handle_command(Command(intent="ask", question="How much lysis buffer?"), state)
 
@@ -738,6 +738,43 @@ def test_ask_returns_answer(monkeypatch):
         "question": "How much lysis buffer?",
         "answer": "Use 200 uL.",
     }
+
+
+def test_ask_forwards_current_step_index(monkeypatch):
+    from backend import router
+
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    handle_command(Command(intent="next_step"), state)  # advance onto step index 1
+
+    captured = {}
+
+    def fake_answer(question, protocol, *, current_step_index=None):
+        captured["idx"] = current_step_index
+        return "ok"
+
+    monkeypatch.setattr(router, "answer_question", fake_answer)
+    handle_command(Command(intent="ask", question="what's next?"), state)
+
+    assert captured["idx"] == state.current_step_index == 1
+
+
+def test_ask_never_mutates_step_or_timers(monkeypatch):
+    from backend import router
+
+    monkeypatch.setattr(router, "answer_question", lambda q, p, **kw: "Step 2: ...")
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    handle_command(Command(intent="next_step"), state)  # step index 1
+    handle_command(Command(intent="start_timer", duration_s=300), state)
+    idx_before = state.current_step_index
+    timers_before = [t.timer_id for t in state.timers]
+
+    events = handle_command(Command(intent="ask", question="what's next?"), state)
+
+    assert events[0]["payload"]["kind"] == "ask_result"
+    assert state.current_step_index == idx_before  # cursor untouched
+    assert [t.timer_id for t in state.timers] == timers_before  # timers untouched
 
 
 # --- protocol completion on final "next step" -------------------------------

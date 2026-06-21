@@ -460,6 +460,25 @@ async def scale_protocol(body: ScaleIn) -> dict[str, Any]:
     }
 
 
+class PrepStateIn(BaseModel):
+    open: bool | None = None
+    sample_count: int | None = None
+
+
+@app.post("/api/prep/state")
+async def set_prep_state(body: PrepStateIn) -> dict[str, Any]:
+    """Mirror the reagent-prep modal's open/close + the operator's determined
+    sample count to the backend. The prep popup is a gate: the run does not start
+    until a count is set, so "start protocol"/"done" reads this state. Single-
+    operator session state like the rest of SessionState; no broadcast (the modal
+    is per-browser)."""
+    if body.open is not None:
+        state.prep_open = body.open
+    if body.sample_count is not None:
+        state.prep_sample_count = body.sample_count
+    return {"ok": True, "prep_open": state.prep_open, "sample_count": state.prep_sample_count}
+
+
 class ScaleWithPriorityIn(BaseModel):
     sample_count: int
     overage_percent: float = 10.0

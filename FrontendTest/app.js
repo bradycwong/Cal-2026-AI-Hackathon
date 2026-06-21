@@ -1368,7 +1368,6 @@
                 <td class="py-3 pr-3 font-data-label text-on-surface">${escapeHtml(row.total_display)}</td>
                 <td class="py-3 pr-3">
                   <div class="${prepVerdictClass(row.verdict)} font-bold">${escapeHtml(prepVerdictLabel(row))}</div>
-<<<<<<< Updated upstream
                   <div class="text-xs text-on-surface-variant">${escapeHtml(row.match_name || "No inventory match")}</div>
                   ${singleDisplay}
                   ${multiBottle ? `
@@ -1376,13 +1375,6 @@
                     <div class="text-[10px] uppercase text-on-surface-variant mb-1 tracking-wide">Use order — drag to reorder</div>
                     <div class="priority-list" data-reagent="${escapeHtml(row.reagent)}">${priorityRows}</div>
                   </div>` : ""}
-=======
-                  <div class="text-xs text-on-surface-variant flex items-center gap-1">${
-                    row.match_name
-                      ? `<span class="material-symbols-outlined" style="font-size:13px" aria-hidden="true">location_on</span>${escapeHtml(row.location || "Location not set")}`
-                      : escapeHtml("No inventory match")
-                  }</div>
->>>>>>> Stashed changes
                 </td>
               </tr>`;
             }).join("")}
@@ -1529,28 +1521,60 @@
     const modal = $("prep-modal");
     return !!modal && !modal.classList.contains("hidden");
   }
-  function openPrepModal(name) {
+  // Mirror the prep gate (run-not-started) + the operator's determined sample
+  // count to the backend so "start protocol"/"done" can require a real count
+  // before the run begins. Returns the promise so callers can sequence on it.
+  function postPrepState(patch) {
+    return fetch(API + "/api/prep/state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }).catch(() => {});
+  }
+  // ``gate`` raises the start-gate (used when the popup opens on a fresh load);
+  // re-opening to peek (breadcrumb / a voice sample change) does not re-gate.
+  function openPrepModal(name, gate) {
     const modal = $("prep-modal");
     if (!modal) return;
     const title = $("prep-protocol-name");
     const resolved = name || $("protocol-name")?.textContent || "Protocol";
     if (title) title.textContent = resolved;
     modal.classList.remove("hidden");
-    handlePrepCompute();
+    if (gate) postPrepState({ open: true });  // run not started until confirmed
+    handlePrepCompute();                       // preview only; not a "determination"
   }
   function closePrepModal() {
+    // Hide the popup only. The backend gate is lifted by the run actually
+    // starting (handled server-side), so dismissing never bypasses the count.
     const modal = $("prep-modal");
     if (modal) modal.classList.add("hidden");
   }
+  // The operator deliberately set a sample count (typed it / clicked Compute):
+  // record it so the run is allowed to start, then re-scale the table.
+  function determineSamples() {
+    const n = Number($("prep-samples")?.value || 0);
+    const posted = n >= 1 ? postPrepState({ sample_count: n }) : Promise.resolve();
+    handlePrepCompute();
+    return posted;
+  }
   function wirePrepModal() {
     const compute = $("prep-compute");
-    if (compute) compute.addEventListener("click", handlePrepCompute);
+    if (compute) compute.addEventListener("click", determineSamples);
+    const input = $("prep-samples");
+    if (input) input.addEventListener("change", determineSamples);
     const openBtn = $("prep-open");
     if (openBtn) openBtn.addEventListener("click", () => openPrepModal());
-    ["prep-close", "prep-done"].forEach((id) => {
-      const b = $(id);
-      if (b) b.addEventListener("click", closePrepModal);
-    });
+    // "Done" begins the run through the SAME spine as voice: record the shown
+    // count, then confirm the prep (which starts the run) instead of just hiding.
+    const done = $("prep-done");
+    if (done)
+      done.addEventListener("click", async () => {
+        await determineSamples();
+        ingestCommand("looks good").catch(() => {});
+      });
+    // X / clicking the backdrop just hides the popup; the run stays gated.
+    const close = $("prep-close");
+    if (close) close.addEventListener("click", closePrepModal);
     const modal = $("prep-modal");
     if (modal)
       modal.addEventListener("click", (e) => {
@@ -2432,8 +2456,20 @@
           // A load (incl. voice) changes recency: refresh the dashboard panel.
           refreshRecent();
           _deductTriggeredForRun = false; // new protocol — allow one auto-deduct
-          openPrepModal(p.protocol_name);
+          openPrepModal(p.protocol_name, true);  // gate the run until prep confirmed
         } else if (prepModalOpen()) handlePrepCompute();
+        return;
+      case "prep_control":
+        // Hands-free reagent prep: "done"/"start protocol" -> close (run starts);
+        // "set samples to N" -> reflect the new count and re-scale.
+        if (p.action === "close") return closePrepModal();
+        if (p.action === "set_samples") {
+          const input = $("prep-samples");
+          if (input && p.sample_count != null) input.value = String(p.sample_count);
+          if (prepModalOpen()) handlePrepCompute();
+          else openPrepModal();
+          return;
+        }
         return;
       case "log_entry":
         return applyLogEntry(p);
@@ -2620,7 +2656,7 @@
         // Pop the prep modal once, right after a protocol load lands here.
         const active = st.step && st.step.current_index != null;
         if (active && $("prep-modal") && consumePrepOnLoad()) {
-          openPrepModal(st.step.protocol_name);
+          openPrepModal(st.step.protocol_name, true);  // gate the run until confirmed
         }
         // Arriving via the nav "Jump to guide" button or a "jump to guide" voice
         // command (#run): center the current step, then drop the hash so a later

@@ -400,7 +400,12 @@ def _handle_ask(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
         else:
             answer = "You are already on the last step of the protocol."
         return [ask_result_event(cmd.question, answer)]
-    answer = router.answer_question(cmd.question, state.active_protocol)
+    # Step targeting ("step 3", "this step") and filler cleanup live in
+    # router.answer_question; pass the cursor so a relative question is answered
+    # from the right step WITHOUT moving it.
+    answer = router.answer_question(
+        cmd.question, state.active_protocol, current_step_index=state.current_step_index
+    )
     return [ask_result_event(cmd.question, answer)]
 
 
