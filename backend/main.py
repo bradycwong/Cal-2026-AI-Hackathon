@@ -32,7 +32,7 @@ from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 from . import deepgram_tts
-from .deepgram_stt import run_deepgram_session, set_custom_keywords
+from .deepgram_stt import run_deepgram_session, set_custom_keywords, set_inventory_keywords
 from .router import ROUTER_MODE, route
 from .protocol_import import import_protocol
 from .pdf_extract import PdfExtractError, extract_pdf_text, reflow_pdf_text
@@ -193,6 +193,7 @@ async def lifespan(app: FastAPI):
     # No-ops without ARIZE_* creds or under pytest, so the typed demo stays free.
     setup_tracing()
     state.load_files()
+    _sync_inventory_keywords()
     print(
         f"[lab] loaded {len(state.protocols)} protocol(s), "
         f"{len(state.inventory)} inventory item(s); router mode={ROUTER_MODE}; "
@@ -237,6 +238,16 @@ class AliasesIn(BaseModel):
 async def get_aliases() -> dict[str, Any]:
     """Current custom-command set the spine will expand (trigger -> phrase)."""
     return {"aliases": aliases.as_list()}
+
+
+def _sync_inventory_keywords() -> None:
+    """Push the current inventory names into the Deepgram keyword boost set.
+
+    Called on startup and after every inventory mutation (add/edit/delete/reset)
+    so the STT boost list always mirrors the live reagent names. Only takes
+    effect on the next Deepgram session — existing sessions keep their URL.
+    """
+    set_inventory_keywords([item.name for item in state.inventory])
 
 
 @app.post("/api/aliases")
@@ -426,6 +437,7 @@ async def demo_reset() -> dict[str, Any]:
     clears run state, wipes notes + every created notebook, and restores the
     inventory CSV and protocol library. Always wipes (no LAB_DEMO_MODE gate)."""
     state.restore_factory_state()
+    _sync_inventory_keywords()
     vs = voice.set_muted(False)
     event = reset_event(notes_cleared=True)
     await manager.broadcast([event, voice_state_event(vs.muted, vs.label)])
@@ -763,6 +775,7 @@ async def add_inventory(body: InventoryItemIn) -> dict[str, Any]:
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    _sync_inventory_keywords()
     return {
         "ok": True,
         "item": _inventory_item_payload(item),
@@ -786,6 +799,7 @@ async def edit_inventory(item_id: int, body: InventoryItemEdit) -> dict[str, Any
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    _sync_inventory_keywords()
     return {
         "ok": True,
         "item": _inventory_item_payload(item),
@@ -800,6 +814,7 @@ async def remove_inventory(item_id: int) -> dict[str, Any]:
         removed = state.delete_inventory_item(item_id)
     except IndexError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    _sync_inventory_keywords()
     return {
         "ok": True,
         "removed": removed.name,
