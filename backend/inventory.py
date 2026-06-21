@@ -42,12 +42,14 @@ class InventoryItem:
 
 
 def find_inventory_match(
-    reagent_name: str, items: list[InventoryItem]
+    reagent_name: str, items: list[InventoryItem], *, cutoff: float = 0.6
 ) -> Optional[InventoryItem]:
     """Return the best inventory item for a reagent name.
 
     Mirrors the existing command handler behavior: fuzzy match first, then
     substring fallback. Returns None instead of guessing when there is no match.
+    ``cutoff`` tunes the fuzzy threshold; callers that need fewer false positives
+    (e.g. the reagent prep table) can pass a stricter value.
     """
     query = (reagent_name or "").strip()
     if not query:
@@ -55,7 +57,7 @@ def find_inventory_match(
 
     names = [item.name for item in items]
     matches = difflib.get_close_matches(
-        query.lower(), [name.lower() for name in names], n=1, cutoff=0.6
+        query.lower(), [name.lower() for name in names], n=1, cutoff=cutoff
     )
     if matches:
         matched_name = matches[0]

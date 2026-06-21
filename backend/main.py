@@ -25,6 +25,7 @@ from pydantic import BaseModel
 from .deepgram_stt import run_deepgram_session
 from .router import ROUTER_MODE, route
 from .protocol_import import import_protocol
+from .scaling import build_prep_table
 from .reproducibility import check as check_reproducibility
 from .schema import (
     Command,
@@ -253,6 +254,45 @@ async def demo_reset() -> dict[str, Any]:
 @app.get("/api/inventory")
 async def list_inventory() -> dict[str, Any]:
     return {"items": state.inventory_view()}
+
+
+class ScaleIn(BaseModel):
+    sample_count: int
+    overage_percent: float = 10.0
+    protocol_id: str | None = None
+
+
+@app.post("/api/scale")
+async def scale_protocol(body: ScaleIn) -> dict[str, Any]:
+    """Read-only reagent scaling for the active or selected protocol."""
+    if body.sample_count < 1:
+        raise HTTPException(status_code=422, detail="sample count must be at least 1")
+    if body.overage_percent < 0:
+        raise HTTPException(status_code=422, detail="overage percent must be non-negative")
+
+    if body.protocol_id:
+        proto = state.protocols.get(body.protocol_id)
+        if proto is None:
+            raise HTTPException(status_code=404, detail=f"unknown protocol: {body.protocol_id}")
+    else:
+        proto = state.active_protocol
+        if proto is None:
+            raise HTTPException(status_code=404, detail="load a protocol or provide protocol_id")
+
+    rows = build_prep_table(
+        proto,
+        n_samples=body.sample_count,
+        overage_pct=body.overage_percent,
+        inventory=state.inventory,
+    )
+    return {
+        "ok": True,
+        "protocol_id": proto.id,
+        "protocol_name": proto.name,
+        "sample_count": body.sample_count,
+        "overage_percent": body.overage_percent,
+        "reagents": rows,
+    }
 
 
 @app.get("/api/log")

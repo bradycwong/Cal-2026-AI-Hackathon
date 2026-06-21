@@ -14,6 +14,12 @@ from .router import _canon_unit, normalize_ascii
 
 FACTORS_TO_UL = {"uL": 1.0, "mL": 1000.0, "L": 1_000_000.0}
 
+# Prep tables need precision over recall: a wrong reagent match (e.g. "lysis
+# buffer" -> "Elution buffer") would misreport availability. Match stricter than
+# the voice find_inventory command so generic shared words ("buffer") don't pair
+# unrelated reagents.
+_PREP_MATCH_CUTOFF = 0.75
+
 
 def _volume_unit(unit: str) -> Optional[str]:
     canon = _canon_unit(normalize_ascii(unit or ""))
@@ -113,7 +119,9 @@ def build_prep_table(
     """Attach inventory availability verdicts to scaled reagent rows."""
     rows = scale_reagents(protocol, n_samples, overage_pct)
     for row in rows:
-        item = find_inventory_match(str(row["reagent"]), inventory)
+        item = find_inventory_match(
+            str(row["reagent"]), inventory, cutoff=_PREP_MATCH_CUTOFF
+        )
         row.update(
             {
                 "match_name": None,
