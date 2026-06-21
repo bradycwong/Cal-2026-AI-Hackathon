@@ -88,7 +88,7 @@ pytest -q          # router harness + handler shape checks
 
 ```
 backend/
-  main.py        FastAPI: /api/ingest, /api/state, WS /ws/events + /ws/audio, static, timer loop, ingest() spine
+  main.py        FastAPI: /api/ingest, /api/state, /api/protocols(+/{id}/load), /api/inventory, /api/log, WS /ws/events + /ws/audio, serves FrontendTest, timer loop, ingest() spine
   deepgram_stt.py server-side Deepgram live STT proxy (key never reaches browser)
   voice_control.py always-listening mute/unmute gate for spoken utterances
   schema.py      Command (flat-5 + unknown) + locked event-envelope builders
@@ -97,10 +97,9 @@ backend/
   state.py       SessionState; YAML/CSV loaders; timers; log (DB-backed via db.py)
   db.py          SQLite NoteStore: persists the log so it survives refresh/restart
   data/protocols/*.yaml (DNA Extraction, PCR Setup, Bacterial Transformation, Plasmid Miniprep), data/inventory.csv  (lab.db created at runtime)
-frontend/
-  index.html     panels + typed command box (permanent fallback)
-  app.js         WS client; dispatch on the 4 event types
-  styles.css
+FrontendTest/     served live UI (dashboard/protocols/guide/notebook/inventory.html)
+  app.js         window.LabClient: REST hydrate + WS dispatch on the 4 event types
+frontend/         legacy app, kept on disk (sw.js still served at /sw.js); no longer the root
 tests/           router, handler, STT, voice-control, and persistence checks
 ```
 
@@ -108,6 +107,33 @@ Log persistence: the log feed is written to SQLite (`backend/data/lab.db`, set
 `LAB_DB_PATH` to override or `:memory:` to disable) and rehydrated by the UI from
 `GET /api/state` on load, so it survives a page refresh or a server restart.
 Protocols + inventory stay file-driven; the rest of session state is in-memory.
+
+Read snapshots for the UI: `GET /api/protocols` -> `{"protocols": [...]}`,
+`POST /api/protocols/{id}/load` (deterministic load), `GET /api/inventory` ->
+`{"items": [...]}`, `GET /api/log` -> `{"log": [...]}`, and `GET /api/state`
+(step enriched with `all_steps`, `current_index`, `protocol_name`).
+
+Protocol import: `POST /api/protocols/import` with `{"text": "...", "name": "..."}`
+turns pasted prose into the canonical protocol YAML (written to
+`backend/data/protocols/`), registers it immediately, and surfaces it in
+`GET /api/protocols`. `IMPORT_MODE` (`auto|llm|deterministic`) selects the parser;
+with no API key it falls back to a deterministic line/duration parser, so import
+works offline. Imported protocols are always `READY` and survive a restart. The
+FrontendTest protocols page has an "Import Protocol" modal wired to this endpoint.
+
+Reproducibility flags: when a log entry is added at a step that declares a
+`volume_ul` parameter, a deterministic checker compares the logged volume against
+the expected one and attaches an optional `flag` (`status: ok|mismatch`) to the
+`log_entry`/`log_update` payloads and to `/api/log` + `/api/state`. v1 flags only
+`volume_ul` mismatches; it never edits the researcher's log text, and the flag is
+persisted as part of the lab record. The notebook renders a `OK`/`Warning` line.
+
+## Demo reset
+
+The FrontendTest UI includes a Reset Demo control. It clears protocol progress,
+timers, transcript, clarification, and transient page state. Persisted notes are
+kept by default. Set `LAB_DEMO_MODE=true` before starting the server to wipe notes
+as part of reset. Reset never deletes protocol YAML files or inventory CSV data.
 
 Deferred swappable organs (NOT yet): VAD-gated streaming (cost), TTS,
 upload/library pages.

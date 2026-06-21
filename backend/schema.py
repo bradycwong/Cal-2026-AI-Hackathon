@@ -66,7 +66,8 @@ def make_event(type: EventType, payload: dict[str, Any]) -> dict[str, Any]:
 
 # --- command_result kinds ---------------------------------------------------
 # kind in { step_change, log_entry, log_removed, log_update, inventory_result,
-#           clarify, voice_state, ask_result, timer_removed }
+#           clarify, voice_state, ask_result, timer_removed, protocol_imported,
+#           reset }
 
 
 def command_result(kind: str, **fields: Any) -> dict[str, Any]:
@@ -77,12 +78,18 @@ def step_change_event(
     prev_step: Optional[dict[str, Any]],
     current_step: Optional[dict[str, Any]],
     next_step: Optional[dict[str, Any]],
+    all_steps: Optional[list[dict[str, Any]]] = None,
+    current_index: Optional[int] = None,
+    protocol_name: Optional[str] = None,
 ) -> dict[str, Any]:
     return command_result(
         "step_change",
         prev_step=prev_step,
         current_step=current_step,
         next_step=next_step,
+        all_steps=all_steps if all_steps is not None else [],
+        current_index=current_index,
+        protocol_name=protocol_name,
     )
 
 
@@ -92,6 +99,8 @@ def log_entry_event(
     timestamp: str,
     sample_id: Optional[str],
     step_ref: Optional[int],
+    category: Optional[str] = None,
+    flag: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     return command_result(
         "log_entry",
@@ -100,6 +109,25 @@ def log_entry_event(
         timestamp=timestamp,
         sample_id=sample_id,
         step_ref=step_ref,
+        category=category,
+        flag=flag,
+    )
+
+
+def protocol_imported_event(
+    name: str,
+    protocol_id: str,
+    step_count: int,
+    aliases: list[str],
+    load_hint: str,
+) -> dict[str, Any]:
+    return command_result(
+        "protocol_imported",
+        name=name,
+        protocol_id=protocol_id,
+        step_count=step_count,
+        aliases=aliases,
+        load_hint=load_hint,
     )
 
 
@@ -107,8 +135,10 @@ def log_removed_event(id: int) -> dict[str, Any]:
     return command_result("log_removed", id=id)
 
 
-def log_update_event(id: int, text: str) -> dict[str, Any]:
-    return command_result("log_update", id=id, text=text)
+def log_update_event(
+    id: int, text: str, flag: Optional[dict[str, Any]] = None
+) -> dict[str, Any]:
+    return command_result("log_update", id=id, text=text, flag=flag)
 
 
 def ask_result_event(question: str, answer: str) -> dict[str, Any]:
@@ -133,6 +163,10 @@ def clarify_event(message: str) -> dict[str, Any]:
 
 def voice_state_event(muted: bool, label: str) -> dict[str, Any]:
     return command_result("voice_state", muted=muted, label=label)
+
+
+def reset_event(notes_cleared: bool) -> dict[str, Any]:
+    return command_result("reset", notes_cleared=notes_cleared)
 
 
 def timer_update_event(

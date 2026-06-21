@@ -13,6 +13,7 @@ import difflib
 from typing import Any
 
 from . import router
+from .reproducibility import check as check_reproducibility
 from .schema import (
     Command,
     ask_result_event,
@@ -34,11 +35,18 @@ def _step_change_events(state: SessionState, auto_timer: bool = True) -> list[di
     prev = state.step_at(idx - 1)
     cur = state.step_at(idx)
     nxt = state.step_at(idx + 1)
+    proto = state.active_protocol
+    all_steps = [s.as_event() for s in proto.steps] if proto else []
+    current_index = state.current_step_index if proto else None
+    protocol_name = proto.name if proto else None
     events: list[dict[str, Any]] = [
         step_change_event(
             prev_step=prev.as_event() if prev else None,
             current_step=cur.as_event() if cur else None,
             next_step=nxt.as_event() if nxt else None,
+            all_steps=all_steps,
+            current_index=current_index,
+            protocol_name=protocol_name,
         )
     ]
     if auto_timer and cur and cur.duration_s:
@@ -97,11 +105,25 @@ def _handle_repeat_step(cmd: Command, state: SessionState) -> list[dict[str, Any
     return _step_change_events(state, auto_timer=False)
 
 
+def _step_params_for_ref(state: SessionState, step_ref: Any) -> dict[str, Any]:
+    """Parameters of the step a note was logged at (per-protocol id, 1..N)."""
+    proto = state.active_protocol
+    if not proto or step_ref is None:
+        return {}
+    for step in proto.steps:
+        if step.id == step_ref:
+            return step.parameters
+    return {}
+
+
 def _handle_log_entry(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
     if not cmd.log_text:
         msg = cmd.clarify_prompt or "What would you like to log?"
         return [clarify_event(msg)]
-    entry = state.append_log(cmd.log_text, cmd.sample_id)  # log_text -> note.text
+    category = state.active_protocol.name if state.active_protocol else None
+    step = state.current_step()
+    flag = check_reproducibility(step.parameters, cmd.log_text) if step else None
+    entry = state.append_log(cmd.log_text, cmd.sample_id, category, flag)  # log_text -> note.text
     return [log_entry_event(**entry)]
 
 
@@ -115,10 +137,15 @@ def _handle_undo_log(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
 def _handle_correct_log(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
     if not cmd.log_text:
         return [clarify_event("What should I change the last note to?")]
-    entry = state.update_last_log(cmd.log_text)
+    # Recompute the flag against the step the note was ORIGINALLY logged at, not
+    # the current cursor (the researcher may have advanced since logging).
+    original_step_ref = state.log[-1].get("step_ref") if state.log else None
+    params = _step_params_for_ref(state, original_step_ref)
+    flag = check_reproducibility(params, cmd.log_text)
+    entry = state.update_last_log(cmd.log_text, flag)
     if entry is None:
         return [clarify_event("There's nothing to correct.")]
-    return [log_update_event(int(entry["id"]), str(entry["text"]))]
+    return [log_update_event(int(entry["id"]), str(entry["text"]), entry.get("flag"))]
 
 
 def _handle_start_timer(cmd: Command, state: SessionState) -> list[dict[str, Any]]:

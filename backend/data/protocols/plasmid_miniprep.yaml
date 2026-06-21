@@ -2,6 +2,10 @@ protocol:
   id: plasmid_miniprep
   name: Plasmid Miniprep
   version: "1.0"
+  description: "Alkaline-lysis miniprep of plasmid DNA from overnight culture."
+  category: Genomics
+  status: READY
+  est_duration_min: 40
   aliases: ["plasmid miniprep protocol", "plasmid miniprep", "miniprep", "plasmid prep"]
   steps:
     - id: 1

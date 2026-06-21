@@ -24,8 +24,14 @@ from pydantic import BaseModel
 
 from .deepgram_stt import run_deepgram_session
 from .router import ROUTER_MODE, route
+from .protocol_import import import_protocol
+from .reproducibility import check as check_reproducibility
 from .schema import (
+    Command,
     error_event,
+    log_entry_event,
+    protocol_imported_event,
+    reset_event,
     timer_removed_event,
     timer_update_event,
     transcript_update_event,
@@ -35,7 +41,10 @@ from .handlers import handle_command
 from .state import ProtocolParseError, SessionState
 from .voice_control import VoiceControl, classify_control
 
-FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+# FrontendTest is the served live UI. The legacy ``frontend/`` app is kept on
+# disk (its service worker is still served at /sw.js) but is no longer the root.
+FRONTEND_DIR = Path(__file__).parent.parent / "FrontendTest"
+LEGACY_FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
 # Log persistence (the one stateful organ). Override with LAB_DB_PATH; set to
 # ":memory:" to disable on-disk persistence.
@@ -165,18 +174,106 @@ async def api_ingest(body: IngestIn) -> dict[str, Any]:
         return {"ok": False, "events": [ev]}
 
 
+@app.get("/api/protocols")
+async def list_protocols() -> dict[str, Any]:
+    return {"protocols": state.protocol_catalog()}
+
+
+@app.post("/api/protocols/{protocol_id}/load")
+async def load_protocol_by_id(protocol_id: str) -> dict[str, Any]:
+    """Deterministic catalog-card load: never touches the router LLM."""
+    events = handle_command(
+        Command(intent="load_protocol", protocol_name=protocol_id), state
+    )
+    await manager.broadcast(events)
+    return {"ok": True, "events": events}
+
+
+class ProtocolImportIn(BaseModel):
+    text: str
+    name: str | None = None
+
+
+@app.post("/api/protocols/import")
+async def import_protocol_endpoint(body: ProtocolImportIn) -> dict[str, Any]:
+    """Paste-to-import: prose -> YAML -> registered protocol. Malformed prose
+    returns a controlled {ok: False} response, never a 500."""
+    try:
+        proto, _ = import_protocol(body.text, body.name, state)
+        summary = next(p for p in state.protocol_catalog() if p["id"] == proto.id)
+        load_hint = f'Say "Load {proto.name}" to start it.'
+        event = protocol_imported_event(
+            proto.name, proto.id, len(proto.steps), proto.aliases, load_hint
+        )
+        await manager.broadcast([event])
+        return {"ok": True, "protocol": summary, "load_hint": load_hint}
+    except ValueError as exc:
+        await manager.broadcast(
+            [error_event("protocol_import_failed", str(exc), "protocol_import")]
+        )
+        return {"ok": False, "error": str(exc)}
+
+
+def _demo_mode_enabled() -> bool:
+    return os.getenv("LAB_DEMO_MODE", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+@app.post("/api/demo/reset")
+async def demo_reset() -> dict[str, Any]:
+    """Pre-demo reset: clears stage state for every connected client. Notes are
+    wiped only under LAB_DEMO_MODE; protocol/inventory data is never deleted."""
+    notes_cleared = _demo_mode_enabled()
+    state.reset()
+    if notes_cleared:
+        state.clear_log()
+    vs = voice.set_muted(False)
+    event = reset_event(notes_cleared)
+    await manager.broadcast([event, voice_state_event(vs.muted, vs.label)])
+    return {"ok": True, "notes_cleared": notes_cleared, "events": [event]}
+
+
+@app.get("/api/inventory")
+async def list_inventory() -> dict[str, Any]:
+    return {"items": state.inventory_view()}
+
+
+@app.get("/api/log")
+async def list_log() -> dict[str, Any]:
+    return {"log": state.log}
+
+
+class LogEntryIn(BaseModel):
+    text: str
+    sample_id: str | None = None
+    category: str | None = None
+
+
+@app.post("/api/log")
+async def add_log(body: LogEntryIn) -> dict[str, Any]:
+    """Typed/manual log entry (same persisted feed as the voice/typed spine)."""
+    step = state.current_step()
+    flag = check_reproducibility(step.parameters, body.text) if step else None
+    entry = state.append_log(body.text, body.sample_id, body.category, flag)
+    await manager.broadcast([log_entry_event(**entry)])
+    return {"ok": True, "entry": entry}
+
+
 @app.get("/api/state")
 async def get_state() -> dict[str, Any]:
     """Snapshot for the UI to hydrate on (re)load. The log is DB-backed, so it
     survives a refresh or a server restart; step/timers are in-memory."""
     idx = state.current_step_index
     cur = state.current_step()
+    proto = state.active_protocol
     return {
         "log": state.log,
         "step": {
             "prev_step": (s.as_event() if (s := state.step_at(idx - 1)) else None),
             "current_step": (cur.as_event() if cur else None),
             "next_step": (s.as_event() if (s := state.step_at(idx + 1)) else None),
+            "all_steps": [s.as_event() for s in proto.steps] if proto else [],
+            "current_index": idx,
+            "protocol_name": proto.name if proto else None,
         }
         if cur
         else None,
@@ -329,14 +426,15 @@ async def ws_audio(ws: WebSocket) -> None:
 
 @app.get("/")
 async def index() -> FileResponse:
-    return FileResponse(FRONTEND_DIR / "index.html")
+    return FileResponse(FRONTEND_DIR / "dashboard.html")
 
 
 @app.get("/sw.js")
 async def service_worker() -> FileResponse:
     # Served from the root so the worker's default scope is the whole origin
     # (a worker under /static would only control /static).
-    return FileResponse(FRONTEND_DIR / "sw.js", media_type="application/javascript")
+    return FileResponse(LEGACY_FRONTEND_DIR / "sw.js", media_type="application/javascript")
 
 
-app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+# Root static mount LAST so every /api/* and /ws/* route is matched first.
+app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")

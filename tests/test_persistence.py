@@ -29,6 +29,40 @@ def test_log_survives_restart(tmp_path):
     assert s2.log[-1]["id"] == first_id + 1
 
 
+def test_flag_survives_restart(tmp_path):
+    flag = {
+        "parameter": "volume_ul",
+        "expected": 200,
+        "logged": 250,
+        "unit": "uL",
+        "status": "mismatch",
+    }
+    db = str(tmp_path / "lab.db")
+    state = SessionState(db_path=db)
+    state.load_files()
+    state.append_log("added 250 uL", sample_id="A", category="DNA Extraction", flag=flag)
+
+    state2 = SessionState(db_path=db)
+    state2.load_files()
+    assert state2.log[-1]["flag"] == flag
+
+
+def test_corrected_flag_survives_restart(tmp_path):
+    db = str(tmp_path / "lab.db")
+    s1 = SessionState(db_path=db)
+    s1.load_files()
+    mismatch = {"parameter": "volume_ul", "expected": 200, "logged": 250,
+                "unit": "uL", "status": "mismatch"}
+    s1.append_log("added 250 uL", sample_id="A", category="DNA Extraction", flag=mismatch)
+    ok = {"parameter": "volume_ul", "expected": 200, "logged": 200,
+          "unit": "uL", "status": "ok"}
+    s1.update_last_log("added 200 uL", ok)
+
+    s2 = SessionState(db_path=db)
+    s2.load_files()
+    assert s2.log[-1]["flag"] == ok
+
+
 def test_in_memory_default_has_no_persistence(tmp_path):
     # Default (no db_path) keeps the old pure in-memory behaviour.
     s = SessionState()

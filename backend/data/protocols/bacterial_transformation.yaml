@@ -2,6 +2,10 @@ protocol:
   id: bacterial_transformation
   name: Bacterial Transformation
   version: "1.0"
+  description: "Heat-shock transformation of competent E. coli with plasmid DNA."
+  category: Microbiology
+  status: READY
+  est_duration_min: 90
   aliases: ["bacterial transformation protocol", "bacterial transformation", "transformation", "heat shock transformation"]
   steps:
     - id: 1

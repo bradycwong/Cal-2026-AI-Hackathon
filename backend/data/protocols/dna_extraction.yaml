@@ -2,6 +2,10 @@ protocol:
   id: dna_extraction
   name: DNA Extraction
   version: "1.0"
+  description: "Rapid silica-based genomic DNA extraction."
+  category: Genomics
+  status: READY
+  est_duration_min: 45
   aliases: ["dna extraction protocol", "dna extraction", "dna"]
   steps:
     - id: 1

@@ -117,6 +117,7 @@
 <div>
 <h2 class="font-headline-lg text-headline-lg mb-2">Protocol Library</h2>
 <p class="text-on-surface-variant max-w-2xl">Select a standard operation procedure to begin. The AI assistant will provide step-by-step guidance, voice-controlled timers, and automated data logging.</p>
+<button id="import-protocol" class="mt-4 inline-flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-lg font-bold hover:bg-primary/90 transition-all active:opacity-80"><span class="material-symbols-outlined">upload</span>Import Protocol</button>
 </div>
 <div class="bg-surface-container-high p-4 rounded-xl border border-outline-variant flex items-center gap-4">
 <div class="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center">
@@ -128,8 +129,8 @@
 </div>
 </div>
 </div>
-<!-- Bento Grid of Protocol Cards -->
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+<!-- Bento Grid of Protocol Cards (live: populated by app.js) -->
+<div id="protocol-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 <!-- Protocol Card 1 -->
 <div class="protocol-card bg-surface-container-low rounded-xl p-6 flex flex-col">
 <div class="flex justify-between items-start mb-4">
@@ -296,6 +297,27 @@
     <span class="text-xs text-on-surface-variant">Voice Assistant</span>
   </div>
 </button></main>
+<!-- Import Protocol Modal -->
+<div id="import-modal" class="hidden fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4">
+  <div class="bg-surface-container-high border border-outline-variant rounded-2xl w-full max-w-2xl p-6 shadow-2xl">
+    <div class="flex justify-between items-center mb-4">
+      <h3 class="font-headline-md text-headline-md">Import Protocol</h3>
+      <button id="import-cancel" class="text-on-surface-variant hover:text-on-surface" aria-label="Close"><span class="material-symbols-outlined">close</span></button>
+    </div>
+    <p class="text-on-surface-variant text-sm mb-4">Paste a protocol as plain text. Numbered or bulleted steps are detected automatically; durations become timers.</p>
+    <label class="block text-xs font-bold uppercase text-on-surface-variant mb-1" for="import-name">Name (optional)</label>
+    <input id="import-name" type="text" class="w-full mb-4 bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface" placeholder="e.g. Quick DNA Prep" />
+    <label class="block text-xs font-bold uppercase text-on-surface-variant mb-1" for="import-text">Protocol Steps</label>
+    <textarea id="import-text" rows="8" class="w-full mb-4 bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 font-data-label text-on-surface" placeholder="1. Add 200 uL lysis buffer.&#10;2. Incubate 10 minutes."></textarea>
+    <div id="import-result" aria-live="polite" class="text-sm mb-4 min-h-[1.25rem]"></div>
+    <div class="flex justify-end gap-3">
+      <button id="import-cancel-2" class="px-4 py-2 rounded-lg border border-outline text-on-surface hover:bg-surface-variant">Cancel</button>
+      <button id="import-submit" class="px-4 py-2 rounded-lg bg-primary text-on-primary font-bold hover:bg-primary/90">Import</button>
+    </div>
+  </div>
+</div>
+<button id="demo-reset" data-action="demo-reset" type="button" class="fixed bottom-6 left-72 z-50 inline-flex items-center gap-2 bg-surface-container-high border border-outline-variant text-on-surface px-4 py-2 rounded-full shadow-lg hover:bg-surface-variant transition-all"><span class="material-symbols-outlined">restart_alt</span><span>Reset Demo</span></button>
+<script src="app.js" defer></script>
 <script>
         // Simple micro-interaction for protocol cards
         document.querySelectorAll('.protocol-card button').forEach(button => {
