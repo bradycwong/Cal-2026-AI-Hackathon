@@ -1,3 +1,7 @@
+/* Hide scrollbar on live transcript while still allowing programmatic scroll */
+.transcript-noscrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.transcript-noscrollbar::-webkit-scrollbar { display: none; }
+
 .pulse-glow {
     box-shadow: 0 0 15px rgba(123,167,245,0.45);
 }
