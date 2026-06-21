@@ -128,7 +128,6 @@
 <div>
 <div class="flex justify-between items-end mb-6">
 <div>
-<p class="text-secondary font-data-label text-data-label uppercase tracking-[0.2em] mb-1">Priority Operations</p>
 <h3 class="text-headline-lg font-headline-lg text-on-surface">Protocol Quick Launch</h3>
 </div>
 <a href="protocols.html" class="text-primary text-sm font-semibold flex items-center hover:underline">
@@ -252,23 +251,11 @@
 <span class="text-[10px] font-bold text-secondary uppercase">Verified by System</span>
 </div>
 </div>
-<!-- System Diagnostics -->
+<!-- Active Protocol -->
 <div class="pt-4 border-t border-outline-variant">
-<p class="text-xs font-bold text-on-surface uppercase mb-4">Diagnostics</p>
-<div class="grid grid-cols-2 gap-4">
-<div class="p-3 bg-surface-container-low rounded border border-outline-variant">
-<p class="text-[10px] text-on-surface-variant mb-1">CPU Load</p>
-<div class="h-1 w-full bg-surface-container-highest rounded overflow-hidden">
-<div class="h-full bg-primary w-[42%]"></div>
-</div>
-</div>
-<div class="p-3 bg-surface-container-low rounded border border-outline-variant">
-<p class="text-[10px] text-on-surface-variant mb-1">Network Latency</p>
-<div class="h-1 w-full bg-surface-container-highest rounded overflow-hidden">
-<div class="h-full bg-secondary w-[15%]"></div>
-</div>
-</div>
-</div>
+<p class="text-xs font-bold text-on-surface uppercase mb-4">Active Protocol</p>
+<p id="step-current" class="text-sm text-on-surface-variant mb-4">No protocol loaded.</p>
+<div id="timer-list" class="flex flex-col gap-3"></div>
 </div>
 </div>
 </div>

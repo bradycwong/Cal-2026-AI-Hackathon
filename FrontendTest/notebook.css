@@ -40,8 +40,8 @@
 
 /* Shared nav + voice + transcript styles (voice migration) */
 .nav-active {
-  background-color: var(--md-sys-color-primary-container, rgba(127,127,255,0.16));
-  color: var(--md-sys-color-on-primary-container, inherit);
+  background-color: #2352C8;
+  color: #E8EDF7;
   font-weight: 600;
 }
 .transcript-line { padding: 2px 0; }

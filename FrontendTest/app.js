@@ -290,9 +290,12 @@
     const name = $("protocol-name");
     if (name && step.protocol_name) name.textContent = step.protocol_name;
 
+    const idx = step.current_index == null ? -1 : step.current_index;
+    const panel = $("step-panel");
+    if (panel && idx >= 0) panel.classList.remove("hidden");
+
     const tracker = $("step-tracker");
     if (tracker && Array.isArray(step.all_steps)) {
-      const idx = step.current_index == null ? -1 : step.current_index;
       tracker.innerHTML = step.all_steps
         .map((s, i) => {
           let icon = "circle";
@@ -426,6 +429,8 @@
     if (nxt) nxt.textContent = "";
     const tracker = $("step-tracker");
     if (tracker) tracker.innerHTML = "";
+    const panel = $("step-panel");
+    if (panel) panel.classList.add("hidden");
     const lookup = $("inventory-result");
     if (lookup) lookup.textContent = "";
     if (notesCleared) {
@@ -717,6 +722,7 @@
 
   // --- bootstrap ------------------------------------------------------------
   async function hydrate() {
+    wireNav();
     try {
       if ($("protocol-cards")) renderProtocolCards(await fetchProtocols());
     } catch (_) {}
@@ -739,7 +745,6 @@
     wireImportModal();
     wireDemoReset();
     wireVoice();
-    wireNav();
   }
 
   window.LabClient = {

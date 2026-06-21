@@ -164,8 +164,8 @@
 
 <!-- Mini-Log -->
 <div class="flex-grow flex flex-col gap-gutter">
-  <!-- Protocol Status Tracker -->
-  <div class="flex flex-col">
+  <!-- Protocol Status Tracker (hidden until a protocol is active) -->
+  <div id="step-panel" class="flex flex-col hidden">
     <div class="flex justify-between items-center mb-stack-gap">
       <h3 class="font-data-label text-data-label text-primary tracking-widest uppercase">Protocol Status</h3>
       <span class="text-xs font-bold text-primary">STEP 2 / 5</span>
@@ -197,23 +197,6 @@
 
   <!-- Active Timers (live: populated by app.js) -->
   <div id="timer-list" class="flex flex-col gap-3"></div>
-  <!-- Countdown Timer (mockup) -->
-  <div class="bg-surface-container-low border border-outline-variant rounded-xl p-6 flex flex-col items-center">
-    <h3 class="font-data-label text-data-label text-on-surface-variant tracking-widest uppercase mb-4">Incubation Timer</h3>
-    <div class="relative flex items-center justify-center mb-4">
-      <svg class="w-32 h-32 transform -rotate-90">
-        <circle cx="64" cy="64" r="60" stroke="currentColor" stroke-width="4" fill="transparent" class="text-surface-container-highest"></circle>
-        <circle cx="64" cy="64" r="60" stroke="currentColor" stroke-width="4" fill="transparent" stroke-dasharray="377" stroke-dashoffset="100" class="text-primary transition-all duration-1000"></circle>
-      </svg>
-      <div class="absolute flex flex-col items-center">
-        <span class="font-display-timer text-2xl text-tertiary">04:14</span>
-        <span class="text-[10px] text-on-surface-variant uppercase">Remaining</span>
-      </div>
-    </div>
-    <div class="w-full bg-surface-container-highest h-1 rounded-full overflow-hidden">
-      <div class="bg-primary h-full w-3/4"></div>
-    </div>
-  </div>
 </div>
 <!-- Contextual Information -->
 
