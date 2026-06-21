@@ -23,11 +23,13 @@ from .schema import (
 )
 from .state import SessionState
 
-AUTO_TIMERS = os.getenv("LAB_AUTO_TIMERS", "true").lower() not in {"false", "0", "no"}
+# Off by default: timed steps wait for an explicit "start timer" command rather
+# than starting their countdown the moment they become current.
+AUTO_TIMERS = os.getenv("LAB_AUTO_TIMERS", "false").lower() in {"true", "1", "yes"}
 
 
 def _step_change_events(state: SessionState) -> list[dict[str, Any]]:
-    """step_change for the new cursor, plus an auto-timer if the step is timed."""
+    """step_change for the new cursor; an auto-timer too only if AUTO_TIMERS is on."""
     idx = state.current_step_index
     prev = state.step_at(idx - 1)
     cur = state.step_at(idx)
@@ -84,10 +86,18 @@ def _handle_log_entry(cmd: Command, state: SessionState) -> list[dict[str, Any]]
 
 
 def _handle_start_timer(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
-    if not cmd.duration_s or cmd.duration_s <= 0:
-        msg = cmd.clarify_prompt or "How long should the timer run?"
-        return [clarify_event(msg)]
-    timer = state.add_timer(cmd.duration_s, cmd.timer_label or "timer")
+    duration_s = cmd.duration_s
+    label = cmd.timer_label
+    if not duration_s or duration_s <= 0:
+        # No explicit duration -> start the current step's declared timer, if any.
+        cur = state.step_at(state.current_step_index) if state.active_protocol else None
+        if cur and cur.duration_s:
+            duration_s = cur.duration_s
+            label = label or cur.timer_label or f"step {cur.id}"
+        else:
+            msg = cmd.clarify_prompt or "How long should the timer run? (e.g. 'start a 10-minute timer')"
+            return [clarify_event(msg)]
+    timer = state.add_timer(duration_s, label or "timer")
     return [timer_update_event(timer.timer_id, timer.label, timer.remaining_s(), expired=False)]
 
 

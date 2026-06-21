@@ -1,0 +1,356 @@
+﻿<!DOCTYPE html><html class="dark" lang="en" style="width: 1280px; height: 1227px; overflow: hidden; position: relative;"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>LIMS AI Assistant - Logs</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500&family=DM+Sans:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-panel {
+            background: rgba(13,17,23,0.88);
+            backdrop-filter: blur(12px);
+            border: 1px solid #253050;
+        }
+        .log-entry-row:hover {
+            background: rgba(184, 195, 255, 0.04);
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #0D1117;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #253050;
+            border-radius: 10px;
+        }
+        .voice-active-glow {
+            box-shadow: 0 0 15px rgba(184,255,124,0.30);
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "inverse-surface": "#E8EDF7",
+                        "surface-dim": "#0D1117",
+                        "on-error": "#1A0000",
+                        "secondary-fixed-dim": "#8FD95A",
+                        "error": "#FF6B6B",
+                        "on-secondary": "#0D1117",
+                        "on-secondary-fixed": "#0D1117",
+                        "surface": "#0D1117",
+                        "on-primary-fixed-variant": "#1A3A7A",
+                        "on-primary": "#051025",
+                        "background": "#0D1117",
+                        "secondary-fixed": "#B8FF7C",
+                        "surface-container-high": "#1A2235",
+                        "on-tertiary-container": "#FFD580",
+                        "primary": "#7BA7F5",
+                        "outline": "#4A5570",
+                        "tertiary-container": "#7A4A00",
+                        "on-tertiary-fixed-variant": "#7A4A00",
+                        "error-container": "#7A1515",
+                        "secondary-container": "#3A7A1A",
+                        "on-background": "#E8EDF7",
+                        "on-tertiary-fixed": "#1A0D00",
+                        "on-primary-fixed": "#051025",
+                        "on-tertiary": "#1A0D00",
+                        "tertiary": "#F5A623",
+                        "on-secondary-container": "#0D1117",
+                        "on-primary-container": "#E8EDF7",
+                        "primary-fixed-dim": "#7BA7F5",
+                        "secondary": "#B8FF7C",
+                        "surface-bright": "#253050",
+                        "inverse-on-surface": "#131929",
+                        "surface-container-low": "#111724",
+                        "outline-variant": "#253050",
+                        "surface-container-lowest": "#080C14",
+                        "on-secondary-fixed-variant": "#3A7A1A",
+                        "primary-container": "#2352C8",
+                        "on-surface": "#E8EDF7",
+                        "tertiary-fixed-dim": "#F5A623",
+                        "on-surface-variant": "#8A96B0",
+                        "primary-fixed": "#C5D5F5",
+                        "on-error-container": "#FFD5D5",
+                        "tertiary-fixed": "#FFD580",
+                        "surface-tint": "#7BA7F5",
+                        "surface-variant": "#1E2A3F",
+                        "surface-container": "#131929",
+                        "inverse-primary": "#2352C8",
+                        "surface-container-highest": "#1E2A3F"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "gutter": "24px",
+                        "touch-target": "48px",
+                        "stack-gap": "16px",
+                        "container-padding": "32px",
+                        "unit": "8px"
+                    },
+                    "fontFamily": {
+                        "headline-lg": ["DM Mono"],
+                        "data-label": ["JetBrains Mono"],
+                        "display-timer": ["JetBrains Mono"],
+                        "body-md": ["DM Sans"],
+                        "data-value": ["JetBrains Mono"],
+                        "body-lg": ["DM Sans"],
+                        "headline-lg-mobile": ["DM Mono"],
+                        "headline-md": ["DM Mono"]
+                    },
+                    "fontSize": {
+                        "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "600"}],
+                        "data-label": ["14px", {"lineHeight": "20px", "fontWeight": "500"}],
+                        "display-timer": ["72px", {"lineHeight": "80px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "data-value": ["18px", {"lineHeight": "24px", "fontWeight": "600"}],
+                        "body-lg": ["20px", {"lineHeight": "30px", "fontWeight": "400"}],
+                        "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "500"}]
+                    }
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background text-on-surface font-body-md selection:bg-primary-container selection:text-on-primary-container" data-mode="connect">
+<!-- TopAppBar -->
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-0 h-full w-64 bg-surface-container flex flex-col py-stack-gap border-r border-outline-variant z-30">
+<a href="dashboard.html" class="px-gutter mb-8 block hover:opacity-80 transition-opacity cursor-pointer">
+<h1 class="font-headline-md text-headline-md text-primary">Placeholder</h1>
+<p class="text-on-surface-variant text-sm">AI Assistant</p>
+</a>
+<nav class="flex-1 px-4 space-y-2"><a class="text-on-surface-variant flex items-center px-4 py-3 hover:bg-surface-variant rounded-xl transition-all duration-200" href="protocols.html"><span class="material-symbols-outlined mr-3">menu_book</span><span class="">Protocols</span></a><a class="bg-primary-container text-on-primary-container rounded-xl flex items-center px-4 py-3 transition-all duration-200" href="notebook.html"><span class="material-symbols-outlined mr-3">description</span><span class="">Notebook</span></a><a class="text-on-surface-variant flex items-center px-4 py-3 hover:bg-surface-variant rounded-xl transition-all duration-200" href="guide.html"><span class="material-symbols-outlined mr-3">biotech</span><span class="">Guide</span></a><a class="text-on-surface-variant flex items-center px-4 py-3 hover:bg-surface-variant rounded-xl transition-all duration-200" href="inventory.html"><span class="material-symbols-outlined mr-3">inventory_2</span><span class="">Inventory</span></a></nav>
+<div class="px-4 mt-auto border-t border-outline-variant pt-4 space-y-2">
+<a class="text-on-surface-variant flex items-center px-4 py-3 hover:bg-surface-variant rounded-xl transition-all duration-200" href="#">
+<span class="material-symbols-outlined mr-3">help</span>
+<span class="">Support</span>
+</a>
+<a class="text-on-surface-variant flex items-center px-4 py-3 hover:bg-surface-variant rounded-xl transition-all duration-200" href="#">
+<span class="material-symbols-outlined mr-3 text-error">logout</span>
+<span class="text-error">Logout</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-64 mb-16 min-h-screen p-container-padding flex flex-col gap-stack-gap bg-surface-dim">
+<!-- Header Section -->
+<section class="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-4">
+<div>
+<nav class="flex text-on-surface-variant text-sm gap-2 mb-2">
+<span class="hover:text-primary cursor-pointer">Projects</span>
+<span class="">/</span>
+<span class="hover:text-primary cursor-pointer">Genomics</span>
+<span class="">/</span>
+<span class="text-primary font-bold">DNA-EX-2024</span>
+</nav>
+<h2 class="font-headline-lg text-headline-lg text-on-surface flex items-center gap-4">Logs <span class="text-outline text-2xl font-light">|</span> <span class="text-primary-container bg-primary-container/10 px-3 py-1 rounded text-2xl font-semibold">[DNA Extraction Protocol]</span></h2>
+</div>
+<div class="flex items-center gap-3">
+<button class="bg-surface-container-high border border-outline-variant text-on-surface px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-surface-variant transition-colors">
+<span class="material-symbols-outlined text-lg">export_notes</span>
+                    Export PDF
+                </button>
+<button class="bg-primary text-on-primary px-6 py-2 rounded-lg font-bold flex items-center gap-2 hover:opacity-90 transition-all">
+<span class="material-symbols-outlined text-lg">add</span>
+                    Manual Entry
+                </button>
+</div>
+</section>
+<!-- Search and Filter Bar -->
+<section class="glass-panel p-4 rounded-xl flex flex-col md:flex-row items-center gap-4">
+<div class="relative flex-1 group">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant group-focus-within:text-primary transition-colors">search</span>
+<input class="w-full bg-surface-container-lowest border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary rounded-lg py-3 pl-12 pr-12 text-on-surface placeholder:text-on-surface-variant outline-none transition-all" placeholder="Search logs via voice or text..." type="text">
+<button class="absolute right-4 top-1/2 -translate-y-1/2 text-primary hover:scale-110 transition-transform">
+<span class="material-symbols-outlined" data-weight="fill">mic</span>
+</button>
+</div>
+<div class="flex items-center gap-2">
+<button class="px-4 py-2 rounded-full border border-outline-variant text-on-surface-variant flex items-center gap-2 text-sm font-medium hover:bg-surface-variant">
+<span class="material-symbols-outlined text-sm">filter_list</span>
+                    Event Type
+                </button>
+<button class="px-4 py-2 rounded-full border border-outline-variant text-on-surface-variant flex items-center gap-2 text-sm font-medium hover:bg-surface-variant">
+<span class="material-symbols-outlined text-sm">calendar_today</span>
+                    Today
+                </button>
+</div>
+</section>
+<!-- Log Content - Asymmetric Grid Layout -->
+<div class="grid grid-cols-12 gap-gutter flex-1">
+<!-- Timeline Container -->
+<div class="col-span-12 lg:col-span-8 flex flex-col gap-4">
+<div class="glass-panel rounded-2xl overflow-hidden flex flex-col h-full">
+<div class="bg-surface-container-high px-6 py-4 flex justify-between items-center border-b border-outline-variant">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary">history</span>
+<span class="font-bold text-on-surface">Activity Stream</span>
+</div>
+<div class="text-xs font-data-label text-outline uppercase tracking-wider">
+                            Live Sync: <span class="text-secondary">Active</span>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto custom-scrollbar p-0"><!-- Log Entry 1 -->
+<div class="log-entry-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors bg-primary/5 border-l-4 border-l-primary">
+<div class="col-span-2 font-data-label text-on-surface text-sm">2024-05-24</div>
+<div class="col-span-2 font-data-label text-on-surface text-sm">14:22:05</div>
+<div class="col-span-3">
+<span class="bg-primary-container/20 text-primary-fixed px-2 py-0.5 rounded text-xs font-bold">PCR Amplification</span>
+</div>
+<div class="col-span-5 flex justify-between items-center">
+<p class="text-on-surface text-sm">Cycle 32 completed. Fluorescence threshold reached at Ct 24.2.</p>
+<button class="text-primary text-xs font-bold hover:underline ml-2">View Notes</button>
+</div>
+</div>
+<!-- Log Entry 2 -->
+<div class="log-entry-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors">
+<div class="col-span-2 font-data-label text-on-surface text-sm">2024-05-24</div>
+<div class="col-span-2 font-data-label text-on-surface text-sm">13:45:10</div>
+<div class="col-span-3">
+<span class="bg-secondary-container/20 text-secondary-fixed-dim px-2 py-0.5 rounded text-xs font-bold">Reagent Prep</span>
+</div>
+<div class="col-span-5 flex justify-between items-center">
+<p class="text-on-surface text-sm">Master mix prepared for 96-well plate. Lot #XP-202 verified.</p>
+<button class="text-primary text-xs font-bold hover:underline ml-2">View Notes</button>
+</div>
+</div>
+<!-- Log Entry 3 -->
+<div class="log-entry-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors">
+<div class="col-span-2 font-data-label text-on-surface text-sm">2024-05-24</div>
+<div class="col-span-2 font-data-label text-on-surface text-sm">12:15:00</div>
+<div class="col-span-3">
+<span class="bg-tertiary-container/20 text-tertiary-fixed-dim px-2 py-0.5 rounded text-xs font-bold">Sample Lysis</span>
+</div>
+<div class="col-span-5 flex justify-between items-center">
+<p class="text-on-surface text-sm">Incubation at 56Â°C for 10 minutes. Homogenization successful.</p>
+<button class="text-primary text-xs font-bold hover:underline ml-2">View Notes</button>
+</div>
+</div>
+<!-- Historical Data Placeholder -->
+<div class="p-12 flex flex-col items-center justify-center opacity-30 select-none">
+<span class="material-symbols-outlined text-6xl mb-4">inventory</span>
+<p class="font-headline-md">Historical Data Loaded</p>
+</div></div>
+</div>
+</div>
+<!-- Stats & Context Sidebar -->
+<div class="col-span-12 lg:col-span-4 flex flex-col gap-stack-gap">
+<!-- Experiment Progress Card -->
+<!-- AI Insights Bento Card -->
+<!-- Active Timer Card -->
+<div class="glass-panel rounded-2xl flex flex-col h-full overflow-hidden">
+<div class="bg-surface-container-high px-6 py-4 flex justify-between items-center border-b border-outline-variant">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary">edit_note</span>
+<h3 class="font-bold text-on-surface">Research Notes</h3>
+</div>
+<button class="text-on-surface-variant hover:text-on-surface transition-colors flex items-center gap-1 group/copy mr-3" title="Copy All">
+  <span class="material-symbols-outlined text-[20px]">content_copy</span>
+  
+</button><button class="text-on-surface-variant hover:text-on-surface transition-colors">
+<span class="material-symbols-outlined">edit</span>
+</button><button class="text-on-surface-variant hover:text-on-surface transition-colors ml-2"><span class="material-symbols-outlined">fullscreen</span></button>
+</div>
+<div class="flex-1 p-6 bg-surface-container-lowest overflow-y-auto custom-scrollbar">
+<div class="mb-6">
+<p class="text-xs font-data-label text-primary uppercase tracking-widest mb-1">Subject</p>
+<h4 class="font-headline-md text-lg text-on-surface">DNA Extraction Protocol - 2024-05-24</h4>
+</div>
+<div class="space-y-6">
+<div class="relative pl-6 border-l-2 border-primary/30">
+<p class="text-xs font-data-label text-on-surface-variant mb-2">14:22:05 - PCR Amplification</p>
+<p class="text-on-surface leading-relaxed italic">
+                    "Observed slightly faster ramp-up in fluorescence during cycle 28. Threshold reached earlier than expected. Potential high-yield sample detected."
+                </p>
+</div>
+<div class="bg-primary-container/10 p-4 rounded-xl border border-primary/20">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-primary text-sm">auto_awesome</span>
+<span class="text-xs font-bold text-primary uppercase tracking-wider">AI Analysis</span>
+</div>
+<p class="text-sm text-on-surface-variant">
+                    Telemetry suggests Sample A purity is optimal. Recommend proceeding with standard elution volume unless manual override is triggered.
+                </p>
+</div>
+<div class="relative pl-6 border-l-2 border-secondary/30">
+<p class="text-xs font-data-label text-on-surface-variant mb-2">13:45:10 - Reagent Prep</p>
+<p class="text-on-surface leading-relaxed italic">
+                    "Lot #XP-202 verified. Master mix consistency looks good. No visible precipitation in the buffer solution."
+                </p>
+</div>
+<div class="pt-8 opacity-30">
+<div class="h-px bg-outline-variant w-full mb-4"></div>
+<p class="text-center text-xs font-data-label">End of current session notes</p>
+</div>
+</div>
+</div>
+
+</div></div>
+</div>
+</main>
+<!-- BottomNavBar / Voice Visualization Shell -->
+<!-- FAB (Suppressed on Logs detail screen as per UX guidelines, but if we need a quick action it would be here) -->
+<!-- <button class="fixed bottom-24 right-8 w-14 h-14 bg-primary text-on-primary rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition-transform z-50">
+        <span class="material-symbols-outlined text-3xl">add_comment</span>
+    </button> -->
+<script>
+        // Micro-interaction: Mimic live log updates
+        setInterval(() => {
+            const statusIndicator = document.querySelector('.text-secondary.animate-pulse');
+            if (statusIndicator) {
+                statusIndicator.style.opacity = Math.random() > 0.5 ? '1' : '0.5';
+            }
+        }, 1000);
+
+        // Simple search highlight simulation
+        const searchInput = document.querySelector('input[type="text"]');
+        searchInput.addEventListener('input', (e) => {
+            const rows = document.querySelectorAll('.log-entry-row');
+            const term = e.target.value.toLowerCase();
+            
+            rows.forEach(row => {
+                const text = row.innerText.toLowerCase();
+                if (text.includes(term)) {
+                    row.style.display = 'grid';
+                    row.style.opacity = '1';
+                } else {
+                    row.style.opacity = '0.2';
+                }
+            });
+        });
+    </script>
+
+
+
+
+
+
+
+
+
+
+<button id="voice-assistant-toggle" class="fixed bottom-8 right-8 z-50 flex items-center gap-3 bg-surface-container-lowest border border-outline-variant rounded-xl px-4 py-3 shadow-xl hover:border-primary transition-all duration-300">
+  <div class="relative w-8 h-8 flex items-center justify-center shrink-0">
+    <span class="absolute inset-0 rounded-full border border-secondary animate-ping opacity-40"></span>
+    <span class="absolute inset-1 rounded-full border border-secondary opacity-60"></span>
+    <span class="material-symbols-outlined text-secondary" style="font-size:16px">mic</span>
+  </div>
+  <div class="flex flex-col items-start">
+    <span class="text-[9px] font-bold text-secondary uppercase tracking-[0.2em] leading-none">Listening</span>
+    <span class="text-xs text-on-surface-variant">Voice Assistant</span>
+  </div>
+</button>
+</body></html>

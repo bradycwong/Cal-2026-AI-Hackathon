@@ -56,6 +56,14 @@ def test_start_timer_seconds():
     assert cmd.duration_s == 30
 
 
+def test_start_timer_no_duration_defers_to_handler():
+    # Bare "start timer" carries no duration so the handler can use the step's.
+    cmd = route("Start timer")
+    assert cmd.intent == "start_timer"
+    assert cmd.duration_s is None
+    assert cmd.timer_label is None
+
+
 def test_find_inventory():
     cmd = route("Where's the proteinase K?")
     assert cmd.intent == "find_inventory"
