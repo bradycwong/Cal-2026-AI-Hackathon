@@ -18,16 +18,21 @@ protocol:
       duration_s: null           # null = manual advance
       parameters: { volume_ul: 2, reagent: "plasmid DNA" }
     - id: 3
-      text: "Heat shock at 42 °C for 45 seconds, then return to ice for 2 minutes."
+      text: "Heat shock at 42 °C for 45 seconds."
       duration_s: 45
       timer_label: heat shock
       parameters: { temp_c: 42 }
     - id: 4
+      text: "Return to ice for 2 minutes."
+      duration_s: 120            # 2 min back on ice
+      timer_label: return to ice
+      parameters: { temp_c: 0 }
+    - id: 5
       text: "Add 950 µL SOC medium and recover at 37 °C shaking for 1 hour."
       duration_s: 3600           # 1 h recovery
       timer_label: recovery
       parameters: { volume_ul: 950, reagent: "SOC medium", temp_c: 37 }
-    - id: 5
+    - id: 6
       text: "Plate 100 µL on LB agar with antibiotic and incubate overnight at 37 °C."
       duration_s: null
       parameters: { volume_ul: 100, reagent: "LB agar", temp_c: 37 }
