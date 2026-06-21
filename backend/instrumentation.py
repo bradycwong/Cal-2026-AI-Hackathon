@@ -14,8 +14,9 @@ the published instrumentor requires ``anthropic >= 0.41`` (the 1.0.x line needs
 the modern OpenTelemetry/wrapt stack ``arize-otel`` pulls in. This project pins
 ``anthropic == 0.40.0``, so a small hand-rolled LLM span is the robust path that
 keeps the reproducible build intact. (``messages.parse`` does not exist in 0.40.0
-either, so the router/import LLM paths fall back deterministically and make no
-API call to trace — only the ``ask`` path is a live Anthropic call.)
+either: the *router* LLM path still uses it and so falls back deterministically with
+no API call to trace, while the ``ask`` and protocol-``import`` paths use
+``messages.create`` and are live Anthropic calls, both wrapped in ``llm_span``.)
 
 Design constraints (matching the rest of the backend):
   * Purely additive — never changes routing/handler behaviour.

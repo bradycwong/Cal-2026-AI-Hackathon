@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 import backend.main as main
 from backend.handlers import handle_command
 from backend.schema import Command
-from backend.state import SessionState
+from backend.state import SessionState, load_protocol_file
 
 SHIPPED_DATA = Path(__file__).resolve().parents[1] / "backend" / "data"
 
@@ -124,6 +124,21 @@ def test_reset_restores_protocol_library(client, monkeypatch):
 
     restored = {p["id"] for p in client.get("/api/protocols").json()["protocols"]}
     assert restored == baseline_ids
+
+
+def test_reset_baseline_excludes_junk_import_artifact():
+    """The typo'd 'quick dna prpe' was a stray manual import. It must not ship in
+    the reset baseline (seed) or the live data dir — otherwise it reappears in the
+    library on every demo reset. Guards by parsed id/name, not just filename."""
+    repo = Path(__file__).resolve().parents[1]
+    for protocols_dir in (
+        repo / "backend" / "seed" / "protocols",
+        repo / "backend" / "data" / "protocols",
+    ):
+        for path in protocols_dir.glob("*.yaml"):
+            proto = load_protocol_file(path)
+            assert proto.id != "quick_dna_prpe", f"{path} ships the junk protocol"
+            assert proto.name.strip().lower() != "quick dna prpe", f"{path} ships the junk protocol"
 
 
 def test_reset_deletes_created_notebooks(client):

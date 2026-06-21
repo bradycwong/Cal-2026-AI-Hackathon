@@ -1,10 +1,15 @@
 """Protocol import: registration, deterministic parser, YAML round-trip."""
 
+import types
 from pathlib import Path
 
 import pytest
 
-from backend.protocol_import import import_protocol
+from backend.protocol_import import (
+    _extract_json,
+    _validate_parsed,
+    import_protocol,
+)
 from backend.state import SessionState, load_protocol_file
 
 
@@ -94,3 +99,98 @@ def test_imported_yaml_round_trips_through_loader(tmp_path, monkeypatch):
     assert reloaded.id == proto.id
     assert [s.text for s in reloaded.steps] == [s.text for s in proto.steps]
     assert reloaded.steps[1].duration_s == 120
+
+
+# --- LLM JSON parsing (the messages.create path), exercised offline ----------
+
+# A model response for the canonical compound example, split into atomic steps:
+# one untimed prep step plus two independently-timed actions.
+COMPOUND_JSON = """\
+{
+  "name": "Imported Protocol",
+  "description": "",
+  "aliases": ["imported protocol"],
+  "steps": [
+    {"text": "Add lysis buffer to tube.", "duration_s": null, "timer_label": null, "parameters": {}},
+    {"text": "Centrifuge tube.", "duration_s": 45, "timer_label": "centrifuge", "parameters": {}},
+    {"text": "Incubate at 30 degrees C.", "duration_s": 600, "timer_label": "incubation", "parameters": {"temp_c": 30}}
+  ]
+}"""
+
+
+def test_validate_parsed_splits_compound_into_timed_steps():
+    parsed = _validate_parsed(COMPOUND_JSON, name=None)
+    assert [s.duration_s for s in parsed.steps] == [None, 45, 600]
+    # timer_label only on the timed steps; the prep step stays unlabeled.
+    assert [s.timer_label for s in parsed.steps] == [None, "centrifuge", "incubation"]
+    assert parsed.steps[2].parameters == {"temp_c": 30}
+
+
+def test_extract_json_strips_code_fences_and_prose():
+    fenced = 'Here is the protocol:\n```json\n{"name": "X", "steps": []}\n```\nDone.'
+    assert _extract_json(fenced).strip() == '{"name": "X", "steps": []}'
+
+
+def test_validate_parsed_empty_steps_raises():
+    with pytest.raises(ValueError):
+        _validate_parsed('{"name": "Empty", "steps": []}', name=None)
+
+
+def test_validate_parsed_autofills_and_strips_timer_label():
+    raw = """\
+    {"name": "T", "steps": [
+      {"text": "Vortex the sample.", "duration_s": 30, "parameters": {}},
+      {"text": "Place tube on ice.", "duration_s": null, "timer_label": "leftover", "parameters": {}}
+    ]}"""
+    parsed = _validate_parsed(raw, name=None)
+    # duration set + no label -> filled from the first verb
+    assert parsed.steps[0].timer_label == "vortex"
+    # duration None -> any stray label is dropped
+    assert parsed.steps[1].timer_label is None
+
+
+def test_validate_parsed_applies_name_override():
+    parsed = _validate_parsed(COMPOUND_JSON, name="My Protocol")
+    assert parsed.name == "My Protocol"
+
+
+class _FakeMessages:
+    def __init__(self, text):
+        self._text = text
+
+    def create(self, **_kwargs):
+        return types.SimpleNamespace(
+            content=[types.SimpleNamespace(text=self._text)], usage=None
+        )
+
+
+class _FakeAnthropic:
+    """Stands in for anthropic.Anthropic so the LLM path runs with no network."""
+
+    _text = COMPOUND_JSON
+
+    def __init__(self, *args, **kwargs):
+        self.messages = _FakeMessages(self._text)
+
+
+def test_llm_import_splits_compound_end_to_end(tmp_path, monkeypatch):
+    import anthropic
+
+    monkeypatch.setenv("IMPORT_MODE", "llm")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(anthropic, "Anthropic", _FakeAnthropic)
+
+    state = _state(tmp_path)
+    proto, path = import_protocol(
+        "Centrifuge tube 45 seconds before incubating at 30 C for 10 minutes.",
+        "Compound Demo",
+        state,
+    )
+
+    # Full wiring: prompt -> create -> extract -> validate -> ids -> file -> loader.
+    reloaded = load_protocol_file(path)
+    assert reloaded.id == proto.id
+    assert [s.id for s in reloaded.steps] == [1, 2, 3]
+    assert [s.duration_s for s in reloaded.steps] == [None, 45, 600]
+    assert reloaded.steps[1].timer_label == "centrifuge"
+    assert reloaded.steps[2].timer_label == "incubation"
