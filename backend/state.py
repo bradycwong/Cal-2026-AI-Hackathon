@@ -55,12 +55,28 @@ class Timer:
     timer_id: str
     label: str
     duration_s: int
-    started_at: float
+    started_at: Optional[float] = None        # monotonic while running; None while paused
+    remaining_at_pause: Optional[int] = None  # frozen remaining while paused
     expired: bool = False
 
+    @property
+    def paused(self) -> bool:
+        return self.started_at is None and not self.expired
+
     def remaining_s(self) -> int:
+        if self.started_at is None:  # paused / not yet started -> frozen value
+            return self.remaining_at_pause if self.remaining_at_pause is not None else self.duration_s
         rem = self.duration_s - (time.monotonic() - self.started_at)
         return max(0, int(round(rem)))
+
+    def start(self) -> None:
+        """Begin (or resume) the countdown from the current frozen remaining."""
+        if self.started_at is not None or self.expired:
+            return
+        if self.remaining_at_pause is not None:
+            self.duration_s = self.remaining_at_pause
+            self.remaining_at_pause = None
+        self.started_at = time.monotonic()
 
 
 def utc_now_iso() -> str:
@@ -196,16 +212,25 @@ class SessionState:
         return entry
 
     # --- timers ------------------------------------------------------------
-    def add_timer(self, duration_s: int, label: str) -> Timer:
+    def add_timer(self, duration_s: int, label: str, *, paused: bool = False) -> Timer:
         self._timer_seq += 1
         timer = Timer(
             timer_id=f"t{self._timer_seq}",
             label=label,
             duration_s=duration_s,
-            started_at=time.monotonic(),
+            started_at=None if paused else time.monotonic(),
+            remaining_at_pause=duration_s if paused else None,
         )
         self.timers.append(timer)
         return timer
+
+    def start_pending_timer(self) -> Optional[Timer]:
+        """Resume the most recently added paused timer, if one is waiting."""
+        for timer in reversed(self.timers):
+            if timer.paused:
+                timer.start()
+                return timer
+        return None
 
     def clear_timers(self) -> None:
         self.timers.clear()

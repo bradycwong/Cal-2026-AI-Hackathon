@@ -135,7 +135,7 @@ def voice_state_event(muted: bool, label: str) -> dict[str, Any]:
 
 
 def timer_update_event(
-    timer_id: str, label: str, remaining_s: int, expired: bool
+    timer_id: str, label: str, remaining_s: int, expired: bool, paused: bool = False
 ) -> dict[str, Any]:
     return make_event(
         "timer_update",
@@ -144,6 +144,7 @@ def timer_update_event(
             "label": label,
             "remaining_s": remaining_s,
             "expired": expired,
+            "paused": paused,
         },
     )
 

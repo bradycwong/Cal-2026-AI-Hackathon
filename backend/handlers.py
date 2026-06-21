@@ -45,11 +45,16 @@ def _step_change_events(state: SessionState, auto_timer: bool = True) -> list[di
             next_step=nxt.as_event() if nxt else None,
         )
     ]
-    if auto_timer and AUTO_TIMERS and cur and cur.duration_s:
+    if auto_timer and cur and cur.duration_s:
         label = cur.timer_label or f"step {cur.id}"
-        timer = state.add_timer(cur.duration_s, label)
+        # Default: the timer appears paused and waits for "start timer".
+        # LAB_AUTO_TIMERS=true restores the old auto-start-on-step-change.
+        timer = state.add_timer(cur.duration_s, label, paused=not AUTO_TIMERS)
         events.append(
-            timer_update_event(timer.timer_id, timer.label, timer.remaining_s(), expired=False)
+            timer_update_event(
+                timer.timer_id, timer.label, timer.remaining_s(),
+                expired=False, paused=timer.paused,
+            )
         )
     return events
 
@@ -124,7 +129,11 @@ def _handle_start_timer(cmd: Command, state: SessionState) -> list[dict[str, Any
     duration_s = cmd.duration_s
     label = cmd.timer_label
     if not duration_s or duration_s <= 0:
-        # No explicit duration -> start the current step's declared timer, if any.
+        # No explicit duration -> resume the step's paused timer if one is waiting.
+        pending = state.start_pending_timer()
+        if pending is not None:
+            return [timer_update_event(pending.timer_id, pending.label, pending.remaining_s(), expired=False, paused=False)]
+        # Otherwise start the current step's declared timer fresh, if any.
         cur = state.step_at(state.current_step_index) if state.active_protocol else None
         if cur and cur.duration_s:
             duration_s = cur.duration_s
@@ -133,7 +142,7 @@ def _handle_start_timer(cmd: Command, state: SessionState) -> list[dict[str, Any
             msg = cmd.clarify_prompt or "How long should the timer run? (e.g. 'start a 10-minute timer')"
             return [clarify_event(msg)]
     timer = state.add_timer(duration_s, label or "timer")
-    return [timer_update_event(timer.timer_id, timer.label, timer.remaining_s(), expired=False)]
+    return [timer_update_event(timer.timer_id, timer.label, timer.remaining_s(), expired=False, paused=False)]
 
 
 def _handle_find_inventory(cmd: Command, state: SessionState) -> list[dict[str, Any]]:

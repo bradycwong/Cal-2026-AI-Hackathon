@@ -1,5 +1,7 @@
 """Handler checks — hand-built Commands -> exact locked event shapes."""
 
+import time
+
 import backend.handlers as handlers
 from backend.handlers import handle_command
 from backend.schema import Command
@@ -57,8 +59,9 @@ def test_start_timer_event_shape():
     events = handle_command(Command(intent="start_timer", duration_s=600, timer_label="incubation"), state)
     ev = events[0]
     assert ev["type"] == "timer_update"
-    assert set(ev["payload"]) == {"timer_id", "label", "remaining_s", "expired"}
+    assert set(ev["payload"]) == {"timer_id", "label", "remaining_s", "expired", "paused"}
     assert ev["payload"]["expired"] is False
+    assert ev["payload"]["paused"] is False  # explicit duration -> runs immediately
 
 
 def test_auto_timer_starts_on_timed_step(monkeypatch):
@@ -88,36 +91,48 @@ def test_auto_timer_starts_on_load_when_first_step_is_timed(monkeypatch):
     assert events[1]["payload"]["label"] == "thaw on ice"
 
 
-def test_auto_timer_can_be_disabled(monkeypatch):
+def test_timed_step_shows_paused_timer_by_default(monkeypatch):
+    # Default (manual): a timed step surfaces a PAUSED timer card frozen at the
+    # step's full duration instead of auto-counting down.
     monkeypatch.setattr(handlers, "AUTO_TIMERS", False)
     state = fresh_state()
     events = handle_command(
         Command(intent="load_protocol", protocol_name="Bacterial Transformation"), state
     )
-    assert all(e["type"] != "timer_update" for e in events)
+    timer_events = [e for e in events if e["type"] == "timer_update"]
+    assert len(timer_events) == 1
+    p = timer_events[0]["payload"]
+    assert p["paused"] is True
+    assert p["label"] == "thaw on ice"
+    assert p["remaining_s"] == 600  # frozen at the step's full duration
 
 
-def test_timers_do_not_auto_start_by_default(monkeypatch):
-    # Default is manual: a timed step never auto-starts its countdown.
+def test_paused_timer_does_not_tick():
+    # A paused timer's remaining stays frozen regardless of elapsed time.
+    state = fresh_state()
+    timer = state.add_timer(600, "thaw on ice", paused=True)
+    assert timer.paused is True
+    assert timer.remaining_s() == 600
+    time.sleep(1.1)
+    assert timer.remaining_s() == 600
+
+
+def test_start_timer_resumes_paused_step_timer(monkeypatch):
+    # "start timer" resumes the same paused card (same id), now running.
     monkeypatch.setattr(handlers, "AUTO_TIMERS", False)
     state = fresh_state()
-    events = handle_command(
+    load = handle_command(
         Command(intent="load_protocol", protocol_name="Bacterial Transformation"), state
     )
-    assert all(e["type"] != "timer_update" for e in events)
-    events = handle_command(Command(intent="next_step"), state)
-    assert all(e["type"] != "timer_update" for e in events)
-
-
-def test_start_timer_without_duration_uses_current_step(monkeypatch):
-    monkeypatch.setattr(handlers, "AUTO_TIMERS", False)
-    state = fresh_state()
-    # Bacterial Transformation step 1 is timed (thaw on ice, 600 s).
-    handle_command(Command(intent="load_protocol", protocol_name="Bacterial Transformation"), state)
+    paused = [e for e in load if e["type"] == "timer_update"][0]["payload"]
+    assert paused["paused"] is True
     events = handle_command(Command(intent="start_timer"), state)
+    p = events[0]["payload"]
     assert events[0]["type"] == "timer_update"
-    assert events[0]["payload"]["label"] == "thaw on ice"
-    assert events[0]["payload"]["remaining_s"] > 0
+    assert p["timer_id"] == paused["timer_id"]
+    assert p["paused"] is False
+    assert p["label"] == "thaw on ice"
+    assert p["remaining_s"] > 0
 
 
 def test_start_timer_without_duration_on_untimed_step_clarifies(monkeypatch):
