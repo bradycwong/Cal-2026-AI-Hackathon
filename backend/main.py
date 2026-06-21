@@ -34,7 +34,7 @@ from .deepgram_stt import run_deepgram_session
 from .router import ROUTER_MODE, route
 from .protocol_import import import_protocol
 from .pdf_extract import PdfExtractError, extract_pdf_text, reflow_pdf_text
-from .scaling import build_prep_table
+from .scaling import apply_reagent_deductions, build_prep_table
 from .reproducibility import check as check_reproducibility
 from .schema import (
     Command,
@@ -453,6 +453,100 @@ async def scale_protocol(body: ScaleIn) -> dict[str, Any]:
         "sample_count": body.sample_count,
         "overage_percent": body.overage_percent,
         "reagents": rows,
+    }
+
+
+class ScaleWithPriorityIn(BaseModel):
+    sample_count: int
+    overage_percent: float = 10.0
+    protocol_id: str | None = None
+    # Maps reagent name -> ordered list of item ids (first = highest priority).
+    priority_order: dict[str, list[int]] = {}
+
+
+@app.post("/api/scale/with-priority")
+async def scale_with_priority(body: ScaleWithPriorityIn) -> dict[str, Any]:
+    """Prep table + per-bottle deduction plan using the caller's priority order."""
+    if body.sample_count < 1:
+        raise HTTPException(status_code=422, detail="sample count must be at least 1")
+    if body.overage_percent < 0:
+        raise HTTPException(status_code=422, detail="overage percent must be non-negative")
+
+    if body.protocol_id:
+        proto = state.protocols.get(body.protocol_id)
+        if proto is None:
+            raise HTTPException(status_code=404, detail=f"unknown protocol: {body.protocol_id}")
+    else:
+        proto = state.active_protocol
+        if proto is None:
+            raise HTTPException(status_code=404, detail="load a protocol or provide protocol_id")
+
+    rows = build_prep_table(
+        proto,
+        n_samples=body.sample_count,
+        overage_pct=body.overage_percent,
+        inventory=state.inventory,
+    )
+    deductions = apply_reagent_deductions(rows, body.priority_order, state.inventory)
+    return {
+        "ok": True,
+        "protocol_id": proto.id,
+        "protocol_name": proto.name,
+        "sample_count": body.sample_count,
+        "overage_percent": body.overage_percent,
+        "reagents": rows,
+        "deductions": deductions,
+    }
+
+
+class ConsumeReagentsIn(BaseModel):
+    # [{item_id, new_amount, new_unit}] — exactly the deductions list from
+    # /api/scale/with-priority, filtered to the items the user confirmed.
+    deductions: list[dict[str, Any]]
+
+
+@app.post("/api/inventory/consume")
+async def consume_reagents(body: ConsumeReagentsIn) -> dict[str, Any]:
+    """Apply priority-ordered reagent deductions after a protocol run.
+
+    Each entry must have ``item_id`` (int), ``new_amount`` (str/float),
+    and ``new_unit`` (str). Items whose ``new_amount`` rounds to 0 are
+    deleted; all others are updated in place.
+    """
+    updated = []
+    deleted = []
+    errors = []
+    for entry in body.deductions:
+        item_id = int(entry.get("item_id", 0))
+        new_amount = entry.get("new_amount")
+        new_unit = str(entry.get("new_unit") or "").strip()
+        try:
+            amt = float(str(new_amount).strip())
+        except (TypeError, ValueError):
+            errors.append({"item_id": item_id, "error": "invalid new_amount"})
+            continue
+        try:
+            if amt <= 0:
+                removed = state.delete_inventory_item(item_id)
+                deleted.append(removed.name)
+            else:
+                item = state.update_inventory_item(
+                    item_id, amount=str(amt), unit=new_unit
+                )
+                updated.append(_inventory_item_payload(item))
+        except IndexError:
+            errors.append({"item_id": item_id, "error": "not found"})
+
+    await manager.broadcast(
+        [{"type": "command_result", "payload": {"kind": "inventory_consumed",
+          "updated": updated, "deleted": deleted}}]
+    )
+    return {
+        "ok": True,
+        "updated": updated,
+        "deleted": deleted,
+        "errors": errors,
+        "inventory_count": len(state.inventory),
     }
 
 
