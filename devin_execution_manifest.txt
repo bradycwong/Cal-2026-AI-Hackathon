@@ -1,0 +1,132 @@
+# Devin Execution Manifest: FrontendTest Backend Migration Stack
+
+Use this file before opening the individual plans. It resolves the cross-plan
+dependencies so the four plans can be executed in one coherent sequence.
+
+## Execution order
+
+1. `frontend_migration_backend_plan.txt`
+   - Installs the FrontendTest serving path.
+   - Creates the shared REST/WS contracts.
+   - Creates `FrontendTest/app.js` as the shared browser client used by later plans.
+
+2. `protocol_import_plan.txt`
+   - Adds paste-to-import protocol creation.
+   - Consumes the protocol catalog and FrontendTest serving work from plan 1.
+   - Must not reimplement serving or replace the protocol catalog endpoint.
+
+3. `reproducibility_plan.txt`
+   - Adds deterministic volume mismatch flags to log entries.
+   - Consumes the log endpoint, log category field, and FrontendTest notebook renderer
+     from plan 1.
+
+4. `plan_demo_reset.txt`
+   - Adds the demo reset endpoint and FrontendTest reset UI.
+   - Runs last so reset clears the final integrated UI state, including imported
+     protocols being left intact and reproducibility flags being cleared only with
+     log entries.
+
+## Shared contract installed by plan 1
+
+All later plans must preserve these shapes.
+
+`GET /api/protocols`
+
+```json
+{
+  "protocols": [
+    {
+      "id": "dna_extraction",
+      "name": "DNA Extraction",
+      "description": "Silica-based genomic DNA extraction.",
+      "category": "Genomics",
+      "status": "READY",
+      "est_duration_min": 45,
+      "duration_s": 2700,
+      "duration_label": "45m",
+      "step_count": 5,
+      "reagents": ["lysis buffer"],
+      "aliases": ["dna extraction"]
+    }
+  ]
+}
+```
+
+Protocol `status` values are uppercase strings: `READY`, `LOW_REAGENTS`,
+`ARCHIVED`.
+
+`POST /api/protocols/{id}/load`
+
+```json
+{
+  "ok": true,
+  "events": [
+    {
+      "type": "command_result",
+      "payload": {
+        "kind": "step_change",
+        "prev_step": null,
+        "current_step": {"id": 1, "text": "Add lysis buffer."},
+        "next_step": {"id": 2, "text": "Incubate."},
+        "all_steps": [{"id": 1, "text": "Add lysis buffer."}],
+        "current_index": 0,
+        "protocol_name": "DNA Extraction"
+      }
+    }
+  ]
+}
+```
+
+`GET /api/inventory`
+
+```json
+{
+  "items": [
+    {
+      "name": "Lysis Buffer",
+      "code": "LYS-1002-B",
+      "location": "Cold Room A",
+      "category": "Molecular Reagent",
+      "quantity_approx": "20 mL",
+      "date": "2024-01-15",
+      "status": "low",
+      "notes": "For DNA extraction"
+    }
+  ]
+}
+```
+
+Inventory `status` values are lowercase strings: `ok`, `low`, `critical`,
+`expiring`.
+
+`GET /api/log`
+
+```json
+{
+  "log": [
+    {
+      "id": 1,
+      "text": "added 200 uL lysis buffer",
+      "timestamp": "2026-06-20T18:20:00Z",
+      "sample_id": "A",
+      "step_ref": 1,
+      "category": "DNA Extraction"
+    }
+  ]
+}
+```
+
+Plan 3 may add an optional `flag` object to each log entry. Every renderer must
+treat `flag` as optional.
+
+## Global implementation rules
+
+- Preserve the locked ingest spine: `transcript -> route() -> handle_command() -> broadcast()`.
+- Do not add new outer websocket event types. Use existing `command_result` kinds.
+- Do not expose vendor API keys or vendor key names in `FrontendTest/`.
+- Keep old `frontend/` files in the repo, but after plan 1 do not add new behavior
+  or tests there.
+- Register `app.mount("/", StaticFiles(...), name="frontend")` last in `backend/main.py`.
+- Run `python -m pytest -q` after each plan and before starting the next one.
+- Make a commit after each plan, or after each task inside a plan if the working
+  style requires smaller commits.

@@ -1,0 +1,638 @@
+# FrontendTest Backend Migration Implementation Plan
+
+> For Devin: execute this plan first. REQUIRED SUB-SKILL: use
+> superpowers:subagent-driven-development or superpowers:executing-plans to
+> implement this task-by-task. This plan installs the shared contracts consumed
+> by `protocol_import_plan.txt`, `reproducibility_plan.txt`, and
+> `plan_demo_reset.txt`.
+
+**Goal:** Make `FrontendTest/` the served live UI and expose the backend snapshots
+and websocket payloads it needs.
+
+**Architecture:** FastAPI continues to own the locked ingest spine and websocket
+bus. New REST endpoints are read snapshots or deterministic side endpoints. A new
+shared `FrontendTest/app.js` hydrates each static mockup page from those contracts
+and handles websocket updates.
+
+**Tech Stack:** FastAPI, Pydantic v2, SQLite, PyYAML, vanilla HTML/CSS/JS,
+pytest, FastAPI `TestClient`.
+
+## Global Constraints
+
+- Preserve the locked spine: `transcript -> route() -> handle_command() -> broadcast()`.
+- Do not add new outer websocket event types. Keep `transcript_update`,
+  `command_result`, `timer_update`, and `error`.
+- `step_change` remains a `command_result` kind and gains optional tracker fields.
+- All new page-data endpoints are same-origin under `/api/*`.
+- Serve `FrontendTest/` from `/`; keep old `frontend/` files but stop targeting
+  them in tests after this plan.
+- Register the root static mount last so `/api/*` and `/ws/*` routes win.
+- Protocol status values are uppercase: `READY`, `LOW_REAGENTS`, `ARCHIVED`.
+- Inventory status values are lowercase: `ok`, `low`, `critical`, `expiring`.
+- Keep vendor keys server-side; no vendor key names in `FrontendTest/`.
+- Run `python -m pytest -q` before commit.
+
+---
+
+## Shared Contracts This Plan Owns
+
+`GET /api/protocols` returns:
+
+```python
+{
+    "protocols": [
+        {
+            "id": "dna_extraction",
+            "name": "DNA Extraction",
+            "description": "Rapid silica-based genomic DNA extraction.",
+            "category": "Genomics",
+            "status": "READY",
+            "est_duration_min": 45,
+            "duration_s": 2700,
+            "duration_label": "45m",
+            "step_count": 5,
+            "reagents": ["lysis buffer"],
+            "aliases": ["dna extraction"],
+        }
+    ]
+}
+```
+
+`POST /api/protocols/{id}/load` returns `{"ok": True, "events": [...]}` and
+broadcasts the same events. It builds `Command(intent="load_protocol",
+protocol_name=<id>)`, runs `handle_command`, and never calls the router LLM.
+
+`GET /api/inventory` returns `{"items": [...]}` with:
+
+```python
+{
+    "name": "Lysis Buffer",
+    "code": "LYS-1002-B",
+    "location": "Cold Room A",
+    "category": "Molecular Reagent",
+    "quantity_approx": "20 mL",
+    "date": "2024-01-15",
+    "status": "low",
+    "notes": "For DNA extraction",
+}
+```
+
+`GET /api/log` returns `{"log": [...]}` with log entries including optional
+`category`. Later plans may add optional `flag`; this plan should preserve unknown
+extra fields in client rendering.
+
+`GET /api/state` keeps the existing shape and enriches `step` with:
+
+```python
+{
+    "all_steps": [{"id": 1, "text": "Add lysis buffer."}],
+    "current_index": 0,
+    "protocol_name": "DNA Extraction",
+}
+```
+
+---
+
+## Task 0: Baseline Guardrail
+
+**Files:**
+- Read: repository working tree
+- Modify: none
+
+**Steps:**
+
+- [ ] **Step 1: Inspect current changes**
+
+Run:
+
+```bash
+git status --short
+```
+
+Expected: note existing user changes. Do not reset, checkout, or delete unrelated
+files.
+
+- [ ] **Step 2: Run the current suite**
+
+Run:
+
+```bash
+python -m pytest -q
+```
+
+Expected: current tests pass or failures are recorded before migration work starts.
+
+---
+
+## Task 1: Widen Backend Models and Snapshot Helpers
+
+**Files:**
+- Modify: `backend/state.py`
+- Modify: `backend/data/protocols/*.yaml`
+- Modify: `backend/data/inventory.csv`
+- Test: `tests/test_state_writers.py`
+
+**Interfaces:**
+- Produces `SessionState.protocol_catalog() -> list[dict[str, Any]]`.
+- Produces `SessionState.inventory_view() -> list[dict[str, Any]]`.
+- Keeps `load_protocol_file(path)` and `load_inventory_file(path)` backward-compatible.
+
+**Steps:**
+
+- [ ] **Step 1: Add failing catalog and inventory tests**
+
+Add tests that instantiate `SessionState()`, call `load_files()`, and assert:
+
+```python
+catalog = state.protocol_catalog()
+assert catalog
+assert {
+    "id",
+    "name",
+    "description",
+    "category",
+    "status",
+    "est_duration_min",
+    "duration_s",
+    "duration_label",
+    "step_count",
+    "reagents",
+    "aliases",
+} <= set(catalog[0])
+assert catalog[0]["status"] in {"READY", "LOW_REAGENTS", "ARCHIVED"}
+
+items = state.inventory_view()
+assert items
+assert {
+    "name",
+    "code",
+    "location",
+    "category",
+    "quantity_approx",
+    "date",
+    "status",
+    "notes",
+} <= set(items[0])
+assert items[0]["status"] in {"ok", "low", "critical", "expiring"}
+```
+
+- [ ] **Step 2: Run selected tests and verify failure**
+
+Run:
+
+```bash
+python -m pytest tests/test_state_writers.py -q
+```
+
+Expected: fail because the helper methods and fields do not exist.
+
+- [ ] **Step 3: Extend dataclasses and loaders**
+
+In `backend/state.py`, update:
+
+```python
+@dataclass
+class Protocol:
+    id: str
+    name: str
+    steps: list[Step]
+    aliases: list[str] = field(default_factory=list)
+    description: str = ""
+    category: str = "General"
+    status: str = "READY"
+    est_duration_min: Optional[int] = None
+    reagents: list[str] = field(default_factory=list)
+```
+
+and:
+
+```python
+@dataclass
+class InventoryItem:
+    name: str
+    location: str
+    quantity_approx: str
+    notes: str = ""
+    code: str = ""
+    category: str = "General"
+    date: str = ""
+    status: str = "ok"
+```
+
+Update `parse_protocol_text()` to read optional protocol fields using `.get()`.
+When `reagents` is missing, derive a unique ordered list from
+`step.parameters.get("reagent")`. When `est_duration_min` is missing, derive it
+from timed steps when possible.
+
+Update `load_inventory_file()` and `add_inventory_item()` so older CSV rows still
+load and new CSV writes include:
+
+```python
+["name", "location", "quantity_approx", "notes", "code", "category", "date", "status"]
+```
+
+- [ ] **Step 4: Add snapshot helpers**
+
+Add `duration_label` formatting in `SessionState.protocol_catalog()`:
+
+```python
+def _duration_label(seconds: int) -> str:
+    if seconds <= 0:
+        return "-"
+    minutes = max(1, round(seconds / 60))
+    if minutes < 60:
+        return f"{minutes}m"
+    hours, rem = divmod(minutes, 60)
+    return f"{hours}h" if rem == 0 else f"{hours}h {rem}m"
+```
+
+Return protocol summaries matching the shared contract. Return inventory rows
+matching the shared contract.
+
+- [ ] **Step 5: Enrich sample data**
+
+Add real `description`, `category`, `status`, `est_duration_min`, and `reagents`
+fields to every YAML file under `backend/data/protocols/`.
+
+Add `code,category,date,status` columns to `backend/data/inventory.csv`.
+
+- [ ] **Step 6: Run state tests**
+
+Run:
+
+```bash
+python -m pytest tests/test_state_writers.py -q
+```
+
+Expected: pass.
+
+---
+
+## Task 2: Add REST Endpoints and Serve FrontendTest
+
+**Files:**
+- Modify: `backend/main.py`
+- Test: `tests/test_api.py`
+- Test: `tests/test_upload_endpoints.py`
+
+**Interfaces:**
+- Produces `GET /api/protocols`.
+- Produces `POST /api/protocols/{protocol_id}/load`.
+- Produces `GET /api/inventory`.
+- Produces `GET /api/log`.
+- Produces optional `POST /api/log`.
+- Changes `/` to `FrontendTest/dashboard.html`.
+
+**Steps:**
+
+- [ ] **Step 1: Add failing API tests**
+
+Create `tests/test_api.py` with tests for:
+
+```python
+def test_frontendtest_is_served(client):
+    assert client.get("/").status_code == 200
+    assert "Operation Center" in client.get("/").text
+    assert client.get("/protocols.html").status_code == 200
+    assert client.get("/api/health").json()["ok"] is True
+
+
+def test_catalog_inventory_and_log_shapes(client):
+    assert "protocols" in client.get("/api/protocols").json()
+    assert "items" in client.get("/api/inventory").json()
+    assert "log" in client.get("/api/log").json()
+```
+
+Use the existing `TestClient` pattern from the repo. If no shared client fixture
+exists, define one in this file.
+
+- [ ] **Step 2: Run selected tests and verify failure**
+
+Run:
+
+```bash
+python -m pytest tests/test_api.py -q
+```
+
+Expected: fail because the endpoints and serving path are missing.
+
+- [ ] **Step 3: Add endpoint handlers**
+
+In `backend/main.py`, add:
+
+```python
+@app.get("/api/protocols")
+async def list_protocols() -> dict[str, Any]:
+    return {"protocols": state.protocol_catalog()}
+
+
+@app.post("/api/protocols/{protocol_id}/load")
+async def load_protocol_by_id(protocol_id: str) -> dict[str, Any]:
+    events = handle_command(Command(intent="load_protocol", protocol_name=protocol_id), state)
+    await manager.broadcast(events)
+    return {"ok": True, "events": events}
+
+
+@app.get("/api/inventory")
+async def list_inventory() -> dict[str, Any]:
+    return {"items": state.inventory_view()}
+
+
+@app.get("/api/log")
+async def list_log() -> dict[str, Any]:
+    return {"log": state.log}
+```
+
+Import `Command` from `backend.schema`.
+
+For `POST /api/log`, accept `{text, sample_id?, category?}`, call
+`state.append_log(...)`, broadcast `log_entry_event(**entry)`, and return
+`{"ok": True, "entry": entry}`.
+
+- [ ] **Step 4: Serve FrontendTest**
+
+Replace:
+
+```python
+FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+```
+
+with:
+
+```python
+FRONTEND_DIR = Path(__file__).parent.parent / "FrontendTest"
+```
+
+Change `/` to return `dashboard.html`. Replace the old `/static` mount with this
+root mount at the very end of the file, after every API route and websocket route:
+
+```python
+app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+```
+
+- [ ] **Step 5: Run API and upload tests**
+
+Run:
+
+```bash
+python -m pytest tests/test_api.py tests/test_upload_endpoints.py -q
+```
+
+Expected: pass. Existing upload endpoints must still work.
+
+---
+
+## Task 3: Enrich Step Tracker Events and State Hydration
+
+**Files:**
+- Modify: `backend/schema.py`
+- Modify: `backend/handlers.py`
+- Modify: `backend/main.py`
+- Test: `tests/test_handlers.py`
+- Test: `tests/test_api.py`
+
+**Interfaces:**
+- Extends `step_change_event(..., all_steps=None, current_index=None, protocol_name=None)`.
+- Adds the same tracker keys under `/api/state["step"]`.
+
+**Steps:**
+
+- [ ] **Step 1: Add failing handler tests**
+
+In `tests/test_handlers.py`, load a protocol, advance once, and assert:
+
+```python
+payload = events[0]["payload"]
+assert payload["kind"] == "step_change"
+assert payload["all_steps"]
+assert payload["current_index"] == 1
+assert payload["protocol_name"]
+```
+
+- [ ] **Step 2: Run handler tests and verify failure**
+
+Run:
+
+```bash
+python -m pytest tests/test_handlers.py -q
+```
+
+Expected: fail because tracker fields are missing.
+
+- [ ] **Step 3: Update event builder**
+
+In `backend/schema.py`, change `step_change_event` to accept optional
+`all_steps`, `current_index`, and `protocol_name`, and include them in the
+payload.
+
+- [ ] **Step 4: Update the handler chokepoint**
+
+In `backend/handlers.py::_step_change_events`, compute:
+
+```python
+proto = state.active_protocol
+all_steps = [s.as_event() for s in proto.steps] if proto else []
+current_index = state.current_step_index if proto else None
+protocol_name = proto.name if proto else None
+```
+
+Pass those values into `step_change_event`.
+
+- [ ] **Step 5: Update `/api/state`**
+
+In `backend/main.py::get_state()`, add the same keys to the `step` dict when a
+current step exists.
+
+- [ ] **Step 6: Run handler and API tests**
+
+Run:
+
+```bash
+python -m pytest tests/test_handlers.py tests/test_api.py -q
+```
+
+Expected: pass.
+
+---
+
+## Task 4: Add the Shared FrontendTest Client
+
+**Files:**
+- Create: `FrontendTest/app.js`
+- Modify: `FrontendTest/dashboard.html`
+- Modify: `FrontendTest/protocols.html`
+- Modify: `FrontendTest/guide.html`
+- Modify: `FrontendTest/notebook.html`
+- Modify: `FrontendTest/inventory.html`
+- Modify: `FrontendTest/*.css` only if needed for small state classes
+- Test: `tests/test_frontend_static.py`
+
+**Interfaces:**
+- Produces `window.LabClient`.
+- Produces reusable renderers later plans can extend:
+  - `LabClient.fetchProtocols()`
+  - `LabClient.fetchInventory()`
+  - `LabClient.fetchLog()`
+  - `LabClient.renderProtocolCards(protocols)`
+  - `LabClient.renderInventory(items)`
+  - `LabClient.renderLog(log)`
+  - `LabClient.renderStep(stepPayload)`
+  - `LabClient.renderTimers(timers)`
+  - `LabClient.clearTransientState()`
+
+**Steps:**
+
+- [ ] **Step 1: Add failing static tests**
+
+Retarget `tests/test_frontend_static.py` to `FrontendTest/` and assert every HTML
+page includes:
+
+```html
+<script src="app.js" defer></script>
+```
+
+Assert `FrontendTest/app.js` contains `/api/protocols`, `/api/inventory`,
+`/api/log`, `/api/state`, `/ws/events`, `renderProtocolCards`, `renderLog`, and
+`renderStep`.
+
+- [ ] **Step 2: Run static tests and verify failure**
+
+Run:
+
+```bash
+python -m pytest tests/test_frontend_static.py -q
+```
+
+Expected: fail because `FrontendTest/app.js` and script tags are missing.
+
+- [ ] **Step 3: Add stable page hooks**
+
+Keep the mockup look, but add IDs or `data-lab-*` hooks where the client needs
+to render:
+
+```html
+<section id="protocol-cards"></section>
+<section id="inventory-rows"></section>
+<section id="log-rows"></section>
+<section id="step-tracker"></section>
+<section id="timer-list"></section>
+<p id="live-transcript"></p>
+```
+
+Do not rely on brittle Tailwind class selectors for app state.
+
+- [ ] **Step 4: Implement `FrontendTest/app.js`**
+
+Use vanilla JS. On `DOMContentLoaded`, call `LabClient.hydrate()` and
+`LabClient.connectEvents()`. The websocket dispatcher must handle:
+
+```javascript
+case "step_change":
+  LabClient.renderStep(payload);
+  break;
+case "log_entry":
+  LabClient.appendLogEntry(payload);
+  break;
+case "log_removed":
+  LabClient.removeLogEntry(payload.id);
+  break;
+case "log_update":
+  LabClient.updateLogEntry(payload);
+  break;
+case "voice_state":
+  LabClient.renderVoiceState(payload);
+  break;
+case "clarify":
+  LabClient.renderClarification(payload.message);
+  break;
+```
+
+Handle `timer_update` and `transcript_update` outer event types too. Do not add
+new outer event names.
+
+- [ ] **Step 5: Wire protocol load buttons**
+
+`renderProtocolCards()` should render a "Load Protocol" button with
+`data-protocol-id`. Clicking it calls:
+
+```javascript
+await fetch(`/api/protocols/${encodeURIComponent(id)}/load`, { method: "POST" });
+window.location.href = "guide.html";
+```
+
+- [ ] **Step 6: Neutralize mock-only scripts**
+
+Remove or guard inline scripts that mutate timers, log rows, or inventory rows
+with fake data. Keep harmless visual micro-interactions only when they do not
+compete with live data.
+
+- [ ] **Step 7: Run frontend static tests**
+
+Run:
+
+```bash
+python -m pytest tests/test_frontend_static.py -q
+```
+
+Expected: pass.
+
+---
+
+## Task 5: Full Verification and Commit
+
+**Files:**
+- Modify: `README.md`
+- Modify: `.env.example`
+
+**Steps:**
+
+- [ ] **Step 1: Document the new served UI**
+
+Update `README.md` so "Run" points to `http://127.0.0.1:8000/` serving
+`FrontendTest/dashboard.html`, and list `/api/protocols`, `/api/inventory`,
+`/api/log`, and `/api/state` as local snapshots.
+
+- [ ] **Step 2: Run the full test suite**
+
+Run:
+
+```bash
+python -m pytest -q
+```
+
+Expected: pass.
+
+- [ ] **Step 3: Manual smoke test**
+
+Run:
+
+```bash
+uvicorn backend.main:app --reload
+```
+
+Open `http://127.0.0.1:8000/`. Confirm:
+
+- Dashboard loads from `FrontendTest/`.
+- `protocols.html` renders live protocol cards.
+- Loading a protocol moves to `guide.html`.
+- `guide.html` shows the protocol tracker and current step.
+- `inventory.html` renders live inventory.
+- `notebook.html` renders live log entries.
+- `/api/health` still returns JSON.
+
+- [ ] **Step 4: Commit**
+
+Run:
+
+```bash
+git add backend FrontendTest tests README.md .env.example
+git commit -m "feat: serve FrontendTest with live backend snapshots"
+```
+
+## Final Acceptance Criteria
+
+- `FrontendTest/` is the served UI.
+- The old `frontend/` app is not modified by this plan.
+- Shared endpoint contracts match `devin_execution_manifest.txt`.
+- Every FrontendTest page includes `app.js`.
+- Full pytest suite passes.

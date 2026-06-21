@@ -208,12 +208,29 @@ function onLogEntry(p) {
   li.dataset.logId = String(p.id);
   const sample = p.sample_id ? ` · sample ${p.sample_id}` : "";
   const step = p.step_ref ? ` · step ${p.step_ref}` : "";
+  // Reproducibility flag (optional): the backend compares the logged value to the
+  // step's expected parameter. Absent until the backend emits it -> renders as today.
+  const f = p.flag;
+  const ok = f && f.status === "ok"
+    ? ` <span class="log-ok" title="matches protocol">✓</span>` : "";
   li.innerHTML = `<span class="log-time">${p.timestamp}</span>` +
     `<span class="log-text">${escapeHtml(p.text)}</span>` +
-    `<span class="log-meta">${escapeHtml(sample + step)}</span>`;
+    `<span class="log-meta">${escapeHtml(sample + step)}${ok}</span>`;
+  if (f && f.status === "mismatch") {
+    li.classList.add("flagged");
+    const warn = document.createElement("div");
+    warn.className = "log-flag warn";
+    warn.textContent =
+      `⚠ expected ${f.expected} ${f.unit} (protocol) — you logged ${f.logged} ${f.unit}`;
+    li.appendChild(warn);
+  }
   els.log.prepend(li);
   clearClarify();
-  announce(`Logged: ${p.text}`);
+  announce(
+    f && f.status === "mismatch"
+      ? `Warning: logged ${f.logged} ${f.unit}, protocol expects ${f.expected} ${f.unit}`
+      : `Logged: ${p.text}`
+  );
   setState("done", "chip-ok");
 }
 

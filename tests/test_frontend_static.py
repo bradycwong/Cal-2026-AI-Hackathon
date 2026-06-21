@@ -24,3 +24,18 @@ def test_app_handles_new_command_result_kinds():
     assert "dataset.logId" in js
     assert "ensureLogEmptyState" in js
     assert "DEMO_LINES" in js
+
+
+def test_app_renders_reproducibility_flag():
+    js = (ROOT / "frontend" / "app.js").read_text()
+    assert "p.flag" in js                 # onLogEntry reads the new flag field
+    assert "mismatch" in js               # branches on flag.status
+    assert "flagged" in js                # tags the <li> for the mismatch accent
+    assert "log-flag" in js               # renders the warning line
+
+
+def test_styles_have_flag_classes():
+    css = (ROOT / "frontend" / "styles.css").read_text()
+    assert ".log-flag" in css             # warning line (reuses the --warn token)
+    assert ".flagged" in css              # row accent
+    assert ".log-ok" in css               # subtle check on a matched entry

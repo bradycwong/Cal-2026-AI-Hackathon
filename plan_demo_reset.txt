@@ -1,0 +1,540 @@
+# Demo Reset Implementation Plan
+
+> For Devin: execute this plan fourth, after the migration, protocol import, and
+> reproducibility plans are committed and tests pass. REQUIRED SUB-SKILL: use
+> superpowers:subagent-driven-development or superpowers:executing-plans to
+> implement this task-by-task.
+
+**Goal:** Add a one-click pre-demo reset that clears the live FrontendTest session
+view, protocol cursor, transcript, timers, inventory lookup result, clarification
+state, and transient UI state. Persisted lab notes are wiped only when
+`LAB_DEMO_MODE=true`.
+
+**Architecture:** Add reset primitives to `SessionState` and `NoteStore`, expose
+them through `POST /api/demo/reset`, broadcast a `command_result` kind named
+`reset`, and wire a shared FrontendTest reset control through `FrontendTest/app.js`.
+Protocol files, imported protocol files, and inventory CSV data are never deleted.
+
+**Tech Stack:** FastAPI, Pydantic v2, SQLite, vanilla FrontendTest JS/CSS, pytest.
+
+## Global Constraints
+
+- This plan consumes `FrontendTest/app.js` from `frontend_migration_backend_plan.txt`.
+- Do not modify old `frontend/` files.
+- Do not change the locked ingest spine.
+- Do not create new outer websocket event types.
+- New UI output must be a `command_result` kind named `reset`.
+- Do not clear protocol YAML files, imported protocol YAML files, inventory CSV
+  rows, or API keys.
+- Persisted notes are deleted only when `LAB_DEMO_MODE=true`.
+- With `LAB_DEMO_MODE` unset or false, reset clears the operator's screen but
+  keeps DB-backed notes; refresh or restart may show retained notes again.
+- Reset must clear optional reproducibility flags only as part of clearing log
+  entries. Do not add special flag logic.
+- Run `python -m pytest -q` before commit.
+
+---
+
+## Current Baseline Expected From Earlier Plans
+
+- FastAPI serves `FrontendTest/dashboard.html` at `/`.
+- `FrontendTest/app.js` exposes `LabClient.clearTransientState()`,
+  `LabClient.renderLog(log)`, `LabClient.renderStep(stepPayload)`, and
+  `LabClient.renderTimers(timers)`.
+- `GET /api/log` returns `{"log": [...]}` and log entries may include optional
+  `flag`.
+- `protocol_import_plan.txt` may have created additional YAML protocols. Reset
+  must leave them intact.
+
+If any of these are missing, stop and finish the earlier plans first.
+
+---
+
+## Task 0: Baseline Guardrail
+
+**Files:**
+- Read: repository working tree
+- Modify: none
+
+**Steps:**
+
+- [ ] **Step 1: Inspect current changes**
+
+Run:
+
+```bash
+git status --short
+```
+
+Expected: clean except intentional work from this plan.
+
+- [ ] **Step 2: Run the suite**
+
+Run:
+
+```bash
+python -m pytest -q
+```
+
+Expected: pass before reset work starts.
+
+---
+
+## Task 1: Add Reset State Primitives
+
+**Files:**
+- Modify: `backend/db.py`
+- Modify: `backend/state.py`
+- Add: `tests/test_demo_reset.py`
+
+**Interfaces:**
+- Produces `NoteStore.clear_all() -> None`.
+- Produces `SessionState.reset() -> None`.
+- Produces `SessionState.clear_log() -> None`.
+- `SessionState.reset()` clears active protocol, current step, timers, timer ids,
+  and transient in-memory session state, but leaves `log`, protocols, and
+  inventory alone.
+- `SessionState.clear_log()` clears in-memory notes, persisted notes, optional
+  flags, and resets `_log_seq`.
+
+**Steps:**
+
+- [ ] **Step 1: Add failing primitive tests**
+
+Create `tests/test_demo_reset.py`:
+
+```python
+from backend.handlers import handle_command
+from backend.schema import Command
+from backend.state import SessionState
+
+
+def test_session_reset_clears_stage_state_but_not_log():
+    state = SessionState()
+    state.load_files()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    handle_command(Command(intent="next_step"), state)
+    handle_command(Command(intent="log_entry", log_text="added 200 uL", sample_id="A"), state)
+
+    assert state.active_protocol is not None
+    assert state.current_step_index >= 0
+    assert state.log
+
+    state.reset()
+
+    assert state.active_protocol is None
+    assert state.current_step_index == -1
+    assert state.timers == []
+    assert state._timer_seq == 0
+    assert len(state.log) == 1
+    assert state.protocols
+    assert state.inventory
+
+
+def test_clear_log_wipes_memory_and_sqlite(tmp_path):
+    db_path = str(tmp_path / "lab.db")
+    state = SessionState(db_path=db_path)
+    state.load_files()
+    state.append_log("added 250 uL", sample_id="A", category="DNA Extraction", flag={"status": "mismatch"})
+    assert state.log
+
+    state.clear_log()
+
+    assert state.log == []
+    assert state._log_seq == 0
+
+    state2 = SessionState(db_path=db_path)
+    state2.load_files()
+    assert state2.log == []
+```
+
+- [ ] **Step 2: Run new tests and verify failure**
+
+Run:
+
+```bash
+python -m pytest tests/test_demo_reset.py -q
+```
+
+Expected: fail because reset primitives are missing.
+
+- [ ] **Step 3: Add `NoteStore.clear_all()`**
+
+In `backend/db.py`, add:
+
+```python
+def clear_all(self) -> None:
+    self._conn.execute("DELETE FROM notes")
+    self._conn.commit()
+```
+
+Use the repo's existing direct `self._conn` style.
+
+- [ ] **Step 4: Add `SessionState.reset()` and `clear_log()`**
+
+In `backend/state.py`, add:
+
+```python
+def reset(self) -> None:
+    self.active_protocol = None
+    self.current_step_index = -1
+    self.clear_timers()
+    self._timer_seq = 0
+
+
+def clear_log(self) -> None:
+    self.log = []
+    self._log_seq = 0
+    if self.notes is not None:
+        self.notes.clear_all()
+```
+
+Do not clear `self.protocols` or `self.inventory`.
+
+- [ ] **Step 5: Run primitive tests**
+
+Run:
+
+```bash
+python -m pytest tests/test_demo_reset.py -q
+```
+
+Expected: pass.
+
+---
+
+## Task 2: Add Reset Event and Endpoint
+
+**Files:**
+- Modify: `backend/schema.py`
+- Modify: `backend/main.py`
+- Test: `tests/test_demo_reset.py`
+- Test: `tests/test_api.py`
+
+**Interfaces:**
+- Produces `reset_event(notes_cleared: bool) -> dict[str, Any]`.
+- Produces `POST /api/demo/reset`.
+
+**Steps:**
+
+- [ ] **Step 1: Add failing endpoint tests**
+
+In `tests/test_demo_reset.py`, add tests:
+
+```python
+def test_reset_endpoint_keeps_notes_when_demo_mode_false(client, monkeypatch):
+    monkeypatch.delenv("LAB_DEMO_MODE", raising=False)
+    client.post("/api/log", json={"text": "keep me", "category": "Note"})
+    response = client.post("/api/demo/reset")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["notes_cleared"] is False
+    assert client.get("/api/log").json()["log"]
+
+
+def test_reset_endpoint_clears_notes_when_demo_mode_true(client, monkeypatch):
+    monkeypatch.setenv("LAB_DEMO_MODE", "true")
+    client.post("/api/log", json={"text": "clear me", "category": "Note"})
+    response = client.post("/api/demo/reset")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is True
+    assert data["notes_cleared"] is True
+    assert client.get("/api/log").json()["log"] == []
+```
+
+Adapt fixture names to the repo's existing `TestClient` setup.
+
+- [ ] **Step 2: Run endpoint tests and verify failure**
+
+Run:
+
+```bash
+python -m pytest tests/test_demo_reset.py tests/test_api.py -q
+```
+
+Expected: fail because endpoint and event are missing.
+
+- [ ] **Step 3: Add event builder**
+
+In `backend/schema.py`, add:
+
+```python
+def reset_event(notes_cleared: bool) -> dict[str, Any]:
+    return command_result("reset", notes_cleared=notes_cleared)
+```
+
+Update the command-result kind comment to include `reset`.
+
+- [ ] **Step 4: Add demo-mode helper**
+
+In `backend/main.py`, add:
+
+```python
+def _demo_mode_enabled() -> bool:
+    return os.getenv("LAB_DEMO_MODE", "").strip().lower() in {"1", "true", "yes", "on"}
+```
+
+- [ ] **Step 5: Add reset endpoint**
+
+In `backend/main.py`, add:
+
+```python
+@app.post("/api/demo/reset")
+async def demo_reset() -> dict[str, Any]:
+    notes_cleared = _demo_mode_enabled()
+    state.reset()
+    if notes_cleared:
+        state.clear_log()
+    voice.set_muted(False)
+    event = reset_event(notes_cleared)
+    await manager.broadcast([event, voice_state_event(voice.muted, voice.label)])
+    return {"ok": True, "notes_cleared": notes_cleared, "events": [event]}
+```
+
+Import `reset_event`.
+
+- [ ] **Step 6: Run backend reset tests**
+
+Run:
+
+```bash
+python -m pytest tests/test_demo_reset.py tests/test_api.py -q
+```
+
+Expected: pass.
+
+---
+
+## Task 3: Wire FrontendTest Reset UI
+
+**Files:**
+- Modify: `FrontendTest/app.js`
+- Modify: `FrontendTest/dashboard.html`
+- Modify: `FrontendTest/protocols.html`
+- Modify: `FrontendTest/guide.html`
+- Modify: `FrontendTest/notebook.html`
+- Modify: `FrontendTest/inventory.html`
+- Modify: `FrontendTest/*.css` only if needed
+- Test: `tests/test_frontend_static.py`
+
+**Interfaces:**
+- Extends `LabClient.clearTransientState()`.
+- Produces `LabClient.handleDemoReset()`.
+- Handles websocket `command_result.kind === "reset"`.
+- Adds one visible reset control with `id="demo-reset"` or
+  `data-action="demo-reset"` on every served page.
+
+**Steps:**
+
+- [ ] **Step 1: Add failing static tests**
+
+Assert each FrontendTest HTML page contains either `id="demo-reset"` or
+`data-action="demo-reset"`. Assert `FrontendTest/app.js` contains:
+
+```text
+/api/demo/reset
+handleDemoReset
+case "reset"
+clearTransientState
+notes_cleared
+```
+
+- [ ] **Step 2: Run static tests and verify failure**
+
+Run:
+
+```bash
+python -m pytest tests/test_frontend_static.py -q
+```
+
+Expected: fail until UI wiring is added.
+
+- [ ] **Step 3: Add reset controls**
+
+Add a compact "Reset Demo" button to the shared navigation/footer area on each
+FrontendTest page. Use the existing Material Symbols style:
+
+```html
+<button id="demo-reset" data-action="demo-reset" type="button" class="...">
+  <span class="material-symbols-outlined">restart_alt</span>
+  <span>Reset Demo</span>
+</button>
+```
+
+If duplicate IDs across pages are not a problem because only one document is
+loaded at a time. If injecting with JS is cleaner after plan 1, use
+`data-action="demo-reset"` and assert that instead.
+
+- [ ] **Step 4: Implement frontend reset behavior**
+
+In `FrontendTest/app.js`, implement:
+
+```javascript
+async handleDemoReset() {
+  const response = await fetch("/api/demo/reset", { method: "POST" });
+  const data = await response.json();
+  if (data.ok) {
+    LabClient.clearTransientState({ notesCleared: data.notes_cleared });
+    await LabClient.hydrate();
+  }
+}
+```
+
+Extend the websocket command-result dispatcher:
+
+```javascript
+case "reset":
+  LabClient.clearTransientState({ notesCleared: payload.notes_cleared });
+  LabClient.hydrate();
+  break;
+```
+
+- [ ] **Step 5: Clear transient UI state**
+
+`clearTransientState()` should clear:
+
+- live transcript text
+- clarification text
+- current step and protocol tracker
+- timers
+- inventory lookup result
+- active protocol label
+- in-memory log display only when `notesCleared` is true
+- disabled/loading state on reset button
+
+It must not remove protocol cards or inventory rows permanently; `hydrate()` will
+reload current snapshots.
+
+- [ ] **Step 6: Run static tests**
+
+Run:
+
+```bash
+python -m pytest tests/test_frontend_static.py -q
+```
+
+Expected: pass.
+
+---
+
+## Task 4: Document Demo Mode and Verify End to End
+
+**Files:**
+- Modify: `.env.example`
+- Modify: `README.md`
+
+**Steps:**
+
+- [ ] **Step 1: Add demo-mode env docs**
+
+In `.env.example`, add:
+
+```bash
+# Demo reset safety. false = keep persisted notes; true = wipe notes on Reset Demo.
+LAB_DEMO_MODE=false
+```
+
+- [ ] **Step 2: Update README**
+
+Add a "Demo reset" section:
+
+```markdown
+## Demo reset
+
+The FrontendTest UI includes a Reset Demo control. It clears protocol progress,
+timers, transcript, clarification, and transient page state. Persisted notes are
+kept by default. Set `LAB_DEMO_MODE=true` before starting the server to wipe notes
+as part of reset. Reset never deletes protocol YAML files or inventory CSV data.
+```
+
+- [ ] **Step 3: Run full test suite**
+
+Run:
+
+```bash
+python -m pytest -q
+```
+
+Expected: pass.
+
+- [ ] **Step 4: Manual safe-mode smoke test**
+
+Run with `LAB_DEMO_MODE=false`, create one log row, click Reset Demo, and confirm:
+
+- UI progress and timers clear.
+- `/api/log` still contains the note.
+- Imported protocols still appear in `/api/protocols`.
+
+- [ ] **Step 5: Manual destructive demo-mode smoke test**
+
+Restart with `LAB_DEMO_MODE=true`, create one log row, click Reset Demo, and
+confirm `/api/log` returns an empty list.
+
+- [ ] **Step 6: Commit**
+
+Run:
+
+```bash
+git add backend FrontendTest tests README.md .env.example
+git commit -m "feat: add FrontendTest demo reset"
+```
+
+Claude comments:
+Fix #2 — silence a ringing alarm on reset. In Task 3, Step 6, update clearDemoState() so it stops any active
+  end-of-timer alarm (not just the cards). Add the Alarm stop as the line after clearTimerCards();:
+
+  function clearDemoState() {
+    clearInterimTranscript();
+    els.transcript.innerHTML = "";
+    els.stepPrev.textContent = "";
+    els.stepCurrent.textContent = "No protocol loaded.";
+    els.stepNext.textContent = "";
+    clearTimerCards();
+    Alarm.stopAll();              // <-- silence any beeping expired timer
+    els.log.innerHTML = "";
+    ensureLogEmptyState();
+    els.inventory.innerHTML = `<div class="muted">No lookups yet.</div>`;
+    clearClarify();
+    if (els.alertBanner) {
+      els.alertBanner.hidden = true;
+      els.alertBanner.textContent = "";
+    }
+    setState("idle", "");
+  }
+
+  And add a public wrapper to the Alarm object in frontend/app.js (avoids reaching into the "private" _silence):
+
+    stopAll() {
+      this._silence();           // clears ringing set, interval, and timeout
+    },
+
+  (If you'd rather not touch Alarm, the one-line alternative is Alarm._silence(); directly — same effect, just bypasses
+  the convention.)
+
+  ---
+  Fix #3 — don't drop timer_removed from the schema comment. In Task 2, Step 3, the kind-comment replacement should keep
+  timer_removed and add reset:
+
+  # kind in { step_change, log_entry, log_removed, log_update, inventory_result,
+  #           clarify, voice_state, ask_result, timer_removed, reset }
+
+  (Codex's version omitted timer_removed, which is still a live event.)
+
+  ---
+  The FrontendTest-vs-frontend/ target is still the open call — Codex's plan builds on frontend/. If that's the
+  direction you're taking (it's the lower-risk one), no change needed; if you still want FrontendTest, that's a separate
+  wiring effort and the plan would need the two-phase shape from before. Just say which and I'll keep the feedback
+  consistent with it.
+
+
+## Final Acceptance Criteria
+
+- Reset is an explicit admin/demo endpoint, not a routed lab command.
+- Reset broadcasts `command_result.kind == "reset"`.
+- Safe mode keeps persisted notes.
+- Demo mode clears persisted notes.
+- Protocol YAML files, imported protocol YAML files, and inventory CSV data remain.
+- Every FrontendTest page exposes the reset control.
+- Full pytest suite passes.

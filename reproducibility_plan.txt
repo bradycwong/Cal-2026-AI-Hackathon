@@ -1,0 +1,488 @@
+# Reproducibility Flags Implementation Plan
+
+> For Devin: execute this plan third, after `frontend_migration_backend_plan.txt`
+> and `protocol_import_plan.txt` are committed and tests pass. REQUIRED
+> SUB-SKILL: use superpowers:subagent-driven-development or
+> superpowers:executing-plans to implement this task-by-task.
+
+**Goal:** Flag logged protocol-volume mismatches so the lab notebook records what
+the researcher said and whether it matches the active protocol step.
+
+**Architecture:** Add a pure backend comparison module that reads the current
+step's `parameters["volume_ul"]` and compares it against the volume in
+`Command.log_text`. Thread the optional `flag` through log events, SQLite
+persistence, `/api/state`, `/api/log`, and the FrontendTest notebook renderer.
+
+**Tech Stack:** FastAPI, Pydantic v2, SQLite with JSON stored as text, vanilla
+FrontendTest JS/CSS, pytest.
+
+## Global Constraints
+
+- This plan consumes the FrontendTest serving, shared `FrontendTest/app.js`, and
+  `GET /api/log` contract from `frontend_migration_backend_plan.txt`.
+- Do not modify old `frontend/` files.
+- Do not change the locked ingest spine.
+- Do not add a new outer websocket event type.
+- Do not add a new `command_result.kind` for reproducibility. Use optional `flag`
+  fields on existing `log_entry` and `log_update` payloads.
+- The LLM must never compute or mutate reproducibility state.
+- Keep v1 scoped to `volume_ul` only. Known v1 gap: a logged volume that matches but
+  names a DIFFERENT reagent (e.g. "200 uL ethanol" at a lysis-buffer step) still reads
+  as a match — `✓` means "volume matches," NOT "fully verified." Reagent/temp checks deferred.
+- Persist the flag because it is part of the lab record.
+- Preserve existing log text exactly; warnings never rewrite what was logged.
+- Treat `flag` as optional in every renderer.
+- VISIBLE flag badges use the display symbols `✓` (match) / `⚠` (mismatch), consistent
+  with the project's "pretty symbols allowed in display text" rule (the UI already shows
+  `µL`/`°C`). Status must never be symbol-ONLY: a mismatch row also gets the `flagged`
+  class and an ASCII screen-reader announcement (keep the announced/aria text symbol-free).
+- Run `python -m pytest -q` before commit.
+
+---
+
+## Current Baseline Expected From Earlier Plans
+
+- Protocol steps already load `parameters` from YAML.
+- `SessionState.append_log()` stores `category`.
+- `GET /api/log` returns `{"log": [...]}`.
+- `FrontendTest/app.js` has `LabClient.renderLog(log)`,
+  `LabClient.appendLogEntry(payload)`, and `LabClient.updateLogEntry(payload)`.
+- `tests/test_frontend_static.py` targets `FrontendTest/`, not `frontend/`.
+
+If any of these are missing, stop and finish the earlier plans first.
+
+---
+
+## Task 0: Baseline Guardrail
+
+**Files:**
+- Read: repository working tree
+- Modify: none
+
+**Steps:**
+
+- [ ] **Step 1: Inspect current changes**
+
+Run:
+
+```bash
+git status --short
+```
+
+Expected: clean except intentional work from this plan.
+
+- [ ] **Step 2: Run the suite**
+
+Run:
+
+```bash
+python -m pytest -q
+```
+
+Expected: pass before reproducibility work starts.
+
+---
+
+## Task 1: Add the Pure Reproducibility Checker
+
+**Files:**
+- Create: `backend/reproducibility.py`
+- Create: `tests/test_reproducibility.py`
+
+**Interfaces:**
+- Produces `check(step_parameters: dict[str, Any], log_text: str) -> dict[str, Any] | None`.
+
+**Flag shape:**
+
+```python
+{
+    "parameter": "volume_ul",
+    "expected": 200,
+    "logged": 250,
+    "unit": "uL",
+    "status": "ok" | "mismatch",
+}
+```
+
+**Steps:**
+
+- [ ] **Step 1: Write failing checker tests**
+
+Create `tests/test_reproducibility.py`:
+
+```python
+from backend.reproducibility import check
+
+
+def test_check_returns_none_without_expected_volume():
+    assert check({}, "added 200 uL lysis buffer") is None
+    assert check({"reagent": "lysis buffer"}, "added 200 uL lysis buffer") is None
+
+
+def test_check_returns_none_without_logged_volume():
+    assert check({"volume_ul": 200}, "pellet looks cloudy") is None
+
+
+def test_check_accepts_ascii_and_spelled_units():
+    assert check({"volume_ul": 200}, "added 200 uL lysis buffer") == {
+        "parameter": "volume_ul",
+        "expected": 200,
+        "logged": 200,
+        "unit": "uL",
+        "status": "ok",
+    }
+    assert check({"volume_ul": 200}, "added 200 microliters lysis buffer")["status"] == "ok"
+    assert check({"volume_ul": 200}, "added 200 microlitres lysis buffer")["status"] == "ok"
+
+
+def test_check_flags_mismatch():
+    assert check({"volume_ul": 200}, "added 250 uL lysis buffer") == {
+        "parameter": "volume_ul",
+        "expected": 200,
+        "logged": 250,
+        "unit": "uL",
+        "status": "mismatch",
+    }
+
+
+def test_check_preserves_decimal_values():
+    flag = check({"volume_ul": 1.5}, "added 1.25 uL template")
+    assert flag["expected"] == 1.5
+    assert flag["logged"] == 1.25
+    assert flag["status"] == "mismatch"
+
+
+def test_check_ignores_non_numeric_expected_volume():
+    assert check({"volume_ul": "about 200"}, "added 200 uL lysis buffer") is None
+```
+
+- [ ] **Step 2: Run checker tests and verify failure**
+
+Run:
+
+```bash
+python -m pytest tests/test_reproducibility.py -q
+```
+
+Expected: fail because the module does not exist.
+
+- [ ] **Step 3: Implement checker**
+
+In `backend/reproducibility.py`, implement:
+
+- Parse first numeric value followed by `uL`, `ul`, `microliter`,
+  `microliters`, `microlitre`, or `microlitres`.
+- Return `None` if expected or logged volume is missing.
+- Return ints as ints when possible, decimals as floats.
+- Exact equality is v1; no tolerance windows.
+
+- [ ] **Step 4: Run checker tests**
+
+Run:
+
+```bash
+python -m pytest tests/test_reproducibility.py -q
+```
+
+Expected: pass.
+
+---
+
+## Task 2: Persist Flags Through SQLite and State
+
+**Files:**
+- Modify: `backend/db.py`
+- Modify: `backend/state.py`
+- Modify: `backend/schema.py`
+- Test: `tests/test_persistence.py`
+- Test: `tests/test_handlers.py`
+
+**Interfaces:**
+- Extends persisted note rows with optional `flag`.
+- Extends `log_entry_event(..., flag=None)`.
+- Extends `log_update_event(..., flag=None)`.
+- Extends `SessionState.append_log(..., flag=None)`.
+- Extends `SessionState.update_last_log(text, flag=None)`.
+
+**Steps:**
+
+- [ ] **Step 1: Add failing persistence tests**
+
+Add tests asserting a note with a flag survives round-trip through `NoteStore` and
+`SessionState`:
+
+```python
+flag = {
+    "parameter": "volume_ul",
+    "expected": 200,
+    "logged": 250,
+    "unit": "uL",
+    "status": "mismatch",
+}
+state = SessionState(db_path=str(tmp_path / "lab.db"))
+state.load_files()
+entry = state.append_log("added 250 uL", sample_id="A", category="DNA Extraction", flag=flag)
+state2 = SessionState(db_path=str(tmp_path / "lab.db"))
+state2.load_files()
+assert state2.log[-1]["flag"] == flag
+```
+
+- [ ] **Step 2: Run selected tests and verify failure**
+
+Run:
+
+```bash
+python -m pytest tests/test_persistence.py tests/test_handlers.py -q
+```
+
+Expected: fail because `flag` is not persisted or emitted.
+
+- [ ] **Step 3: Update schema event builders**
+
+In `backend/schema.py`, add optional `flag` to `log_entry_event` and
+`log_update_event`. Include `"flag": flag` only when it is not `None`, or include
+it as `None` consistently if existing tests prefer exact keys. Update exact-shape
+tests accordingly.
+
+- [ ] **Step 4: Add SQLite column and migration**
+
+In `backend/db.py`, add `flag TEXT` to notes. Add an idempotent migration using
+`PRAGMA table_info(notes)` and `ALTER TABLE notes ADD COLUMN flag TEXT` when
+missing. Store JSON with `json.dumps(flag)` and load with `json.loads`.
+
+If plan 1 already added `category`, keep that migration intact and independent.
+
+- [ ] **Step 5: Update state log methods**
+
+Update `SessionState.append_log()` to accept `flag=None` and include it in the
+entry dict. Update `SessionState.update_last_log(text, flag=None)` to replace the
+flag for the corrected text.
+
+- [ ] **Step 6: Run persistence tests**
+
+Run:
+
+```bash
+python -m pytest tests/test_persistence.py tests/test_handlers.py -q
+```
+
+Expected: pass.
+
+---
+
+## Task 3: Compute Flags in Handlers
+
+**Files:**
+- Modify: `backend/handlers.py`
+- Test: `tests/test_handlers.py`
+- Test: `tests/test_reproducibility.py`
+
+**Interfaces:**
+- Produces `_current_step_flag(state, log_text) -> dict[str, Any] | None` or
+  equivalent private helper.
+
+**Steps:**
+
+- [ ] **Step 1: Add failing handler tests**
+
+Add tests that load a protocol whose current step has `volume_ul=200`, then log:
+
+```python
+events = handle_command(
+    Command(intent="log_entry", log_text="added 250 uL lysis buffer", sample_id="A"),
+    state,
+)
+assert events[0]["payload"]["flag"]["status"] == "mismatch"
+
+events = handle_command(
+    Command(intent="correct_log", log_text="added 200 uL lysis buffer"),
+    state,
+)
+assert events[0]["payload"]["flag"]["status"] == "ok"
+```
+
+Also assert log text remains exactly what was spoken or typed.
+
+- [ ] **Step 2: Run handler tests and verify failure**
+
+Run:
+
+```bash
+python -m pytest tests/test_handlers.py -q
+```
+
+Expected: fail because flags are not computed.
+
+- [ ] **Step 3: Compute flags in log handlers**
+
+In `backend/handlers.py`, import `backend.reproducibility.check`. For
+`_handle_log_entry`, compute a flag from `state.current_step().parameters` and
+`cmd.log_text`, then pass it to `state.append_log(...)`.
+
+For `_handle_correct_log`, recompute the flag for the corrected text and pass it
+to `state.update_last_log(...)`. Compare against the step the note was ORIGINALLY
+logged at (look it up by the note's `step_ref`), not the current cursor — the
+researcher may have advanced steps since logging. Edge: step ids are per-protocol
+(1..N), so if the note belongs to a different protocol than the one now active, a
+same-id lookup can pick the wrong step; acceptable for v1, revisit if notes ever
+persist a protocol id alongside `step_ref`.
+
+- [ ] **Step 4: Run handler tests**
+
+Run:
+
+```bash
+python -m pytest tests/test_handlers.py tests/test_reproducibility.py -q
+```
+
+Expected: pass.
+
+---
+
+## Task 4: Render Flags in FrontendTest
+
+**Files:**
+- Modify: `FrontendTest/app.js`
+- Modify: `FrontendTest/notebook.css`
+- Modify: `FrontendTest/guide.css` only if mini-log needs flag styling
+- Test: `tests/test_frontend_static.py`
+
+**Interfaces:**
+- Produces `LabClient.renderLogFlag(flag) -> string`.
+- `LabClient.renderLog`, `appendLogEntry`, and `updateLogEntry` all render flags.
+
+**Steps:**
+
+- [ ] **Step 1: Add failing static tests**
+
+Assert `FrontendTest/app.js` contains:
+
+```text
+renderLogFlag
+flag.status === "mismatch"
+flag.status === "ok"
+```
+
+Assert a FrontendTest CSS file contains:
+
+```text
+.log-flag
+.log-ok
+.flagged
+```
+
+- [ ] **Step 2: Run static tests and verify failure**
+
+Run:
+
+```bash
+python -m pytest tests/test_frontend_static.py -q
+```
+
+Expected: fail until rendering is added.
+
+- [ ] **Step 3: Add reusable flag renderer**
+
+In `FrontendTest/app.js`, implement:
+
+```javascript
+renderLogFlag(flag) {
+  if (!flag) return "";
+  if (flag.status === "ok") {
+    return `<div class="log-ok">OK: ${flag.parameter} matched ${flag.expected} ${flag.unit}</div>`;
+  }
+  if (flag.status === "mismatch") {
+    return `<div class="log-flag">Warning: expected ${flag.expected} ${flag.unit}, logged ${flag.logged} ${flag.unit}</div>`;
+  }
+  return "";
+}
+```
+
+Escape dynamic text the same way other log text is escaped.
+
+- [ ] **Step 4: Use renderer in log paths**
+
+Update `renderLog`, `appendLogEntry`, and `updateLogEntry` so the visible row is
+updated when `flag` changes. Add the `flagged` class only for mismatches.
+
+- [ ] **Step 5: Add CSS**
+
+Add restrained status styles to `FrontendTest/notebook.css`:
+
+```css
+.flagged {
+  border-left-color: #ff6b6b;
+}
+
+.log-flag {
+  color: #ffd5d5;
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+.log-ok {
+  color: #b8ff7c;
+  font-size: 12px;
+  margin-top: 6px;
+}
+```
+
+- [ ] **Step 6: Run static tests**
+
+Run:
+
+```bash
+python -m pytest tests/test_frontend_static.py -q
+```
+
+Expected: pass.
+
+---
+
+## Task 5: Full Verification and Commit
+
+**Files:**
+- Modify: `README.md`
+
+**Steps:**
+
+- [ ] **Step 1: Document reproducibility flags**
+
+Add a short README note that v1 flags only `volume_ul` mismatches and never edits
+the user's log text.
+
+- [ ] **Step 2: Run full suite**
+
+Run:
+
+```bash
+python -m pytest -q
+```
+
+Expected: pass.
+
+- [ ] **Step 3: Manual smoke test**
+
+Run the server, load a protocol, log a mismatched volume, and confirm:
+
+- `/api/log` includes `flag.status == "mismatch"`.
+- `notebook.html` shows a warning line.
+- Correcting the last log to the expected volume changes the flag to `ok`.
+- Refreshing preserves the flag.
+
+- [ ] **Step 4: Commit**
+
+Run:
+
+```bash
+git add backend FrontendTest tests README.md
+git commit -m "feat: flag reproducibility volume mismatches"
+```
+
+## Final Acceptance Criteria
+
+- The checker is deterministic and network-free.
+- Log text is preserved exactly.
+- Flags persist through SQLite and appear in `/api/state` and `/api/log`.
+- FrontendTest notebook renders both OK and Warning states.
+- Full pytest suite passes.

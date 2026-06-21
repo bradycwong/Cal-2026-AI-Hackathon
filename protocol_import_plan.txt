@@ -1,0 +1,527 @@
+# Protocol Import Implementation Plan
+
+> For Devin: execute this plan second, after
+> `frontend_migration_backend_plan.txt` is committed and tests pass. REQUIRED
+> SUB-SKILL: use superpowers:subagent-driven-development or
+> superpowers:executing-plans to implement this task-by-task.
+
+**Goal:** Let the user paste a real-world protocol, parse it into the existing
+protocol YAML shape, persist it, register it immediately, and show it in the
+FrontendTest protocol catalog.
+
+**Architecture:** Protocol import is a deterministic side endpoint with an
+LLM-assisted parser and a deterministic fallback. It writes YAML to
+`backend/data/protocols/`, re-loads through the canonical protocol loader, and
+then reuses the catalog installed by plan 1. The normal voice/typed load spine is
+unchanged.
+
+**Tech Stack:** FastAPI, Pydantic v2, PyYAML, Anthropic SDK already used by the
+router, vanilla FrontendTest JS, pytest.
+
+## Global Constraints
+
+- This plan consumes the serving and catalog contracts from
+  `frontend_migration_backend_plan.txt`.
+- Do not re-add or replace `GET /api/protocols`; extend its source data only.
+- Do not change the root static mount; FrontendTest is already served from `/`.
+- Do not add a new `Command` intent for import.
+- Do not add new outer websocket event types.
+- Imported protocol status is always `READY`.
+- Keep protocol status values uppercase: `READY`, `LOW_REAGENTS`, `ARCHIVED`.
+- Server-side API keys only; no vendor key names in `FrontendTest/`.
+- Run `python -m pytest -q` before commit.
+
+---
+
+## Current Baseline Expected From Plan 1
+
+- `SessionState.protocol_catalog()` exists and backs `GET /api/protocols`.
+- `POST /api/protocols/{id}/load` exists for deterministic catalog-card loading.
+- `FrontendTest/app.js` exposes `window.LabClient.fetchProtocols()` and
+  `window.LabClient.renderProtocolCards(protocols)`.
+- Every FrontendTest page includes `<script src="app.js" defer></script>`.
+
+If any of these are missing, stop and finish plan 1 before starting this plan.
+
+---
+
+## Task 0: Baseline Guardrail
+
+**Files:**
+- Read: repository working tree
+- Modify: none
+
+**Steps:**
+
+- [ ] **Step 1: Inspect current changes**
+
+Run:
+
+```bash
+git status --short
+```
+
+Expected: clean except intentional work from this plan.
+
+- [ ] **Step 2: Run the suite**
+
+Run:
+
+```bash
+python -m pytest -q
+```
+
+Expected: pass before import work starts.
+
+---
+
+## Task 1: Add Immediate Protocol Registration
+
+**Files:**
+- Modify: `backend/state.py`
+- Test: `tests/test_protocol_import.py`
+
+**Interfaces:**
+- Produces `SessionState.register_protocol(path: Path) -> Protocol`.
+- Preserves `load_protocol_file(path)` as the canonical validation gate.
+
+**Steps:**
+
+- [ ] **Step 1: Add failing registration test**
+
+Create `tests/test_protocol_import.py` with a test that writes a valid YAML file
+to a temp `protocols/` directory, calls `state.register_protocol(path)`, and
+asserts the returned protocol is available in `state.protocols`.
+
+- [ ] **Step 2: Run selected test and verify failure**
+
+Run:
+
+```bash
+python -m pytest tests/test_protocol_import.py -q
+```
+
+Expected: fail because `register_protocol` is missing.
+
+- [ ] **Step 3: Implement registration**
+
+In `SessionState`, add:
+
+```python
+def register_protocol(self, path: Path) -> Protocol:
+    proto = load_protocol_file(path)
+    self.protocols[proto.id] = proto
+    return proto
+```
+
+- [ ] **Step 4: Run selected test**
+
+Run:
+
+```bash
+python -m pytest tests/test_protocol_import.py -q
+```
+
+Expected: pass.
+
+---
+
+## Task 2: Add the Import Parser Module
+
+**Files:**
+- Create: `backend/protocol_import.py`
+- Test: `tests/test_protocol_import.py`
+
+**Interfaces:**
+- Produces `import_protocol(text: str, name: str | None, state: SessionState) -> tuple[Protocol, Path]`.
+- Produces deterministic fallback behavior when the LLM is unavailable.
+
+**Steps:**
+
+- [ ] **Step 1: Add failing parser tests**
+
+Add tests for:
+
+```python
+def test_fallback_import_splits_numbered_steps(tmp_path, monkeypatch):
+    monkeypatch.setenv("IMPORT_MODE", "deterministic")
+    state = SessionState(data_dir=tmp_path)
+    (tmp_path / "protocols").mkdir()
+    proto, path = import_protocol(
+        "1. Add 200 uL lysis buffer\n2. Incubate 10 minutes",
+        "Quick DNA Prep",
+        state,
+    )
+    assert path.exists()
+    assert proto.id == "quick_dna_prep"
+    assert len(proto.steps) == 2
+    assert proto.steps[1].duration_s == 600
+    assert proto.status == "READY"
+    assert state.find_protocol("Quick DNA Prep") is proto
+```
+
+Also test empty input, duplicate names, and YAML round-trip through
+`load_protocol_file`.
+
+- [ ] **Step 2: Run parser tests and verify failure**
+
+Run:
+
+```bash
+python -m pytest tests/test_protocol_import.py -q
+```
+
+Expected: fail because `backend.protocol_import` is missing.
+
+- [ ] **Step 3: Implement Pydantic parse models**
+
+In `backend/protocol_import.py`, define:
+
+```python
+class ParsedStep(BaseModel):
+    text: str
+    duration_s: int | None = None
+    timer_label: str | None = None
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
+class ParsedProtocol(BaseModel):
+    name: str
+    description: str = ""
+    aliases: list[str] = Field(default_factory=list)
+    steps: list[ParsedStep] = Field(default_factory=list)
+```
+
+Do not accept an LLM-supplied protocol id. The backend assigns ids.
+
+- [ ] **Step 4: Implement deterministic fallback**
+
+Fallback behavior:
+
+- Normalize input with `router.normalize_ascii`.
+- Split on non-empty lines and numbered markers.
+- Keep one action per resulting step.
+- Use `router._parse_duration(text)` for `duration_s`.
+- Set `timer_label` only when a duration exists.
+- Do not invent reagents or numeric parameters in fallback mode.
+- Name is `name` argument, first useful line, or `"Imported Protocol"`.
+
+- [ ] **Step 5: Implement LLM parse path**
+
+Mirror the router's Anthropic client conventions. `IMPORT_MODE` values:
+
+- `auto` - default, use LLM when available and fallback on failure.
+- `llm` - require LLM parse, return a controlled error if unavailable.
+- `deterministic` - always fallback.
+
+The system prompt must instruct the model to:
+
+- Preserve author order.
+- Never invent, merge away, or drop steps.
+- Use established parameter keys: `volume_ul`, `temp_c`, `speed_g`, `cycles`,
+  `reagent`.
+- Use ASCII units such as `uL` and `degrees C`.
+- Return a one-line description and 1 to 4 lowercase aliases.
+
+- [ ] **Step 6: Implement filesystem helpers**
+
+Add `_slugify(name)`, `_unique_slug(slug, proto_dir, state)`, and `_write_yaml`.
+The YAML must match the loader shape:
+
+```python
+{
+    "protocol": {
+        "id": slug,
+        "name": final_name,
+        "version": "1.0",
+        "description": parsed.description,
+        "category": "Imported",
+        "status": "READY",
+        "aliases": aliases,
+        "steps": [...],
+    }
+}
+```
+
+Use atomic write via `path.with_suffix(".yaml.tmp")` and `replace()`.
+
+- [ ] **Step 7: Implement orchestrator**
+
+`import_protocol()` should:
+
+1. Reject empty input.
+2. Parse via LLM or fallback.
+3. Reject zero steps.
+4. Assign ids `1..N`.
+5. Choose a unique slug without clobbering files or `state.protocols`.
+6. Write YAML.
+7. Call `state.register_protocol(path)`.
+8. Return `(proto, path)`.
+
+- [ ] **Step 8: Run parser tests**
+
+Run:
+
+```bash
+python -m pytest tests/test_protocol_import.py -q
+```
+
+Expected: pass.
+
+---
+
+## Task 3: Add Import Event and Endpoint
+
+**Files:**
+- Modify: `backend/schema.py`
+- Modify: `backend/main.py`
+- Test: `tests/test_protocol_import.py`
+- Test: `tests/test_api.py`
+
+**Interfaces:**
+- Produces `protocol_imported_event(name, protocol_id, step_count, aliases, load_hint)`.
+- Produces `POST /api/protocols/import`.
+
+**Steps:**
+
+- [ ] **Step 1: Add failing endpoint tests**
+
+Use `TestClient` and a temp `LAB_DATA_DIR` pattern already used in the repo.
+Assert:
+
+```python
+response = client.post(
+    "/api/protocols/import",
+    json={"name": "Quick DNA Prep", "text": "1. Add buffer\n2. Incubate 10 minutes"},
+)
+data = response.json()
+assert response.status_code == 200
+assert data["ok"] is True
+assert data["protocol"]["id"] == "quick_dna_prep"
+assert data["protocol"]["status"] == "READY"
+assert "load_hint" in data
+assert any(p["id"] == "quick_dna_prep" for p in client.get("/api/protocols").json()["protocols"])
+```
+
+Also test empty input returns `{"ok": False, "error": ...}` and does not 500.
+
+- [ ] **Step 2: Run endpoint tests and verify failure**
+
+Run:
+
+```bash
+python -m pytest tests/test_protocol_import.py tests/test_api.py -q
+```
+
+Expected: fail because the endpoint and event do not exist.
+
+- [ ] **Step 3: Add event builder**
+
+In `backend/schema.py`, add:
+
+```python
+def protocol_imported_event(
+    name: str,
+    protocol_id: str,
+    step_count: int,
+    aliases: list[str],
+    load_hint: str,
+) -> dict[str, Any]:
+    return command_result(
+        "protocol_imported",
+        name=name,
+        protocol_id=protocol_id,
+        step_count=step_count,
+        aliases=aliases,
+        load_hint=load_hint,
+    )
+```
+
+Update the command-result kind comment to include `protocol_imported`.
+
+- [ ] **Step 4: Add request model and endpoint**
+
+In `backend/main.py`, add:
+
+```python
+class ProtocolImportIn(BaseModel):
+    text: str
+    name: str | None = None
+```
+
+and:
+
+```python
+@app.post("/api/protocols/import")
+async def import_protocol_endpoint(body: ProtocolImportIn) -> dict[str, Any]:
+    try:
+        proto, _ = import_protocol(body.text, body.name, state)
+        summary = next(p for p in state.protocol_catalog() if p["id"] == proto.id)
+        load_hint = f'Say "Load {proto.name}" to start it.'
+        event = protocol_imported_event(
+            proto.name,
+            proto.id,
+            len(proto.steps),
+            proto.aliases,
+            load_hint,
+        )
+        await manager.broadcast([event])
+        return {"ok": True, "protocol": summary, "load_hint": load_hint}
+    except ValueError as exc:
+        event = error_event("protocol_import_failed", str(exc), "protocol_import")
+        await manager.broadcast([event])
+        return {"ok": False, "error": str(exc)}
+```
+
+Map internal exceptions to controlled `ok: False` responses. Do not let the UI see
+a 500 for malformed prose.
+
+- [ ] **Step 5: Run endpoint tests**
+
+Run:
+
+```bash
+python -m pytest tests/test_protocol_import.py tests/test_api.py -q
+```
+
+Expected: pass.
+
+---
+
+## Task 4: Wire the FrontendTest Import Modal
+
+**Files:**
+- Modify: `FrontendTest/protocols.html`
+- Modify: `FrontendTest/app.js`
+- Modify: `FrontendTest/protocols.css` only if needed
+- Test: `tests/test_frontend_static.py`
+
+**Interfaces:**
+- Extends `LabClient.renderProtocolCards(protocols)`.
+- Produces modal element IDs: `import-protocol`, `import-modal`, `import-name`,
+  `import-text`, `import-submit`, `import-cancel`, `import-result`.
+
+**Steps:**
+
+- [ ] **Step 1: Add failing static tests**
+
+Assert `FrontendTest/protocols.html` contains:
+
+```text
+import-protocol
+import-modal
+import-text
+import-submit
+```
+
+Assert `FrontendTest/app.js` contains:
+
+```text
+/api/protocols/import
+handleProtocolImport
+protocol_imported
+```
+
+- [ ] **Step 2: Run static tests and verify failure**
+
+Run:
+
+```bash
+python -m pytest tests/test_frontend_static.py -q
+```
+
+Expected: fail until modal and JS are added.
+
+- [ ] **Step 3: Add modal markup**
+
+Add an "Import Protocol" button near the `protocols.html` page header. Add a
+hidden modal with an optional name input, text area, submit/cancel buttons, and
+an `aria-live="polite"` result region.
+
+- [ ] **Step 4: Add import JS**
+
+In `FrontendTest/app.js`, add `LabClient.handleProtocolImport()`. Submit should:
+
+1. Read `#import-name` and `#import-text`.
+2. POST JSON to `/api/protocols/import`.
+3. Show success or error in `#import-result`.
+4. Refresh `LabClient.fetchProtocols()` and `LabClient.renderProtocolCards()`.
+
+On `protocol_imported` websocket events, refresh protocols if the current page
+has `#protocol-cards`.
+
+- [ ] **Step 5: Use deterministic load endpoint for cards**
+
+Do not call `/api/ingest` from load buttons. Keep using:
+
+```javascript
+fetch(`/api/protocols/${encodeURIComponent(id)}/load`, { method: "POST" })
+```
+
+- [ ] **Step 6: Run static tests**
+
+Run:
+
+```bash
+python -m pytest tests/test_frontend_static.py -q
+```
+
+Expected: pass.
+
+---
+
+## Task 5: Full Verification and Commit
+
+**Files:**
+- Modify: `README.md`
+- Modify: `.env.example`
+
+**Steps:**
+
+- [ ] **Step 1: Document import mode**
+
+Add `IMPORT_MODE=auto` to `.env.example` with allowed values
+`auto|llm|deterministic`.
+
+Document in `README.md` that protocol import accepts pasted prose, saves YAML,
+and falls back to deterministic parsing without an API key.
+
+- [ ] **Step 2: Run the full suite**
+
+Run:
+
+```bash
+python -m pytest -q
+```
+
+Expected: pass.
+
+- [ ] **Step 3: Manual smoke test**
+
+Run the server, open `http://127.0.0.1:8000/protocols.html`, import:
+
+```text
+1. Add 200 uL lysis buffer.
+2. Incubate 10 minutes.
+```
+
+Expected: a new card appears, load works, and restarting the server preserves the
+new YAML-backed protocol.
+
+- [ ] **Step 4: Commit**
+
+Run:
+
+```bash
+git add backend FrontendTest tests README.md .env.example
+git commit -m "feat: import pasted protocols"
+```
+
+## Final Acceptance Criteria
+
+- Import endpoint never changes the locked ingest spine.
+- Imported protocols appear in `GET /api/protocols`.
+- Imported protocols can be loaded immediately with `/api/protocols/{id}/load`.
+- Imported protocol YAML survives restart.
+- FrontendTest protocol page can import, refresh, and load a protocol.
+- Full pytest suite passes.
