@@ -874,3 +874,140 @@ def test_inventory_match_helper_miss():
 
     state = fresh_state()
     assert find_inventory_match("unobtainium", state.inventory) is None
+
+
+# --- reagent prep gate ------------------------------------------------------
+# Loading a protocol opens the prep popup; the run does NOT begin until the
+# operator determines a sample count and confirms. prep_open (the gate) is owned
+# by the front end (it POSTs /api/prep/state when the modal opens/closes); the
+# handlers only READ it. Tests set prep_open / prep_sample_count directly to
+# simulate the open gate.
+
+
+def test_set_sample_count_stores_count_and_emits_set_samples():
+    state = fresh_state()
+    events = handle_command(Command(intent="set_sample_count", sample_count=24), state)
+    p = _kind(events, "prep_control")
+    assert p["action"] == "set_samples"
+    assert p["sample_count"] == 24
+    assert state.prep_sample_count == 24
+
+
+def test_set_sample_count_missing_number_clarifies():
+    state = fresh_state()
+    events = handle_command(Command(intent="set_sample_count"), state)
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert state.prep_sample_count is None
+
+
+def test_set_sample_count_below_one_clarifies():
+    state = fresh_state()
+    events = handle_command(Command(intent="set_sample_count", sample_count=0), state)
+    assert events[0]["payload"]["kind"] == "clarify"
+
+
+def test_confirm_prep_starts_run_when_count_set():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    state.prep_open = True            # the modal is showing (front end set this)
+    state.prep_sample_count = 12      # the operator determined a count
+    events = handle_command(Command(intent="confirm_prep"), state)
+    assert _kind(events, "prep_control")["action"] == "close"
+    assert state.prep_open is False   # gate lifted -> run started
+
+
+def test_confirm_prep_without_count_requires_one_and_does_not_start():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    state.prep_open = True
+    assert state.prep_sample_count is None
+    events = handle_command(Command(intent="confirm_prep"), state)
+    assert events[0]["payload"]["kind"] == "clarify"  # asks for a count
+    assert state.prep_open is True                     # still gated, not started
+
+
+def test_next_step_while_gated_starts_run_not_advances():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    state.prep_open = True
+    # No count yet -> "next step" asks for one and does NOT start or advance.
+    events = handle_command(Command(intent="next_step"), state)
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert state.current_step_index == 0
+    assert state.prep_open is True
+    # With a count set, "next step" starts the run (lifts the gate) without
+    # advancing past step 1.
+    handle_command(Command(intent="set_sample_count", sample_count=12), state)
+    events = handle_command(Command(intent="next_step"), state)
+    assert _kind(events, "prep_control")["action"] == "close"
+    assert state.prep_open is False
+    assert state.current_step_index == 0
+    assert not any(e["payload"].get("kind") == "step_change" for e in events)
+    # Now stepping advances normally.
+    events = handle_command(Command(intent="next_step"), state)
+    assert _kind(events, "step_change")["current_step"]["id"] == 2
+
+
+def test_skip_while_gated_starts_run_not_skips():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    state.prep_open = True
+    state.prep_sample_count = 12
+    events = handle_command(Command(intent="skip_step"), state)
+    assert _kind(events, "prep_control")["action"] == "close"
+    assert state.current_step_index == 0
+    assert 0 not in state.skipped_steps
+
+
+def test_start_protocol_no_name_while_gated_starts_run():
+    # "start protocol" routes to load_protocol with no name; while gated that
+    # means "begin the run" (requires a count), not a reload.
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    active_before = state.active_protocol
+    state.prep_open = True
+    # Without a count, it asks for one and does not start.
+    nostart = handle_command(Command(intent="load_protocol"), state)
+    assert nostart[0]["payload"]["kind"] == "clarify"
+    assert state.prep_open is True
+    # With a count, it starts (lifts the gate), not reloads.
+    state.prep_sample_count = 8
+    events = handle_command(Command(intent="load_protocol"), state)
+    assert _kind(events, "prep_control")["action"] == "close"
+    assert state.prep_open is False
+    assert state.active_protocol is active_before
+
+
+def test_load_no_name_without_gate_still_clarifies():
+    # Regression: with no prep gate open, a nameless load still clarifies.
+    state = fresh_state()
+    events = handle_command(Command(intent="load_protocol"), state)
+    assert events[0]["payload"]["kind"] == "clarify"
+
+
+def test_load_named_protocol_while_gated_reloads():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    state.prep_open = True
+    state.prep_sample_count = 12
+    events = handle_command(Command(intent="load_protocol", protocol_name="PCR Setup"), state)
+    assert _kind(events, "step_change")["loaded"] is True
+    assert "pcr" in state.active_protocol.name.lower()
+
+
+def test_load_resets_sample_count_for_new_prep():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    state.prep_sample_count = 12
+    handle_command(Command(intent="load_protocol", protocol_name="PCR Setup"), state)
+    assert state.prep_sample_count is None
+
+
+def test_cancel_protocol_clears_prep_gate():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    state.prep_open = True
+    state.prep_sample_count = 12
+    handle_command(Command(intent="cancel_protocol"), state)
+    assert state.prep_open is False
+    assert state.prep_sample_count is None

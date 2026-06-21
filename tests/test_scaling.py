@@ -4,6 +4,7 @@ from backend.scaling import (
     build_prep_table,
     convert_volume,
     find_inventory_group,
+    humanize_volume_text,
     protocol_ingredients,
     scale_reagents,
 )
@@ -26,6 +27,38 @@ def test_convert_volume_rejects_non_volume_units():
     assert convert_volume(5, "uL", "g") is None
     assert convert_volume(5, "", "uL") is None
     assert convert_volume(5, "units", "mL") is None
+
+
+def test_humanize_volume_text_inflated_ul_to_ml():
+    assert humanize_volume_text("Add 50000 uL buffer") == "Add 50 mL buffer"
+    assert humanize_volume_text("Add 2000 uL ethanol") == "Add 2 mL ethanol"
+    assert humanize_volume_text("Add 1500.0 uL of TRIzol") == "Add 1.5 mL of TRIzol"
+
+
+def test_humanize_volume_text_leaves_sub_ml_untouched():
+    assert humanize_volume_text("Add 950 uL water") == "Add 950 uL water"
+    assert humanize_volume_text("Add 200 uL lysis buffer") == "Add 200 uL lysis buffer"
+
+
+def test_humanize_volume_text_hits_liter_threshold():
+    assert humanize_volume_text("Add 1000000 uL water") == "Add 1 L water"
+    # exactly 1000 uL is the mL boundary (matches _display_volume's >= rule)
+    assert humanize_volume_text("Add 1000 uL water") == "Add 1 mL water"
+
+
+def test_humanize_volume_text_does_not_touch_non_volume_numbers():
+    assert humanize_volume_text("Incubate at 65 degrees C") == "Incubate at 65 degrees C"
+    assert humanize_volume_text("Centrifuge at 13,000 g") == "Centrifuge at 13,000 g"
+    assert humanize_volume_text("Run 30 cycles") == "Run 30 cycles"
+    assert humanize_volume_text("Add 100 mL buffer") == "Add 100 mL buffer"
+
+
+def test_humanize_volume_text_idempotent_and_empty_safe():
+    once = humanize_volume_text("Add 50000 uL buffer and 950 uL water")
+    assert once == "Add 50 mL buffer and 950 uL water"
+    assert humanize_volume_text(once) == once
+    assert humanize_volume_text("Mix gently") == "Mix gently"
+    assert humanize_volume_text("") == ""
 
 
 def test_aggregate_reagents_sums_repeated_reagent():
@@ -127,18 +160,22 @@ def test_build_prep_table_inventory_verdicts():
 
     assert by_name["ethanol"]["verdict"] == "in_stock"
     assert by_name["ethanol"]["match_name"] == "Ethanol 70%"
+    assert by_name["ethanol"]["location"] == "Cabinet"
 
     assert by_name["water"]["verdict"] == "in_stock"
 
     assert by_name["Proteinase K"]["verdict"] == "insufficient"
     assert by_name["Proteinase K"]["shortage_ul"] == 398
     assert by_name["Proteinase K"]["status"] == "low"
+    assert by_name["Proteinase K"]["location"] == "Freezer"
 
     assert by_name["agarose"]["verdict"] == "unknown_unit"
     assert by_name["agarose"]["available_unit"] == "g"
 
     assert by_name["lysis buffer"]["verdict"] == "missing"
     assert by_name["lysis buffer"]["match_name"] is None
+    # No inventory match -> no location to report.
+    assert by_name["lysis buffer"]["location"] is None
 
     assert by_name["SOC medium"]["verdict"] == "critical"
 

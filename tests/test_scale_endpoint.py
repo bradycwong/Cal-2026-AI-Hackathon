@@ -50,6 +50,12 @@ def test_scale_endpoint_uses_explicit_protocol_id(tmp_path):
     assert rows["nuclease-free water"]["total_ul"] == 660
     assert rows["nuclease-free water"]["verdict"] == "in_stock"
 
+    # Matched reagents carry their inventory location (so the prep table can show
+    # where to grab them); an unmatched reagent has no location.
+    assert rows["ethanol"]["location"] == "Cabinet 3"
+    assert rows["nuclease-free water"]["location"] == "Fridge 1 shelf C"
+    assert rows["lysis buffer"]["location"] is None
+
 
 def test_scale_endpoint_defaults_to_active_protocol(tmp_path):
     with make_client(tmp_path) as client:

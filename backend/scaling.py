@@ -56,6 +56,30 @@ def _display_volume(total_ul: float) -> str:
     return _format_amount(total_ul, "uL")
 
 
+# Matches a microliter quantity in normalize_ascii'd prose (the unit is always
+# "uL" by then). Volume-only and unit-pinned, so it never touches "65 degrees C",
+# "13,000 g", "30 cycles", "100 mL", or reagent names.
+_HUMANIZE_VOL_RE = re.compile(r"(\d+(?:\.\d+)?)\s*uL\b")
+
+
+def humanize_volume_text(text: str) -> str:
+    """Rewrite inflated microliter mentions (>=1000 uL) in prose to mL/L.
+
+    Reuses ``_display_volume`` so "50000 uL" -> "50 mL", "2000 uL" -> "2 mL",
+    "1500.0 uL" -> "1.5 mL". Leaves "<1000 uL" ("950 uL", "200 uL") byte-for-byte
+    untouched. Idempotent; safe on empty / volume-free text. Used by the import
+    paths so a step's displayed text never reads "50000 uL" for what is "50 mL".
+    """
+    if not text:
+        return text
+
+    def _sub(match: "re.Match[str]") -> str:
+        ul = float(match.group(1))
+        return match.group(0) if ul < FACTORS_TO_UL["mL"] else _display_volume(ul)
+
+    return _HUMANIZE_VOL_RE.sub(_sub, text)
+
+
 def convert_volume(amount: float, from_unit: str, to_unit: str) -> Optional[float]:
     """Convert volume units only. Return None for non-volume units."""
     src = _volume_unit(from_unit)

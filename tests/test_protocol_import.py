@@ -124,6 +124,16 @@ def test_step_params_empty_when_nothing_explicit():
     assert _step_params("Mix gently and proceed") == {}
 
 
+def test_deterministic_import_humanizes_inflated_volume(tmp_path, monkeypatch):
+    # An inflated microliter mention in the source prose is shown as mL, while the
+    # canonical volume_ul param stays the microliter number used for scaling math.
+    monkeypatch.setenv("IMPORT_MODE", "deterministic")
+    state = _state(tmp_path)
+    proto, _ = import_protocol("1. Add 50000 uL buffer", "Inflated", state)
+    assert proto.steps[0].text == "Add 50 mL buffer"
+    assert proto.steps[0].parameters.get("volume_ul") == 50000
+
+
 def test_deterministic_import_populates_reagents(tmp_path, monkeypatch):
     monkeypatch.setenv("IMPORT_MODE", "deterministic")
     state = _state(tmp_path)
@@ -229,3 +239,35 @@ def test_llm_import_splits_compound_end_to_end(tmp_path, monkeypatch):
     assert [s.duration_s for s in reloaded.steps] == [None, 45, 600]
     assert reloaded.steps[1].timer_label == "centrifuge"
     assert reloaded.steps[2].timer_label == "incubation"
+
+
+# A model that (wrongly) inflated "50 mL" into "50000 uL" in the prose; the
+# import safety net must humanize the displayed text back to mL.
+INFLATED_JSON = """\
+{
+  "name": "Inflated",
+  "description": "Pour 50000 uL into the tank.",
+  "aliases": ["inflated"],
+  "steps": [
+    {"text": "Add 50000 uL buffer.", "duration_s": null, "timer_label": null, "parameters": {"volume_ul": 50000}}
+  ]
+}"""
+
+
+class _FakeAnthropicInflated(_FakeAnthropic):
+    _text = INFLATED_JSON
+
+
+def test_llm_import_humanizes_inflated_volume(tmp_path, monkeypatch):
+    import anthropic
+
+    monkeypatch.setenv("IMPORT_MODE", "llm")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    monkeypatch.setattr(anthropic, "Anthropic", _FakeAnthropicInflated)
+
+    state = _state(tmp_path)
+    proto, _ = import_protocol("Add 50 mL buffer.", "Inflated", state)
+    assert proto.steps[0].text == "Add 50 mL buffer."
+    assert proto.steps[0].parameters.get("volume_ul") == 50000
+    # the description prose is humanized too
+    assert "50 mL" in proto.description and "50000" not in proto.description
