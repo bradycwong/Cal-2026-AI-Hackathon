@@ -68,7 +68,7 @@ def utc_now_iso() -> str:
 
 
 def load_protocol_file(path: Path) -> Protocol:
-    raw = yaml.safe_load(path.read_text())
+    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
     p = raw["protocol"]
     steps = [
         Step(
@@ -90,7 +90,7 @@ def load_protocol_file(path: Path) -> Protocol:
 
 def load_inventory_file(path: Path) -> list[InventoryItem]:
     items: list[InventoryItem] = []
-    with path.open(newline="") as fh:
+    with path.open(newline="", encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
             items.append(
                 InventoryItem(
