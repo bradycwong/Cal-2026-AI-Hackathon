@@ -245,7 +245,7 @@
 <span class="font-bold text-on-surface">Custom Commands</span>
 <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-tertiary border border-tertiary/50 rounded-full px-2 py-0.5">Experimental</span>
 </div>
-<p class="text-xs text-on-surface-variant mt-0.5">Map a phrase you choose to a built-in action. Saved on this device — while this page is open, speaking the trigger fires it too.</p>
+<p class="text-xs text-on-surface-variant mt-0.5">Map a phrase you choose to a built-in action. Saved in this browser and registered with the assistant, so saying the trigger — on any page — runs the mapped command. Press Run to fire it now.</p>
 </div>
 </div>
 <button id="cc-add" type="button" class="bg-primary text-on-primary px-4 py-2 rounded-lg font-bold flex items-center gap-2 hover:bg-primary/90 transition-all shrink-0"><span class="material-symbols-outlined" style="font-size:18px">add</span>New command</button>
@@ -293,11 +293,11 @@
 </script>
 <script>
   // --- Experimental: user-defined voice-command shortcuts -------------------
-  // Self-contained: no backend or shared app.js changes. A custom command maps a
-  // trigger phrase to ONE built-in action and is persisted in localStorage.
-  // "Run" — and, while this page is open, speaking the trigger — sends the
-  // mapped canonical phrase through the SAME /api/ingest spine the typed box and
-  // the live mic use, so it routes exactly like a real command.
+  // A custom command maps a trigger phrase to ONE built-in action, persisted in
+  // localStorage and synced to the backend (POST /api/aliases). The ingestion
+  // spine expands a matching trigger into the mapped phrase BEFORE routing, so
+  // saying the trigger — on any page — executes it with no "I didn't understand
+  // that" detour. "Run" POSTs the mapped phrase straight to /api/ingest.
   (function () {
     var KEY = "lab.customCommands.v1";
 
@@ -334,8 +334,17 @@
     });
 
     function load() { try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch (e) { return []; } }
-    function store(items) { localStorage.setItem(KEY, JSON.stringify(items)); }
-    function normalize(s) { return (s || "").toLowerCase().replace(/[.,!?;:]+$/g, "").replace(/\s+/g, " ").trim(); }
+    function store(items) { localStorage.setItem(KEY, JSON.stringify(items)); syncAliases(items); }
+    // Keep in lockstep with backend/aliases.py normalize() so a typed trigger and
+    // the spoken transcript collapse to the same key.
+    function normalize(s) { return (s || "").toLowerCase().replace(/[.,!?;:'"]/g, "").replace(/\s+/g, " ").trim(); }
+    // Push the current commands to the backend so the ingestion spine expands a
+    // matching trigger into its mapped phrase BEFORE routing — that is what makes
+    // a spoken trigger work on every page with no "didn't understand" detour.
+    function syncAliases(items) {
+      var payload = { aliases: (items || load()).map(function (it) { return { trigger: it.trigger, phrase: phraseFor(it) }; }) };
+      fetch("/api/aliases", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).catch(function () {});
+    }
     function phraseFor(it) { var a = ACTIONS[it.action]; return a ? a.build((it.arg || "").trim()) : ""; }
     function esc(s) {
       return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -426,25 +435,10 @@
     });
 
     render();
-
-    // Live voice triggering while this page is open: a read-only second listener
-    // on the event bus watches for FINAL transcripts and fires any custom command
-    // whose trigger matches. It never touches app.js's own socket.
-    try {
-      var proto = location.protocol === "https:" ? "wss" : "ws";
-      var ws = new WebSocket(proto + "://" + location.host + "/ws/events");
-      var lastText = "", lastTs = 0;
-      ws.addEventListener("message", function (ev) {
-        var msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
-        if (!msg || msg.type !== "transcript_update" || !msg.payload || !msg.payload.is_final) return;
-        var said = normalize(msg.payload.text);
-        if (!said) return;
-        var now = Date.now();
-        if (said === lastText && now - lastTs < 2000) return; // de-dupe repeats
-        var hit = load().filter(function (it) { return normalize(it.trigger) === said; })[0];
-        if (hit) { lastText = said; lastTs = now; run(phraseFor(hit)); }
-      });
-    } catch (e) { /* event bus optional — the Run button still works */ }
+    // Register existing commands with the backend on load so a spoken/typed
+    // trigger expands to its mapped phrase before routing — works on every page,
+    // even after a server restart once this page has been opened.
+    syncAliases();
   })();
 </script>
 <!-- Voice Assistant Bubble -->

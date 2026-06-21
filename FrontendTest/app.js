@@ -955,6 +955,68 @@
       b.addEventListener("click", () => selectNotebook(b.getAttribute("data-nb-id")))
     );
   }
+
+  // Dashboard "Recent Notebooks": clickable cards mirroring the protocol cards.
+  // Newest-first and capped so the dashboard stays tidy ("View All" covers the
+  // rest). No-ops on pages without the mount, so it's safe to call from the
+  // shared hydrate path and the notebook_list event.
+  const DASHBOARD_NOTEBOOKS_LIMIT = 6;
+  function renderDashboardNotebooks(data) {
+    const host = $("dashboard-notebooks");
+    if (!host) return;
+    const nbs = [...((data && data.notebooks) || [])].sort((a, b) =>
+      String(b.created_at || "").localeCompare(String(a.created_at || ""))
+    );
+    if (!nbs.length) {
+      host.innerHTML = `<div class="text-on-surface-variant text-sm col-span-3">No notebooks yet.</div>`;
+      return;
+    }
+    host.innerHTML = nbs
+      .slice(0, DASHBOARD_NOTEBOOKS_LIMIT)
+      .map((n) => {
+        const count = `${n.entry_count} ${n.entry_count === 1 ? "entry" : "entries"}`;
+        const created = n.created_at ? new Date(n.created_at) : null;
+        const createdStr =
+          created && !isNaN(created.getTime()) ? created.toLocaleDateString() : "";
+        return `<button type="button" data-nb-id="${n.id}" class="nb-card text-left bg-surface-container-low rounded-xl p-6 flex flex-col gap-4 border ${
+          n.active ? "border-primary" : "border-outline-variant"
+        } hover:bg-surface-variant transition-all active:scale-[0.99]">
+  <div class="flex justify-between items-start">
+    <div class="w-12 h-12 rounded-lg bg-surface-variant flex items-center justify-center">
+      <span class="material-symbols-outlined text-primary"${
+        n.active ? " style=\"font-variation-settings:'FILL' 1;\"" : ""
+      }>${n.active ? "menu_book" : "book"}</span>
+    </div>
+    ${
+      n.active
+        ? `<span class="font-data-label text-xs px-2 py-1 rounded bg-primary/10 text-primary">Active</span>`
+        : ""
+    }
+  </div>
+  <h3 class="font-headline-md text-headline-md text-on-surface truncate">${escapeHtml(n.name)}</h3>
+  <div class="flex items-center gap-2 text-on-surface-variant text-sm">
+    <span class="material-symbols-outlined text-sm">history_edu</span>
+    <span class="font-data-value">${escapeHtml(count)}</span>
+  </div>
+  ${
+    createdStr
+      ? `<p class="text-[10px] text-on-surface-variant uppercase font-bold tracking-wider">Created ${escapeHtml(createdStr)}</p>`
+      : ""
+  }
+</button>`;
+      })
+      .join("");
+    host.querySelectorAll(".nb-card").forEach((b) =>
+      b.addEventListener("click", () => openNotebook(b.getAttribute("data-nb-id")))
+    );
+  }
+  // Open a notebook from the dashboard: make it active server-side, then show
+  // its feed on the Notebook page.
+  async function openNotebook(id) {
+    await selectNotebook(id);
+    window.location.href = "notebook.html";
+  }
+
   async function refreshNotebookFeed() {
     if ($("notebook-list") || $("notebook-title") || $("notebook-select")) {
       const data = await fetchNotebooks();
@@ -1463,6 +1525,7 @@
       case "notebook_list":
         renderNotebooks(p);
         renderNotebookSelect(p);
+        renderDashboardNotebooks(p);
         if ($("log-rows") || $("log-preview")) {
           fetchLog().then((l) => {
             logCache = l;
@@ -1595,10 +1658,16 @@
       }
     });
     await hydrateSection("notebooks", async () => {
-      if ($("notebook-list") || $("notebook-title") || $("notebook-select")) {
+      if (
+        $("notebook-list") ||
+        $("notebook-title") ||
+        $("notebook-select") ||
+        $("dashboard-notebooks")
+      ) {
         const data = await fetchNotebooks();
         renderNotebooks(data);
         renderNotebookSelect(data);
+        renderDashboardNotebooks(data);
         wireNotebookNew();
         wireNotebookSelect();
       }
@@ -1647,6 +1716,7 @@
     patchLog,
     ingestCommand,
     renderProtocolCards,
+    renderDashboardNotebooks,
     renderInventory,
     renderLog,
     renderLogFlag,

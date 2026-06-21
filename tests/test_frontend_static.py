@@ -197,6 +197,17 @@ def test_pages_expose_live_hooks():
     assert 'id="live-transcript"' in guide
 
 
+def test_dashboard_has_recent_notebooks_section():
+    # The dashboard surfaces a "Recent Notebooks" section beneath the protocols,
+    # populated by the shared client from the same /api/notebooks feed.
+    html = (FT / "dashboard.html").read_text(encoding="utf-8")
+    assert 'id="dashboard-notebooks"' in html, "dashboard.html missing notebooks mount"
+    assert "Recent Notebooks" in html, "dashboard.html missing Recent Notebooks heading"
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert "renderDashboardNotebooks" in js, "app.js missing renderDashboardNotebooks"
+    assert "dashboard-notebooks" in js, "app.js does not target the dashboard notebooks mount"
+
+
 # --- cleanup: de-duped shell, real branding, dead controls removed ----------
 
 def test_pages_use_shared_head_assets():

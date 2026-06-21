@@ -53,6 +53,7 @@ from .handlers import advance_step, edit_log_entry, handle_command
 from .instrumentation import chain_span, setup_tracing
 from .state import ProtocolParseError, SessionState
 from .voice_control import VoiceControl, classify_control
+from .aliases import AliasStore
 
 # FrontendTest is the served live UI. The legacy ``frontend/`` app is kept on
 # disk (its service worker is still served at /sw.js) but is no longer the root.
@@ -72,6 +73,10 @@ state = SessionState(data_dir=DATA_DIR, db_path=DB_PATH)
 # Process-wide mute gate shared by every input channel: the typed box, the
 # spoken "mute"/"unmute", and the Mute button all toggle this one state.
 voice = VoiceControl()
+
+# User-defined custom commands (authored on the Commands page, synced here). The
+# spine expands a matching trigger into its mapped built-in phrase before routing.
+aliases = AliasStore()
 
 
 class ConnectionManager:
@@ -122,13 +127,20 @@ async def ingest(
         events.append(voice_state_event(vs.muted, vs.label))
         await manager.broadcast(events)
         return events
+    # Expand a user-defined custom command into its mapped built-in phrase BEFORE
+    # routing, so a custom trigger executes cleanly instead of falling through to
+    # "I didn't understand that". The user's ORIGINAL words are still echoed to
+    # the transcript; only the text handed to route() is the expansion.
+    route_text = aliases.expand(text) or text
     if echo_transcript:
         events.append(transcript_update_event(text, is_final=True))
     if do_route:
         # CHAIN span over the routing decision + command execution. The
         # auto-instrumented Anthropic span (the `ask` path) nests under it.
-        with chain_span("ingest", text) as span:
-            cmd = route(text)
+        with chain_span("ingest", route_text) as span:
+            if route_text != text:
+                span.set_attribute("lab.alias_trigger", text)
+            cmd = route(route_text)
             span.set_attribute("lab.intent", str(cmd.intent))
             events.extend(handle_command(cmd, state))
             span.set_output(cmd.intent)
@@ -193,6 +205,30 @@ async def api_ingest(body: IngestIn) -> dict[str, Any]:
         ev = error_event("ingest_failed", str(exc), "ingest")
         await manager.broadcast([ev])
         return {"ok": False, "events": [ev]}
+
+
+class AliasIn(BaseModel):
+    trigger: str
+    phrase: str
+
+
+class AliasesIn(BaseModel):
+    aliases: list[AliasIn] = []
+
+
+@app.get("/api/aliases")
+async def get_aliases() -> dict[str, Any]:
+    """Current custom-command set the spine will expand (trigger -> phrase)."""
+    return {"aliases": aliases.as_list()}
+
+
+@app.post("/api/aliases")
+async def set_aliases(body: AliasesIn) -> dict[str, Any]:
+    """Replace the custom-command set. The Commands page syncs its localStorage
+    copy here on load and on every add/delete, so a spoken/typed trigger expands
+    to its mapped built-in phrase before routing."""
+    count = aliases.set_all([{"trigger": a.trigger, "phrase": a.phrase} for a in body.aliases])
+    return {"ok": True, "count": count}
 
 
 @app.get("/api/protocols")
