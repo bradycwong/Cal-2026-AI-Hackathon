@@ -445,3 +445,26 @@ def test_app_wires_reagent_prep_client():
         assert token in js, f"app.js missing {token}"
     # The overage input no longer exists, so the client must not read it.
     assert "prep-overage" not in js, "app.js should no longer reference prep-overage"
+
+
+def test_app_dispatches_navigate_kind():
+    # The hands-free "jump to run" voice command emits a `navigate` command_result;
+    # the client routes it (and re-centers the current step via scrollToRun/#run).
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert '"navigate"' in js, "app.js missing navigate dispatch"
+    assert "scrollToRun" in js, "app.js missing scrollToRun helper"
+
+
+def test_every_page_has_jump_to_run_nav_button():
+    # The "Jump to run" nav shortcut lives on every page (shown only when a
+    # protocol is loaded) and links to the guide view with the #run hash.
+    for page in PAGES:
+        html = (FT / page).read_text(encoding="utf-8")
+        assert 'id="resume-run"' in html, f"{page} missing Jump to run nav button"
+        assert 'href="guide.html#run"' in html, f"{page} resume-run missing #run target"
+
+
+def test_commands_page_documents_jump_to_run():
+    html = (FT / "commands.html").read_text(encoding="utf-8")
+    assert "Jump to run" in html, "commands.html missing Jump to run reference"
+    assert "show_protocol" in html, "commands.html missing show_protocol custom action"

@@ -43,6 +43,7 @@ from .schema import (
     log_update_event,
     notebook_list_event,
     protocol_imported_event,
+    protocol_updated_event,
     reset_event,
     timer_removed_event,
     timer_update_event,

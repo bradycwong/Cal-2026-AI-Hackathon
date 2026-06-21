@@ -126,6 +126,27 @@ def test_reset_restores_protocol_library(client, monkeypatch):
     assert restored == baseline_ids
 
 
+def test_reset_reverts_a_protocol_edit(client):
+    # Editing a shipped protocol writes the working copy; Reset Demo restores seed.
+    orig = client.get("/api/protocols/dna_extraction").json()["protocol"]
+    steps = [
+        {"text": s["text"], "duration_s": s["duration_s"],
+         "timer_label": s["timer_label"], "parameters": s["parameters"]}
+        for s in orig["steps"]
+    ]
+    client.patch(
+        "/api/protocols/dna_extraction",
+        json={"name": "Edited Name", "description": "edited", "steps": steps},
+    )
+    cat = {p["id"]: p for p in client.get("/api/protocols").json()["protocols"]}
+    assert cat["dna_extraction"]["name"] == "Edited Name"
+
+    client.post("/api/demo/reset")
+
+    cat2 = {p["id"]: p for p in client.get("/api/protocols").json()["protocols"]}
+    assert cat2["dna_extraction"]["name"] != "Edited Name"  # reverted to seed
+
+
 def test_reset_baseline_excludes_junk_import_artifact():
     """The typo'd 'quick dna prpe' was a stray manual import. It must not ship in
     the reset baseline (seed) or the live data dir — otherwise it reappears in the

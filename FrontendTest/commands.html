@@ -52,7 +52,7 @@
 <span class="material-symbols-outlined text-primary">record_voice_over</span>
 <span class="font-bold text-on-surface">Voice Command Reference</span>
 </div>
-<span id="cmd-count" class="text-xs text-on-surface-variant font-data-label uppercase tracking-widest">15 commands</span>
+<span id="cmd-count" class="text-xs text-on-surface-variant font-data-label uppercase tracking-widest">16 commands</span>
 </div>
 <div>
 <table class="w-full text-left border-collapse">
@@ -104,8 +104,15 @@
 <th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
 <span class="flex items-center gap-2"><span class="material-symbols-outlined text-on-surface-variant" style="font-size:18px">replay</span>Repeat step</span>
 </th>
-<td class="px-6 py-4 align-top"><span class="cmd-chip">Repeat that</span><span class="cmd-chip">Say that again</span><span class="cmd-chip">What step am I on?</span></td>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Repeat that</span><span class="cmd-chip">Say that again</span></td>
 <td class="px-6 py-4 align-top text-on-surface-variant">Re-reads the current step without advancing.</td>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-primary" style="font-size:18px">my_location</span>Jump to run</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Jump to run</span><span class="cmd-chip">Go to the protocol</span><span class="cmd-chip">Back to the guide</span><span class="cmd-chip">What step am I on?</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Hands-free jump back to the running protocol (the Guide); centers the current step on arrival.</td>
 </tr>
 </tbody>
 
@@ -310,6 +317,7 @@
       skip_step:      { label: "Skip step",       arg: null,            build: function () { return "skip step"; } },
       prev_step:      { label: "Previous step",   arg: null,            build: function () { return "previous step"; } },
       repeat_step:    { label: "Repeat step",     arg: null,            build: function () { return "repeat that"; } },
+      show_protocol:  { label: "Jump to run",     arg: null,            build: function () { return "jump to run"; } },
       start_timer:    { label: "Start a timer",   arg: "Duration", ph: "5 minutes", optional: true,             build: function (a) { return a ? "start a " + a + " timer" : "start the timer"; } },
       stop_timer:     { label: "Stop timer",      arg: null,            build: function () { return "stop timer"; } },
       log_entry:      { label: "Log a note",      arg: "Note text", ph: "lysate looks cloudy",                 build: function (a) { return "log " + a; } },

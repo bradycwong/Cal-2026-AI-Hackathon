@@ -33,7 +33,8 @@ SYSTEM_PROMPT = (
     "You convert a single spoken lab command into ONE structured Command. "
     "Choose exactly one intent from: load_protocol, next_step, skip_step, "
     "prev_step, repeat_step, log_entry, undo_log, correct_log, start_timer, "
-    "stop_timer, find_inventory, ask, unknown. "
+    "stop_timer, clear_done_timers, find_inventory, add_inventory, ask, "
+    "show_protocol, unknown. "
     "Map 'next', 'next step', 'what's next', 'move on', 'continue', 'proceed', "
     "'advance', 'confirm', 'confirm action', 'done', 'step done', 'complete', "
     "'mark complete', or 'finished' to next_step — the user has completed the "
@@ -42,6 +43,10 @@ SYSTEM_PROMPT = (
     "(advances WITHOUT marking the step done). "
     "Map 'stop timer', 'cancel the timer', 'stop the alarm', or 'stop beeping' "
     "to stop_timer. "
+    "Map 'clear done timers', 'delete all finished timers', 'remove expired "
+    "timers', or 'clear the timers that are done' to clear_done_timers — this "
+    "removes ONLY finished/expired timers and leaves running ones running. (Plain "
+    "'stop timer' / 'cancel all timers' with NO done-qualifier stays stop_timer.) "
     "For start_timer, set duration_s to the TOTAL number of seconds in the "
     "spoken duration, summing every part. Examples: '5 minutes' -> 300; "
     "'30 seconds' -> 30; 'a minute' -> 60; 'a minute 30' / 'one minute thirty "
@@ -49,7 +54,10 @@ SYSTEM_PROMPT = (
     "-> 1800; 'an hour and a half' -> 5400. If no duration is spoken, leave "
     "duration_s null so the current step's declared time is used. "
     "Map 'go back' or 'previous step' to prev_step. "
-    "Map 'repeat that', 'say that again', or 'what step am I on' to repeat_step. "
+    "Map 'repeat that' or 'say that again' to repeat_step. "
+    "Map 'jump to run', 'go to the protocol', 'back to the guide', 'show me the "
+    "protocol', or 'what step am I on' to show_protocol (navigate to the "
+    "running-protocol view). "
     "Map 'scratch that', 'delete that', or 'undo the last note' to undo_log. "
     "Map 'change the last note to X' or 'correct that to X' to correct_log "
     "with log_text set to X. "
@@ -421,6 +429,25 @@ def deterministic_route(transcript: str) -> Command:
             )
         return Command(intent="correct_log", log_text=replacement)
 
+    # clear_done_timers — dismiss ONLY finished/expired timers. MUST precede
+    # stop_timer: stop_timer's verbs (stop/cancel/dismiss) + "all timers" would
+    # otherwise steal "dismiss done timers" and wrongly remove RUNNING timers too.
+    # The explicit done-qualifier gate lets qualifier-less "stop/cancel timers"
+    # fall through to stop_timer below.
+    _DONE = r"done|finished|complete|completed|expired|over|elapsed|ended"
+    if re.search(
+        r"\b(?:clear|delete|remove|dismiss|cancel|clean up|clear out|get rid of)\s+"
+        r"(?:the\s+|all\s+(?:the\s+)?|my\s+|these\s+|those\s+|any\s+)*"
+        r"(?:"
+        rf"(?:{_DONE})\s+(?:timers?|alarms?|countdowns?)"          # "done timers"
+        r"|"
+        rf"(?:timers?|alarms?|countdowns?)\s+(?:that|which)\s+"     # "timers that are done"
+        rf"(?:are\s+|have\s+|has\s+|is\s+)?(?:{_DONE})"
+        r")\b",
+        t,
+    ):
+        return Command(intent="clear_done_timers")
+
     # stop_timer — silence the alarm / cancel timers. MUST precede start_timer
     # because "stop timer" also contains "timer".
     if re.search(
@@ -460,13 +487,27 @@ def deterministic_route(transcript: str) -> Command:
             return Command(intent="find_inventory", clarify_prompt="Which reagent are you looking for?")
         return Command(intent="find_inventory", reagent_name=reagent)
 
+    # show_protocol — hands-free "take me to the live run" (the guide view). Runs
+    # before prev_step/repeat_step so "back to the guide" and "what step am i on"
+    # navigate instead of being read as a step nav. Network-free control intent.
+    if re.search(
+        r"\b("
+        r"jump to (?:the )?(?:run|guide|protocol)|"
+        r"(?:go|back|take me|bring me|get) (?:back )?to (?:the )?(?:run|guide|protocol)|"
+        r"show (?:me )?(?:the )?(?:current step|protocol|guide|run)|"
+        r"what step (?:am i|are we) on"
+        r")\b",
+        t,
+    ):
+        return Command(intent="show_protocol")
+
     # backward/repeat navigation - must run before the generic next_step check.
     if re.search(r"\b(go back|previous step|back a step|step back|previous)\b", t):
         return Command(intent="prev_step")
 
     if re.search(
         r"\b(repeat( that| the step| this)?|say that again|"
-        r"what step (am i|are we) on|current step|read (it|that) again)\b",
+        r"current step|read (it|that) again)\b",
         t,
     ):
         return Command(intent="repeat_step")
@@ -644,7 +685,8 @@ def answer_question(question: str, protocol) -> str:
 # Unambiguous lab controls: matched deterministically BEFORE any LLM call so
 # timers + step navigation never depend on (or wait on) the model.
 _CONTROL_INTENTS = frozenset(
-    {"start_timer", "stop_timer", "next_step", "prev_step", "repeat_step", "skip_step"}
+    {"start_timer", "stop_timer", "clear_done_timers", "next_step", "prev_step",
+     "repeat_step", "skip_step", "show_protocol"}
 )
 
 

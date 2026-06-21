@@ -27,9 +27,11 @@ Intent = Literal[
     "correct_log",
     "start_timer",
     "stop_timer",
+    "clear_done_timers",
     "find_inventory",
     "add_inventory",
     "ask",
+    "show_protocol",
     "unknown",
 ]
 
@@ -72,7 +74,7 @@ def make_event(type: EventType, payload: dict[str, Any]) -> dict[str, Any]:
 # --- command_result kinds ---------------------------------------------------
 # kind in { step_change, log_entry, log_removed, log_update, inventory_result,
 #           inventory_added, clarify, voice_state, ask_result, timer_removed,
-#           protocol_imported, reset }
+#           protocol_imported, protocol_updated, reset }
 
 
 def command_result(kind: str, **fields: Any) -> dict[str, Any]:
@@ -159,6 +161,17 @@ def protocol_imported_event(
     )
 
 
+def protocol_updated_event(name: str, protocol_id: str, step_count: int) -> dict[str, Any]:
+    """A protocol's definition changed (an edit). The frontend refreshes the
+    catalog; an additive ``kind`` on the locked command_result envelope."""
+    return command_result(
+        "protocol_updated",
+        name=name,
+        protocol_id=protocol_id,
+        step_count=step_count,
+    )
+
+
 def log_removed_event(id: int) -> dict[str, Any]:
     return command_result("log_removed", id=id)
 
@@ -209,6 +222,13 @@ def inventory_added_event(
 def clarify_event(message: str) -> dict[str, Any]:
     """Never-fail-silently: anything ambiguous renders the clarification area."""
     return command_result("clarify", message=message)
+
+
+def navigate_event(page: str, hash: str = "") -> dict[str, Any]:
+    """Tell clients to navigate to a page (additive command_result kind). Drives
+    the hands-free ``show_protocol`` command: a voice "jump to run" lands the
+    operator on the guide view, with ``hash`` (e.g. ``#run``) centering the step."""
+    return command_result("navigate", page=page, hash=hash)
 
 
 def voice_state_event(muted: bool, label: str) -> dict[str, Any]:

@@ -1386,24 +1386,35 @@
     if (panel) panel.classList.remove("hidden");
   }
 
-  function onTranscript(p) {
+  // Append a finalized line. role "ai" -> blue + ">" marker (via CSS .transcript-ai);
+  // anything else -> white user speech (.transcript-final). An AI reply also closes
+  // any dangling interim line. Shared by Deepgram finals and AI messages.
+  function appendFinalLine(text, role) {
     const el = $("live-transcript");
     if (!el) return;
     revealTranscript();
+    clearInterim();
+    const div = document.createElement("div");
+    div.className = "transcript-line " + (role === "ai" ? "transcript-ai" : "transcript-final");
+    div.textContent = text;
+    el.appendChild(div);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function onTranscript(p) {
     if (p && p.is_final) {
-      clearInterim();
-      const div = document.createElement("div");
-      div.className = "transcript-line transcript-final";
-      div.textContent = p.text;
-      el.appendChild(div);
-    } else {
-      if (!interimEl) {
-        interimEl = document.createElement("div");
-        interimEl.className = "transcript-line transcript-interim";
-        el.appendChild(interimEl);
-      }
-      interimEl.textContent = (p && p.text) || "";
+      appendFinalLine(p.text, "user");
+      return;
     }
+    const el = $("live-transcript");
+    if (!el) return;
+    revealTranscript();
+    if (!interimEl) {
+      interimEl = document.createElement("div");
+      interimEl.className = "transcript-line transcript-interim";
+      el.appendChild(interimEl);
+    }
+    interimEl.textContent = (p && p.text) || "";
     el.scrollTop = el.scrollHeight;
   }
 
@@ -1431,7 +1442,7 @@
   function renderClarify(message) {
     const el = $("clarify");
     if (el) el.textContent = message;
-    else onTranscript({ text: message, is_final: true });
+    else appendFinalLine(message, "ai");
   }
 
   function clearTransientState(opts) {
@@ -1561,8 +1572,24 @@
   function navTo(page) {
     if (currentPage() !== page) window.location.href = page;
   }
+  // Center the current-step card. Used by the #run hash on guide load and by the
+  // "navigate" command when the operator is already on the guide.
+  function scrollToRun() {
+    const el = $("step-current");
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
   function maybeNavigate(p) {
     switch (p.kind) {
+      case "navigate":
+        // show_protocol ("jump to run" / "what step am I on"): land on the page;
+        // if already there, just center the current step. A fresh cross-page load
+        // carries the #run hash, which re-centers after hydrate.
+        if (currentPage() === p.page) {
+          if ((p.hash || "") === "#run") scrollToRun();
+        } else {
+          window.location.href = p.page + (p.hash || "");
+        }
+        return;
       case "step_change":
         if (p.loaded) {
           // Cross-page loads reload the Guide; flag the prep modal so it opens
@@ -1640,7 +1667,14 @@
         refreshInventory();
         return;
       case "inventory_result":
+        return;
+      case "navigate": // navigation handled in maybeNavigate; nothing to render
+        return;
       case "ask_result":
+        // The AI's answer to an "ask" (e.g. "what's next?") — render it as an AI
+        // line so it's actually visible. maybeNavigate has no ask_result case, so
+        // the user stays on the current page.
+        appendFinalLine(p.answer, "ai");
         return;
       default:
         return;
@@ -1778,10 +1812,11 @@
         if (active && $("prep-modal") && consumePrepOnLoad()) {
           openPrepModal(st.step.protocol_name);
         }
-        // Arriving via the nav "Jump to run" button (#run): center the current
-        // step, then drop the hash so a later refresh doesn't re-scroll.
-        if (location.hash === "#run" && $("step-current")) {
-          $("step-current").scrollIntoView({ behavior: "smooth", block: "center" });
+        // Arriving via the nav "Jump to run" button or a "jump to run" voice
+        // command (#run): center the current step, then drop the hash so a later
+        // refresh doesn't re-scroll.
+        if (location.hash === "#run") {
+          scrollToRun();
           history.replaceState(null, "", location.pathname);
         }
       }

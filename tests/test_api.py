@@ -295,3 +295,155 @@ def test_demo_reset_clears_recency(client):
     assert client.post("/api/demo/reset").status_code == 200
     # Back to cold-start fallback: timestamps cleared.
     assert all(p["last_used_at"] is None for p in _recent(client))
+
+
+# --- editing protocols -----------------------------------------------------
+def _full(client, pid="dna_extraction"):
+    r = client.get(f"/api/protocols/{pid}")
+    assert r.status_code == 200
+    return r.json()["protocol"]
+
+
+def _as_payload_steps(steps):
+    return [
+        {
+            "text": s["text"],
+            "duration_s": s["duration_s"],
+            "timer_label": s["timer_label"],
+            "parameters": s["parameters"],
+        }
+        for s in steps
+    ]
+
+
+def test_get_full_protocol_includes_steps(client):
+    proto = _full(client)
+    assert proto["id"] == "dna_extraction"
+    assert proto["steps"], "full protocol must carry the steps, not just a count"
+    s0 = proto["steps"][0]
+    assert {"id", "text", "duration_s", "timer_label", "parameters"} <= set(s0)
+    # params + timer_label survive to the editor
+    assert any(s["parameters"].get("reagent") for s in proto["steps"])
+    assert any(s["timer_label"] for s in proto["steps"] if s["duration_s"])
+
+
+def test_get_unknown_protocol_404(client):
+    assert client.get("/api/protocols/nope").status_code == 404
+
+
+def test_patch_protocol_persists_name_desc_and_steps(client):
+    steps = [
+        {"text": "Add 200 uL lysis buffer", "duration_s": None,
+         "timer_label": None, "parameters": {"reagent": "lysis buffer"}},
+        {"text": "Incubate 5 minutes", "duration_s": 300,
+         "timer_label": "incubation", "parameters": {}},
+    ]
+    r = client.patch(
+        "/api/protocols/dna_extraction",
+        json={"name": "DNA Prep v2", "description": "new desc", "steps": steps},
+    )
+    assert r.status_code == 200 and r.json()["ok"] is True
+    cat = {p["id"]: p for p in client.get("/api/protocols").json()["protocols"]}
+    assert cat["dna_extraction"]["name"] == "DNA Prep v2"
+    assert cat["dna_extraction"]["step_count"] == 2
+    after = _full(client)
+    assert after["description"] == "new desc"
+    assert [s["text"] for s in after["steps"]] == ["Add 200 uL lysis buffer", "Incubate 5 minutes"]
+    assert [s["id"] for s in after["steps"]] == [1, 2]  # re-IDed 1..N
+    # round-trips through the YAML loader unchanged (guards the unicode escape path)
+    assert after["steps"][1]["duration_s"] == 300
+
+
+def test_patch_preserves_parameters_through_reorder(client):
+    orig = _full(client)["steps"]
+    want = {s["text"]: s["parameters"] for s in orig}
+    payload = list(reversed(_as_payload_steps(orig)))
+    r = client.patch(
+        "/api/protocols/dna_extraction",
+        json={"name": "DNA Extraction", "description": "d", "steps": payload},
+    )
+    assert r.status_code == 200
+    after = _full(client)["steps"]
+    assert [s["text"] for s in after] == [s["text"] for s in payload]
+    for s in after:  # params traveled with the row, not the id
+        assert s["parameters"] == want[s["text"]]
+
+
+def test_patch_preserves_parameters_through_delete(client):
+    orig = _full(client)["steps"]
+    keep = orig[1:]  # drop the first step
+    r = client.patch(
+        "/api/protocols/dna_extraction",
+        json={"name": "DNA Extraction", "description": "d", "steps": _as_payload_steps(keep)},
+    )
+    assert r.status_code == 200
+    after = _full(client)["steps"]
+    assert [s["id"] for s in after] == list(range(1, len(keep) + 1))  # re-IDed cleanly
+    for s, k in zip(after, keep):
+        assert s["parameters"] == k["parameters"]
+
+
+def test_patch_drops_timer_label_when_duration_cleared(client):
+    orig = _full(client)["steps"]
+    cleared = [
+        {"text": s["text"], "duration_s": None,
+         "timer_label": s["timer_label"], "parameters": s["parameters"]}
+        for s in orig
+    ]
+    client.patch(
+        "/api/protocols/dna_extraction",
+        json={"name": "DNA Extraction", "description": "d", "steps": cleared},
+    )
+    after = _full(client)["steps"]
+    assert all(s["duration_s"] is None for s in after)
+    assert all(s["timer_label"] is None for s in after)  # invariant enforced by the writer
+
+
+def test_patch_invalid_does_not_corrupt_file(client):
+    before = _full(client)["steps"]
+    r = client.patch(
+        "/api/protocols/dna_extraction",
+        json={"name": "DNA Extraction", "description": "d", "steps": []},  # no steps -> invalid
+    )
+    assert r.status_code != 200 or r.json().get("ok") is False
+    after = _full(client)["steps"]  # original protocol untouched
+    assert [s["text"] for s in after] == [s["text"] for s in before]
+
+
+def test_patch_unknown_protocol_404(client):
+    r = client.patch(
+        "/api/protocols/nope",
+        json={"name": "X", "description": "", "steps": [
+            {"text": "x", "duration_s": None, "timer_label": None, "parameters": {}}]},
+    )
+    assert r.status_code == 404
+
+
+def test_patch_active_protocol_refreshes_guide(client):
+    client.post("/api/protocols/dna_extraction/load")
+    client.post("/api/step/next")
+    client.post("/api/step/next")  # cursor at index 2
+    orig = _full(client)["steps"]
+    one_step = _as_payload_steps(orig[:1])  # shrink to a single step
+    r = client.patch(
+        "/api/protocols/dna_extraction",
+        json={"name": "DNA Extraction", "description": "d", "steps": one_step},
+    )
+    assert r.status_code == 200
+    sc = next(e["payload"] for e in r.json()["events"] if e["payload"].get("kind") == "step_change")
+    assert sc["current_index"] == 0  # clamped to the new last index
+    assert len(sc["all_steps"]) == 1
+    step = client.get("/api/state").json()["step"]
+    assert step["current_index"] == 0
+
+
+def test_patch_rederives_duration_and_reagents(client):
+    steps = [{"text": "Add 100 uL elution buffer", "duration_s": None,
+              "timer_label": None, "parameters": {"reagent": "elution buffer"}}]
+    client.patch(
+        "/api/protocols/dna_extraction",
+        json={"name": "DNA Extraction", "description": "d", "steps": steps},
+    )
+    p = {x["id"]: x for x in client.get("/api/protocols").json()["protocols"]}["dna_extraction"]
+    assert p["duration_label"] == "-"  # no timed steps -> derived duration is none
+    assert p["reagents"] == ["elution buffer"]

@@ -35,10 +35,19 @@
 #voice-dock { pointer-events: none; }
 #voice-dock > div:not(#live-transcript) { pointer-events: auto; }
 
-/* Live transcript lines in the voice dock. */
+/* Live transcript lines in the voice dock. Color carries the speaker: finalized
+   user speech is white, in-progress (interim) user speech is gray + italic, and AI
+   replies (clarify prompts + answers) are blue. These explicit colors outrank the
+   container's inherited Tailwind text-on-surface, including the Guide's
+   font-data-value panel. */
 .transcript-line { padding: 2px 0; }
-.transcript-interim { opacity: 0.6; font-style: italic; }
-.transcript-final { opacity: 1; }
+.transcript-final { color: #ffffff; }              /* finalized user speech */
+.transcript-interim { color: #8A96B0; font-style: italic; } /* user, not yet final */
+/* AI replies. The ">" marker is CSS-generated (not part of textContent), so it
+   survives the interim line's repeated updates and stays out of copy/paste; it gives
+   colorblind users a non-color cue that this line is the AI. */
+.transcript-ai { color: #AFDCEB; }
+.transcript-ai::before { content: "> "; }
 
 /* Single voice mic icon: one glyph, color carries the state. The id+class
    selector outranks the Tailwind text-* utilities the icon would otherwise pick

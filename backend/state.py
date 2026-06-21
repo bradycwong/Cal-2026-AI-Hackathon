@@ -79,6 +79,26 @@ def _derive_est_duration_min(steps: list[Step]) -> Optional[int]:
     return max(1, round(total / 60)) if total else None
 
 
+def _build_step_doc(
+    idx: int,
+    text: str,
+    duration_s: Optional[int],
+    timer_label: Optional[str],
+    parameters: dict[str, Any],
+) -> dict[str, Any]:
+    """One step's YAML dict for an edit. Enforces the invariant the parser does
+    NOT: a ``timer_label`` is kept only when the step is actually timed."""
+    doc: dict[str, Any] = {
+        "id": idx,
+        "text": text,
+        "duration_s": duration_s or None,
+        "parameters": parameters or {},
+    }
+    if duration_s and timer_label:
+        doc["timer_label"] = timer_label
+    return doc
+
+
 @dataclass
 class Timer:
     timer_id: str
@@ -331,6 +351,32 @@ class SessionState:
                 break
         return recent
 
+    def protocol_detail(self, protocol_id: str) -> Optional[dict[str, Any]]:
+        """Full editable view of one protocol (step text + params + timer labels)
+        for the editor, or None if unknown. Unlike ``protocol_catalog`` this
+        carries the steps, not just a count."""
+        proto = self.protocols.get(protocol_id)
+        if proto is None:
+            return None
+        return {
+            "id": proto.id,
+            "name": proto.name,
+            "description": proto.description,
+            "category": proto.category,
+            "status": proto.status,
+            "aliases": proto.aliases,
+            "steps": [
+                {
+                    "id": s.id,
+                    "text": s.text,
+                    "duration_s": s.duration_s,
+                    "timer_label": s.timer_label,
+                    "parameters": s.parameters or {},
+                }
+                for s in proto.steps
+            ],
+        }
+
     def inventory_view(self) -> list[dict[str, Any]]:
         """Read-only view of inventory for ``GET /api/inventory``."""
         return self._inventory.view()
@@ -405,6 +451,53 @@ class SessionState:
         proto = load_protocol_file(path)
         self.protocols[proto.id] = proto
         return proto
+
+    def update_protocol(
+        self,
+        protocol_id: str,
+        name: str,
+        description: str,
+        steps: list[dict[str, Any]],
+    ) -> Protocol:
+        """Edit an existing protocol's name/description/steps in place.
+
+        The ``id`` (and its ``<id>.yaml`` filename), ``category``, ``status`` and
+        ``aliases`` are FROZEN — only the editable fields change, so active/recent
+        references and the backing file path stay valid. ``reagents`` and
+        ``est_duration_min`` are omitted so they re-derive from the edited steps.
+        Validates the assembled document in memory BEFORE writing, so a malformed
+        edit raises ``ProtocolParseError`` without ever touching the file.
+        """
+        from .protocol_import import _write_yaml  # lazy: avoid an import cycle
+
+        existing = self.protocols[protocol_id]  # caller guards existence (404)
+        steps_doc = [
+            _build_step_doc(
+                i,
+                (s.get("text") or "").strip(),
+                s.get("duration_s"),
+                s.get("timer_label"),
+                s.get("parameters") or {},
+            )
+            for i, s in enumerate(steps, start=1)
+        ]
+        document = {
+            "protocol": {
+                "id": existing.id,
+                "name": name,
+                "version": "1.0",
+                "description": description or "",
+                "category": existing.category,
+                "status": existing.status,
+                "aliases": existing.aliases,
+                "steps": steps_doc,
+            }
+        }
+        # Validate-by-parse before any write so a bad edit can't corrupt the file.
+        parse_protocol_text(yaml.safe_dump(document, sort_keys=False, allow_unicode=False))
+        path = self.data_dir / "protocols" / f"{existing.id}.yaml"
+        _write_yaml(path, document)
+        return self.register_protocol(path)
 
     def remove_protocol(self, protocol_id: str) -> bool:
         """Drop a protocol from memory and delete its YAML so it does not reload.
@@ -624,6 +717,13 @@ class SessionState:
         ids = [t.timer_id for t in self.timers]
         self.timers.clear()
         return ids
+
+    def remove_expired_timers(self) -> list[str]:
+        """Drop only the finished (expired) timers and return the ids removed.
+        Running/paused timers stay (this is "clear done timers", NOT "stop timer")."""
+        removed = [t.timer_id for t in self.timers if t.expired]
+        self.timers = [t for t in self.timers if not t.expired]
+        return removed
 
     def clear_timers(self) -> None:
         self.timers.clear()

@@ -122,6 +122,38 @@ def test_noisy_timer_phrases_route_deterministically():
         assert route(phrase).intent == "stop_timer", phrase
 
 
+def test_clear_done_timers_phrasings_route_to_clear_done():
+    for phrase in (
+        "delete all done timers",
+        "clear done timers",
+        "clear finished timers",
+        "remove expired timers",
+        "delete completed timers",
+        "clear the finished timers",
+        "clear timers that are done",
+        "delete the timers that finished",
+        "dismiss done timers",
+        "cancel all done timers",
+    ):
+        assert route(phrase).intent == "clear_done_timers", phrase
+
+
+def test_clear_done_does_not_steal_plain_stop_or_start():
+    # No done-qualifier -> must stay stop_timer / start_timer, never clear_done_timers.
+    assert route("stop timer").intent == "stop_timer"
+    assert route("cancel all timers").intent == "stop_timer"
+    assert route("start a timer").intent == "start_timer"
+    assert route("start a 5 minute timer").intent == "start_timer"
+
+
+def test_clear_done_timers_is_control_fast_path(monkeypatch):
+    # Like the other timer controls, it resolves deterministically even when the
+    # (normally dead) LLM seam is "live" -> never reaches the sentinel.
+    monkeypatch.setattr(router, "ROUTER_MODE", "llm")
+    monkeypatch.setattr(router, "_llm_route", lambda t: Command(intent="unknown"))
+    assert route("clear done timers").intent == "clear_done_timers"
+
+
 def test_control_fast_path_beats_llm(monkeypatch):
     # Controls must resolve deterministically even with the LLM seam "live".
     # Stub the (normally dead) LLM with a sentinel so we can SEE if it ran.
@@ -208,7 +240,33 @@ def test_prev_step_routes():
 
 def test_repeat_step_routes():
     assert route("Repeat that").intent == "repeat_step"
-    assert route("What step am I on?").intent == "repeat_step"
+    assert route("Say that again").intent == "repeat_step"
+
+
+def test_show_protocol_routes_navigation_phrases():
+    # Hands-free "take me to the live run": these navigate to the guide view.
+    # "what step am I on" now lands here (was repeat_step) so it brings the
+    # operator to the running protocol instead of only re-rendering in place.
+    for phrase in (
+        "jump to run",
+        "jump to the run",
+        "go to the protocol",
+        "go to the guide",
+        "back to the guide",
+        "take me back to the run",
+        "show me the protocol",
+        "what step am I on?",
+        "what step are we on?",
+    ):
+        assert route(phrase).intent == "show_protocol", phrase
+
+
+def test_show_protocol_does_not_swallow_neighbouring_intents():
+    # Nearby control/load phrases must keep their own intents.
+    assert route("go back").intent == "prev_step"
+    assert route("next step").intent == "next_step"
+    assert route("repeat that").intent == "repeat_step"
+    assert route("load the protocol").intent == "load_protocol"  # not navigation
 
 
 def test_undo_log_routes():

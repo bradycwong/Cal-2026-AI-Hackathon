@@ -294,6 +294,53 @@ def test_remove_timer_by_id():
     assert state.remove_timer("nope") is False
 
 
+def test_clear_done_timers_removes_only_expired():
+    state = fresh_state()
+    state.add_timer(600, "incubation")                  # t1, running
+    paused = state.add_timer(300, "thaw", paused=True)  # t2, paused
+    done = state.add_timer(45, "heat shock")            # t3
+    done.expired = True
+    events = handle_command(Command(intent="clear_done_timers"), state)
+    assert len(events) == 1
+    assert events[0]["payload"]["kind"] == "timer_removed"
+    assert events[0]["payload"]["timer_id"] == "t3"
+    # Running + paused timers survive; only the expired one is gone.
+    assert [t.timer_id for t in state.timers] == ["t1", "t2"]
+    assert paused.paused is True
+
+
+def test_clear_done_timers_multiple_expired():
+    state = fresh_state()
+    a = state.add_timer(45, "a")
+    a.expired = True                  # t1, done
+    state.add_timer(600, "b")         # t2, running
+    c = state.add_timer(30, "c")
+    c.expired = True                  # t3, done
+    events = handle_command(Command(intent="clear_done_timers"), state)
+    assert {e["payload"]["timer_id"] for e in events} == {"t1", "t3"}
+    assert all(e["payload"]["kind"] == "timer_removed" for e in events)
+    assert [t.timer_id for t in state.timers] == ["t2"]
+
+
+def test_clear_done_timers_with_no_expired_clarifies():
+    state = fresh_state()
+    state.add_timer(600, "incubation")  # running, not expired
+    events = handle_command(Command(intent="clear_done_timers"), state)
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert "no finished timers" in events[0]["payload"]["message"].lower()
+    assert [t.timer_id for t in state.timers] == ["t1"]  # untouched
+
+
+def test_remove_expired_timers_helper():
+    state = fresh_state()
+    a = state.add_timer(45, "a")
+    a.expired = True              # t1, done
+    state.add_timer(600, "b")     # t2, running
+    assert state.remove_expired_timers() == ["t1"]
+    assert [t.timer_id for t in state.timers] == ["t2"]
+    assert state.remove_expired_timers() == []  # idempotent: nothing left to clear
+
+
 def test_all_protocols_load_and_advance():
     # Generality: every shipped protocol loads and exposes step 1.
     state = fresh_state()
@@ -389,6 +436,33 @@ def test_repeat_step_without_protocol_clarifies():
     state = fresh_state()
 
     events = handle_command(Command(intent="repeat_step"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+
+
+def test_show_protocol_emits_navigate_to_guide():
+    # "jump to run" / "what step am I on" navigates the operator to the guide view
+    # (and the #run hash centers the current step on arrival). No state mutation.
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    idx_before = state.current_step_index
+
+    events = handle_command(Command(intent="show_protocol"), state)
+
+    assert len(events) == 1
+    p = events[0]["payload"]
+    assert p["kind"] == "navigate"
+    assert p["page"] == "guide.html"
+    assert p["hash"] == "#run"
+    assert state.current_step_index == idx_before  # navigation never advances
+
+
+def test_show_protocol_without_protocol_clarifies():
+    # Nothing loaded -> tell the operator to load one, don't drop them on an
+    # empty guide.
+    state = fresh_state()
+
+    events = handle_command(Command(intent="show_protocol"), state)
 
     assert events[0]["payload"]["kind"] == "clarify"
 

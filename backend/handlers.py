@@ -23,6 +23,7 @@ from .schema import (
     log_entry_event,
     log_removed_event,
     log_update_event,
+    navigate_event,
     step_change_event,
     timer_removed_event,
     timer_update_event,
@@ -70,6 +71,23 @@ def _step_change_events(
             )
         )
     return events
+
+
+def resync_active_protocol(state: SessionState, proto: Any) -> list[dict[str, Any]]:
+    """Re-point the running stage at an edited protocol and re-emit step_change so
+    the Guide stays consistent. ``register_protocol`` rebinds the library object
+    but leaves ``active_protocol`` pointing at the pre-edit copy — repoint it,
+    clamp the cursor into the (possibly shorter) step list, prune skipped indices
+    that no longer exist, reopen a finished run that gained steps, and clear timers
+    whose step durations may have changed."""
+    state.active_protocol = proto
+    last = len(proto.steps) - 1
+    state.current_step_index = max(0, min(state.current_step_index, last))
+    state.skipped_steps = {i for i in state.skipped_steps if i <= last}
+    if state.protocol_complete and state.current_step_index < last:
+        state.protocol_complete = False
+    state.clear_timers()
+    return _step_change_events(state, auto_timer=False, finished=state.protocol_complete)
 
 
 def _available_protocols(state: SessionState) -> str:
@@ -287,6 +305,15 @@ def _handle_stop_timer(cmd: Command, state: SessionState) -> list[dict[str, Any]
     return [timer_removed_event(tid) for tid in ids]
 
 
+def _handle_clear_done_timers(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    """Dismiss only the FINISHED (expired) timers, leaving running/paused ones.
+    Distinct from stop_timer, which cancels every active timer."""
+    ids = state.remove_expired_timers()
+    if not ids:
+        return [clarify_event("No finished timers to clear.")]
+    return [timer_removed_event(tid) for tid in ids]
+
+
 def _handle_find_inventory(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
     if not cmd.reagent_name:
         msg = cmd.clarify_prompt or "Which reagent are you looking for?"
@@ -331,6 +358,18 @@ def _handle_ask(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
     return [ask_result_event(cmd.question, answer)]
 
 
+def _handle_show_protocol(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    """Hands-free "jump to run": navigate to the running-protocol (guide) view.
+
+    Read-only — never advances the cursor. Clarifies when nothing is loaded so we
+    don't drop the operator on an empty guide. The ``#run`` hash tells the guide
+    to center the current step on arrival.
+    """
+    if not state.active_protocol:
+        return [clarify_event("No protocol is loaded. Say 'load DNA extraction protocol' first.")]
+    return [navigate_event("guide.html", "#run")]
+
+
 def _handle_unknown(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
     msg = cmd.clarify_prompt or "Sorry, I didn't understand that."
     return [clarify_event(msg)]
@@ -347,9 +386,11 @@ _DISPATCH = {
     "correct_log": _handle_correct_log,
     "start_timer": _handle_start_timer,
     "stop_timer": _handle_stop_timer,
+    "clear_done_timers": _handle_clear_done_timers,
     "find_inventory": _handle_find_inventory,
     "add_inventory": _handle_add_inventory,
     "ask": _handle_ask,
+    "show_protocol": _handle_show_protocol,
     "unknown": _handle_unknown,
 }
 
