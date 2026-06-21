@@ -465,3 +465,19 @@ class SessionState:
 
     def clear_timers(self) -> None:
         self.timers.clear()
+
+    # --- demo reset --------------------------------------------------------
+    def reset(self) -> None:
+        """Clear stage state (protocol cursor + timers) for a fresh demo run.
+        Leaves the log, protocols, and inventory untouched."""
+        self.active_protocol = None
+        self.current_step_index = -1
+        self.clear_timers()
+        self._timer_seq = 0
+
+    def clear_log(self) -> None:
+        """Wipe the lab notes in memory and on disk (LAB_DEMO_MODE only)."""
+        self.log = []
+        self._log_seq = 0
+        if self.notes is not None:
+            self.notes.clear_all()

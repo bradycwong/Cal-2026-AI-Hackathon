@@ -128,5 +128,12 @@ the expected one and attaches an optional `flag` (`status: ok|mismatch`) to the
 `volume_ul` mismatches; it never edits the researcher's log text, and the flag is
 persisted as part of the lab record. The notebook renders a `OK`/`Warning` line.
 
+## Demo reset
+
+The FrontendTest UI includes a Reset Demo control. It clears protocol progress,
+timers, transcript, clarification, and transient page state. Persisted notes are
+kept by default. Set `LAB_DEMO_MODE=true` before starting the server to wipe notes
+as part of reset. Reset never deletes protocol YAML files or inventory CSV data.
+
 Deferred swappable organs (NOT yet): VAD-gated streaming (cost), TTS,
 upload/library pages.

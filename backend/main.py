@@ -31,6 +31,7 @@ from .schema import (
     error_event,
     log_entry_event,
     protocol_imported_event,
+    reset_event,
     timer_removed_event,
     timer_update_event,
     transcript_update_event,
@@ -211,6 +212,24 @@ async def import_protocol_endpoint(body: ProtocolImportIn) -> dict[str, Any]:
             [error_event("protocol_import_failed", str(exc), "protocol_import")]
         )
         return {"ok": False, "error": str(exc)}
+
+
+def _demo_mode_enabled() -> bool:
+    return os.getenv("LAB_DEMO_MODE", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+@app.post("/api/demo/reset")
+async def demo_reset() -> dict[str, Any]:
+    """Pre-demo reset: clears stage state for every connected client. Notes are
+    wiped only under LAB_DEMO_MODE; protocol/inventory data is never deleted."""
+    notes_cleared = _demo_mode_enabled()
+    state.reset()
+    if notes_cleared:
+        state.clear_log()
+    vs = voice.set_muted(False)
+    event = reset_event(notes_cleared)
+    await manager.broadcast([event, voice_state_event(vs.muted, vs.label)])
+    return {"ok": True, "notes_cleared": notes_cleared, "events": [event]}
 
 
 @app.get("/api/inventory")

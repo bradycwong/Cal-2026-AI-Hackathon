@@ -371,11 +371,47 @@
     else renderTranscript(message);
   }
 
-  function clearTransientState() {
+  function clearTransientState(opts) {
+    const notesCleared = opts && opts.notesCleared;
     renderTimersClear();
     renderTranscript("");
     const cl = $("clarify");
     if (cl) cl.textContent = "";
+    // Reset the step tracker / active-protocol label back to the empty state.
+    const cur = $("step-current");
+    if (cur) cur.textContent = "No protocol loaded.";
+    const prev = $("step-prev");
+    if (prev) prev.textContent = "";
+    const nxt = $("step-next");
+    if (nxt) nxt.textContent = "";
+    const tracker = $("step-tracker");
+    if (tracker) tracker.innerHTML = "";
+    const lookup = $("inventory-result");
+    if (lookup) lookup.textContent = "";
+    if (notesCleared) {
+      logCache = [];
+      renderLog(logCache);
+    }
+  }
+
+  async function handleDemoReset() {
+    const btn = $("demo-reset") || document.querySelector('[data-action="demo-reset"]');
+    if (btn) btn.disabled = true;
+    try {
+      const response = await fetch(API + "/api/demo/reset", { method: "POST" });
+      const data = await response.json();
+      if (data.ok) {
+        clearTransientState({ notesCleared: data.notes_cleared });
+        await hydrate();
+      }
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  function wireDemoReset() {
+    const btn = $("demo-reset") || document.querySelector('[data-action="demo-reset"]');
+    if (btn) btn.addEventListener("click", handleDemoReset);
   }
 
   // --- in-memory log mirror so WS deltas can re-render the feed --------------
@@ -423,6 +459,9 @@
         return onTimerRemoved(p.timer_id);
       case "protocol_imported":
         return refreshProtocols();
+      case "reset":
+        clearTransientState({ notesCleared: p.notes_cleared });
+        return hydrate();
       case "voice_state":
         return; // mute/unmute badge is non-essential for the snapshot pages
       case "clarify":
@@ -482,6 +521,7 @@
     } catch (_) {}
     renderTimers();
     wireImportModal();
+    wireDemoReset();
   }
 
   window.LabClient = {
@@ -500,6 +540,8 @@
     renderStep,
     renderTimers,
     clearTransientState,
+    handleDemoReset,
+    hydrate,
   };
 
   if (document.readyState === "loading") {

@@ -76,6 +76,21 @@ def test_notebook_css_has_flag_classes():
     assert ".flagged" in css
 
 
+def test_every_page_has_demo_reset_control():
+    for page in ("dashboard", "protocols", "guide", "notebook", "inventory"):
+        html = (FT / f"{page}.html").read_text(encoding="utf-8")
+        assert 'id="demo-reset"' in html or 'data-action="demo-reset"' in html, page
+
+
+def test_app_wires_demo_reset():
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert "/api/demo/reset" in js
+    assert "handleDemoReset" in js
+    assert 'case "reset"' in js
+    assert "clearTransientState" in js
+    assert "notes_cleared" in js
+
+
 def test_pages_expose_live_hooks():
     cards = (FT / "protocols.html").read_text(encoding="utf-8")
     assert 'id="protocol-cards"' in cards

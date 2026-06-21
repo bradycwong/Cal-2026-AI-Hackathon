@@ -96,6 +96,10 @@ class NoteStore:
         self._conn.execute("DELETE FROM notes WHERE id = ?", (id,))
         self._conn.commit()
 
+    def clear_all(self) -> None:
+        self._conn.execute("DELETE FROM notes")
+        self._conn.commit()
+
     def update_text(self, id: int, text: str, flag: Optional[dict[str, Any]] = None) -> None:
         self._conn.execute(
             "UPDATE notes SET text = ?, flag = ? WHERE id = ?",
