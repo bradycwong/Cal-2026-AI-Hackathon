@@ -26,10 +26,11 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from . import deepgram_tts
 from .deepgram_stt import run_deepgram_session, set_custom_keywords
 from .router import ROUTER_MODE, route
 from .protocol_import import import_protocol
@@ -460,6 +461,20 @@ async def scale_protocol(body: ScaleIn) -> dict[str, Any]:
     }
 
 
+class TTSIn(BaseModel):
+    text: str
+
+
+@app.post("/api/tts")
+async def api_tts(body: TTSIn) -> Response:
+    """AI text -> Deepgram Aura mp3. 204 when unavailable so the browser falls
+    back to its built-in speech."""
+    audio = await deepgram_tts.synthesize(body.text)
+    if not audio:
+        return Response(status_code=204)
+    return Response(content=audio, media_type="audio/mpeg")
+
+
 class ScaleWithPriorityIn(BaseModel):
     sample_count: int
     overage_percent: float = 10.0
@@ -662,6 +677,7 @@ async def get_state() -> dict[str, Any]:
             for t in state.timers
             if not t.expired
         ],
+        "tts_available": deepgram_tts.tts_available(),
     }
 
 
