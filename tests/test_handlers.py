@@ -577,3 +577,28 @@ def test_normal_load_and_advance_emit_finished_false():
     events = handle_command(Command(intent="next_step"), state)
     assert _kind(events, "step_change")["finished"] is False
     assert state.protocol_complete is False
+
+
+def test_inventory_match_helper_exact_and_fuzzy():
+    from backend.inventory import find_inventory_match
+
+    state = fresh_state()
+
+    exact = find_inventory_match("Proteinase K", state.inventory)
+    assert exact is not None
+    assert exact.name == "Proteinase K"
+
+    fuzzy = find_inventory_match("proteinase k", state.inventory)
+    assert fuzzy is not None
+    assert fuzzy.name == "Proteinase K"
+
+    substring = find_inventory_match("master mix", state.inventory)
+    assert substring is not None
+    assert substring.name == "2X master mix"
+
+
+def test_inventory_match_helper_miss():
+    from backend.inventory import find_inventory_match
+
+    state = fresh_state()
+    assert find_inventory_match("unobtainium", state.inventory) is None

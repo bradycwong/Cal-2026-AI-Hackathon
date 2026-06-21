@@ -69,6 +69,18 @@
   async function fetchState() {
     return getJSON("/api/state");
   }
+  async function fetchScale(body) {
+    const res = await fetch("/api/scale", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || "Could not scale reagents");
+    }
+    return data;
+  }
 
   async function loadProtocol(id) {
     await fetch(`${API}/api/protocols/${encodeURIComponent(id)}/load`, {
@@ -573,6 +585,78 @@
       })
       .join("");
     host.innerHTML = header + (rows || `<div class="p-12 text-center opacity-40">Inventory is empty.</div>`);
+  }
+
+  function prepVerdictClass(verdict) {
+    if (verdict === "in_stock") return "text-secondary";
+    if (verdict === "insufficient" || verdict === "critical" || verdict === "missing") return "text-error";
+    return "text-tertiary";
+  }
+
+  function prepVerdictLabel(row) {
+    if (row.verdict === "in_stock") return "In stock";
+    if (row.verdict === "unknown_unit") return "Check units";
+    if (row.verdict === "insufficient") {
+      return `Short ${row.shortage_ul} uL`;
+    }
+    if (row.verdict === "missing") return "Missing";
+    return row.verdict;
+  }
+
+  function renderPrepTable(data) {
+    const mount = $("prep-table");
+    if (!mount) return;
+    const rows = data.reagents || [];
+    if (!rows.length) {
+      mount.innerHTML = `<div class="text-on-surface-variant">No scalable reagent volumes found in this protocol.</div>`;
+      return;
+    }
+    mount.innerHTML = `
+      <div class="overflow-x-auto">
+        <table class="prep-table w-full text-left border-collapse">
+          <thead>
+            <tr class="text-xs uppercase text-on-surface-variant border-b border-outline-variant">
+              <th class="py-2 pr-3">Reagent</th>
+              <th class="py-2 pr-3">Per sample</th>
+              <th class="py-2 pr-3">Run</th>
+              <th class="py-2 pr-3">Total</th>
+              <th class="py-2 pr-3">Availability</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr class="border-b border-outline-variant/60">
+                <td class="py-3 pr-3 text-on-surface font-medium">${escapeHtml(row.reagent)}</td>
+                <td class="py-3 pr-3 font-data-label">${escapeHtml(row.per_sample_ul)} uL</td>
+                <td class="py-3 pr-3 font-data-label">${escapeHtml(row.n_samples)} + ${escapeHtml(row.overage_pct)}%</td>
+                <td class="py-3 pr-3 font-data-label text-on-surface">${escapeHtml(row.total_display)}</td>
+                <td class="py-3 pr-3">
+                  <div class="${prepVerdictClass(row.verdict)} font-bold">${escapeHtml(prepVerdictLabel(row))}</div>
+                  <div class="text-xs text-on-surface-variant">${escapeHtml(row.match_name || "No inventory match")}</div>
+                </td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  async function handlePrepCompute() {
+    const table = $("prep-table");
+    if (!table) return;
+    const samples = Number($("prep-samples")?.value || 0);
+    const overage = Number($("prep-overage")?.value || 0);
+    table.textContent = "Calculating reagent prep...";
+    try {
+      const data = await fetchScale({
+        sample_count: samples,
+        overage_percent: overage
+      });
+      renderPrepTable(data);
+    } catch (err) {
+      table.innerHTML = `<div class="text-error">${escapeHtml(err.message || String(err))}</div>`;
+    }
   }
 
   // Plan 3: a log entry may carry an optional reproducibility `flag` (volume_ul).
@@ -1084,7 +1168,9 @@
     maybeNavigate(p);
     switch (p.kind) {
       case "step_change":
-        return renderStep(p);
+        renderStep(p);
+        if ($("prep-table")) handlePrepCompute();
+        return;
       case "log_entry":
         return applyLogEntry(p);
       case "log_removed":
@@ -1242,9 +1328,14 @@
       if ($("step-tracker") || $("step-current")) {
         const st = await fetchState();
         renderStep(st.step);
+        if ($("prep-table") && st.step) handlePrepCompute();
       }
     });
     renderTimers();
+    const prepButton = $("prep-compute");
+    if (prepButton) {
+      prepButton.addEventListener("click", handlePrepCompute);
+    }
     wireImportModal();
     wireAddItemModal();
     wireLogModal();
@@ -1264,6 +1355,8 @@
     addInventoryItem,
     fetchLog,
     fetchState,
+    fetchScale,
+    renderPrepTable,
     loadProtocol,
     importProtocol,
     handleProtocolImport,

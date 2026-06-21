@@ -13,3 +13,8 @@
 .animate-pulse-subtle {
     animation: pulse-subtle 3s infinite ease-in-out;
 }
+
+.prep-table th,
+.prep-table td {
+  vertical-align: top;
+}

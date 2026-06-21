@@ -11,6 +11,7 @@ The id is in-memory only — the CSV schema is unchanged.
 from __future__ import annotations
 
 import csv
+import difflib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
@@ -38,6 +39,35 @@ class InventoryItem:
     amount: str = ""
     unit: str = ""
     status: str = "ok"
+
+
+def find_inventory_match(
+    reagent_name: str, items: list[InventoryItem], *, cutoff: float = 0.6
+) -> Optional[InventoryItem]:
+    """Return the best inventory item for a reagent name.
+
+    Mirrors the existing command handler behavior: fuzzy match first, then
+    substring fallback. Returns None instead of guessing when there is no match.
+    ``cutoff`` tunes the fuzzy threshold; callers that need fewer false positives
+    (e.g. the reagent prep table) can pass a stricter value.
+    """
+    query = (reagent_name or "").strip()
+    if not query:
+        return None
+
+    names = [item.name for item in items]
+    matches = difflib.get_close_matches(
+        query.lower(), [name.lower() for name in names], n=1, cutoff=cutoff
+    )
+    if matches:
+        matched_name = matches[0]
+        return next(item for item in items if item.name.lower() == matched_name)
+
+    for item in items:
+        if query.lower() in item.name.lower():
+            return item
+
+    return None
 
 
 def _quantity_from_parts(quantity_approx: str, amount: str, unit: str) -> str:
