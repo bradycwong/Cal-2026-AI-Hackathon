@@ -35,6 +35,38 @@ def test_load_emits_step_change():
     assert p["loaded"] is True  # drives front-end navigation to the active protocol
 
 
+def test_cancel_protocol_unloads_run_keeps_notes_and_recent():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    proto_id = state.active_protocol.id
+    state.append_log("added 200 uL lysis buffer to sample A", None, "DNA Extraction", None)
+    note_count = len(state.log)
+    assert note_count >= 1
+
+    events = handle_command(Command(intent="cancel_protocol"), state)
+
+    # Cancel reuses the run-reset event, but keeps the notebook.
+    assert len(events) == 1
+    ev = events[0]
+    assert ev["type"] == "command_result"
+    p = ev["payload"]
+    assert p["kind"] == "reset"
+    assert p["notes_cleared"] is False
+    # The run is unloaded.
+    assert state.active_protocol is None
+    assert state.current_step_index < 0
+    # Notes and recent-protocol history survive (unlike a full demo reset).
+    assert len(state.log) == note_count
+    assert proto_id in state.recent_protocols
+
+
+def test_cancel_protocol_with_nothing_loaded_clarifies():
+    state = fresh_state()
+    events = handle_command(Command(intent="cancel_protocol"), state)
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert state.active_protocol is None
+
+
 def _kind(events, kind):
     """First event payload of the given command_result kind (order-agnostic).
 
@@ -537,6 +569,30 @@ def test_show_protocol_without_protocol_clarifies():
     events = handle_command(Command(intent="show_protocol"), state)
 
     assert events[0]["payload"]["kind"] == "clarify"
+
+
+def test_navigate_page_emits_navigate_to_page():
+    # Hands-free "go to <page>" lands on a standalone page. No #run hash (those
+    # pages hydrate from REST), no protocol required, no state mutation.
+    state = fresh_state()
+    for key, file in [
+        ("dashboard", "dashboard.html"),
+        ("protocols", "protocols.html"),
+        ("notebook", "notebook.html"),
+        ("inventory", "inventory.html"),
+        ("commands", "commands.html"),
+    ]:
+        events = handle_command(Command(intent="navigate_page", page=key), state)
+        assert len(events) == 1, key
+        p = events[0]["payload"]
+        assert p["kind"] == "navigate", key
+        assert p["page"] == file, key
+
+
+def test_navigate_page_unknown_or_missing_clarifies():
+    state = fresh_state()
+    assert handle_command(Command(intent="navigate_page", page="atlantis"), state)[0]["payload"]["kind"] == "clarify"
+    assert handle_command(Command(intent="navigate_page"), state)[0]["payload"]["kind"] == "clarify"
 
 
 def test_prev_onto_timed_step_does_not_start_duplicate_timer():

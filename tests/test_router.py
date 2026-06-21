@@ -45,6 +45,30 @@ def test_load_protocol_verb_dropped_by_stt():
     assert cmd.protocol_name and "dna" in cmd.protocol_name.lower()
 
 
+def test_cancel_protocol_variants_route_to_cancel():
+    for phrase in (
+        "Cancel protocol",
+        "cancel the protocol",
+        "stop the protocol",
+        "stop protocol",
+        "abort the protocol",
+        "stop the run",
+    ):
+        assert route(phrase).intent == "cancel_protocol", phrase
+
+
+def test_cancel_protocol_does_not_collide_with_load_or_timers():
+    # "stop/cancel the protocol" must NOT be misread as a load (the bare
+    # "<name> protocol" fallback) nor as a timer command.
+    assert route("stop the protocol").intent == "cancel_protocol"
+    assert route("cancel the protocol").intent == "cancel_protocol"
+    # timer commands still win when the object is a timer
+    assert route("stop the timer").intent == "stop_timer"
+    assert route("stop all timers").intent == "stop_timer"
+    # a genuine protocol load is unaffected
+    assert route("load DNA extraction protocol").intent == "load_protocol"
+
+
 def test_start_timer():
     cmd = route("Start a 10-minute incubation timer.")
     assert cmd.intent == "start_timer"
@@ -268,6 +292,45 @@ def test_show_protocol_does_not_swallow_neighbouring_intents():
     assert route("next step").intent == "next_step"
     assert route("repeat that").intent == "repeat_step"
     assert route("load the protocol").intent == "load_protocol"  # not navigation
+
+
+def test_navigate_page_routes():
+    # Hands-free "go to <page>" for the standalone pages. Each phrase routes to
+    # navigate_page with the matching page key (the guide itself stays show_protocol).
+    cases = {
+        "dashboard": ["go to the dashboard", "open dashboard", "show me the dashboard",
+                      "go home", "home"],
+        "protocols": ["go to protocols", "open the protocol library", "show protocols",
+                      "protocol library"],
+        "notebook": ["go to the notebook", "open the notebook", "show me the notebook",
+                     "open my notes"],
+        "inventory": ["go to inventory", "open the inventory", "show inventory"],
+        "commands": ["go to the commands page", "open commands", "show commands",
+                     "help", "what can I say?"],
+    }
+    for page, phrases in cases.items():
+        for phrase in phrases:
+            cmd = route(phrase)
+            assert cmd.intent == "navigate_page", f"{phrase!r} -> {cmd.intent}"
+            assert cmd.page == page, f"{phrase!r} -> page={cmd.page!r}"
+
+
+def test_navigate_page_does_not_swallow_guide_inventory_or_load():
+    # The new nav intent must not cannibalise neighbouring intents.
+    assert route("go to the guide").intent == "show_protocol"
+    assert route("back to the run").intent == "show_protocol"
+    assert route("show me the current step").intent == "show_protocol"
+    assert route("what step am I on?").intent == "show_protocol"
+    assert route("where is the EDTA?").intent == "find_inventory"
+    assert route("find Tris").intent == "find_inventory"
+    assert route("load DNA extraction protocol").intent == "load_protocol"
+
+
+def test_unknown_fallback_points_to_commands_page():
+    cmd = route("flibbertigibbet zorp")
+    assert cmd.intent == "unknown"
+    assert "didn't understand" in cmd.clarify_prompt  # keep test_aliases substring contract
+    assert "Commands page" in cmd.clarify_prompt
 
 
 def test_undo_log_routes():

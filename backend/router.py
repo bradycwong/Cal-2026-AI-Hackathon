@@ -58,6 +58,11 @@ SYSTEM_PROMPT = (
     "Map 'jump to guide', 'go to the protocol', 'back to the guide', 'show me the "
     "protocol', or 'what step am I on' to show_protocol (navigate to the "
     "running-protocol view). "
+    "Map 'go to <page>', 'open the <page>', 'show <page>' (page in dashboard, "
+    "protocols, notebook, inventory, commands), plus 'help' / 'what can I say' to "
+    "navigate_page with the field 'page' set to that page key (e.g. 'go to the "
+    "notebook' -> navigate_page, page='notebook'). 'help'/'what can I say' -> "
+    "page='commands'. The guide itself stays show_protocol, not navigate_page. "
     "Map 'scratch that', 'delete that', or 'undo the last note' to undo_log. "
     "Map 'change the last note to X' or 'correct that to X' to correct_log "
     "with log_text set to X. "
@@ -487,6 +492,46 @@ def deterministic_route(transcript: str) -> Command:
             return Command(intent="find_inventory", clarify_prompt="Which reagent are you looking for?")
         return Command(intent="find_inventory", reagent_name=reagent)
 
+    # cancel_protocol — "cancel/stop the protocol", "stop the run", "abort". MUST run
+    # before the load_protocol fallback ("<name> protocol"), which would otherwise
+    # read "cancel the protocol" as loading a protocol named "cancel". The timer
+    # matchers above already claimed "stop/cancel ... timer" (they require a timer
+    # noun), so only the protocol/run object reaches here.
+    if re.search(
+        r"\b(?:cancel|stop|abort|end|quit|exit|unload|halt)\s+"
+        r"(?:the\s+|this\s+|current\s+|my\s+)*"
+        r"(?:protocol|run)\b",
+        t,
+    ):
+        return Command(intent="cancel_protocol")
+
+    # navigate_page — hands-free "go to <page>" for the standalone pages. Runs
+    # before show_protocol so plural "protocols"/"protocol library" land on the
+    # library page (singular protocol/guide/run stays the guide jump below) and
+    # before the `ask` catch so "what can I say"/"help" reach the Commands page.
+    # Nav verbs deliberately exclude where/find/location and cancel/stop, so
+    # find_inventory and cancel_protocol keep their own phrasings.
+    nav_verb = (
+        r"(?:(?:go|jump|navigate|switch|head|take\s+me|bring\s+me)"
+        r"(?:\s+(?:back|over))?\s+to|open|show(?:\s+me)?|view)"
+    )
+    for page_key, noun in (
+        ("dashboard", r"dashboard|home(?:\s*page|\s*screen)?"),
+        ("protocols", r"protocols|protocol\s+library|library"),
+        ("notebook", r"(?:lab\s+)?notebook|my\s+notes|notes"),
+        ("inventory", r"inventory|stock(?:\s*room)?|reagent\s+list"),
+        ("commands", r"(?:voice\s+)?commands?(?:\s+(?:page|list|reference))?|command\s+list"),
+    ):
+        if re.search(rf"\b{nav_verb}\s+(?:the\s+|my\s+)?(?:{noun})\b", t):
+            return Command(intent="navigate_page", page=page_key)
+    # Verb-less aliases people actually say.
+    if re.search(r"\bgo\s+home\b|\bhome\s+page\b", t) or t.strip() in {"home", "dashboard"}:
+        return Command(intent="navigate_page", page="dashboard")
+    if re.search(r"\bprotocol\s+library\b", t):
+        return Command(intent="navigate_page", page="protocols")
+    if re.search(r"\b(?:help|what can i (?:say|do))\b", t) or t.strip() in {"commands", "command list"}:
+        return Command(intent="navigate_page", page="commands")
+
     # show_protocol — hands-free "take me to the live run" (the guide view). Runs
     # before prev_step/repeat_step so "back to the guide" and "what step am i on"
     # navigate instead of being read as a step nav. Network-free control intent.
@@ -561,7 +606,7 @@ def deterministic_route(transcript: str) -> Command:
 
     return Command(
         intent="unknown",
-        clarify_prompt="Sorry, I didn't understand that. Try 'load DNA extraction protocol'.",
+        clarify_prompt="Sorry, I didn't understand that. Check the Commands page to see what you can say.",
     )
 
 
@@ -686,7 +731,7 @@ def answer_question(question: str, protocol) -> str:
 # timers + step navigation never depend on (or wait on) the model.
 _CONTROL_INTENTS = frozenset(
     {"start_timer", "stop_timer", "clear_done_timers", "next_step", "prev_step",
-     "repeat_step", "skip_step", "show_protocol"}
+     "repeat_step", "skip_step", "show_protocol", "cancel_protocol", "navigate_page"}
 )
 
 

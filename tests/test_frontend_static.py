@@ -361,17 +361,11 @@ def test_notebook_manual_entry_has_related_protocol_field():
 
 def test_notebook_renderer_shows_newest_entries_first_without_mutating_log():
     js = (FT / "app.js").read_text(encoding="utf-8")
-<<<<<<< HEAD
-    # Ordering moved to sortLog (default "date-desc" = newest first), which copies
-    # the array (const arr = [...log]) and never mutates logCache.
-    assert "const displayLog = sortLog(log, logSortMode);" in js
-=======
     # Default sort is newest-first; the renderer sorts a copy (sortLog does
     # `const arr = [...log]`) so the live log is never mutated in place.
     assert 'let logSortMode = "date-desc";' in js
     assert "const displayLog = sortLog(log, logSortMode);" in js
     assert "const arr = [...log];" in js
->>>>>>> origin/main
     assert "host.innerHTML = displayLog" in js
     assert "log.reverse()" not in js
 
@@ -480,6 +474,29 @@ def test_guide_has_reagent_prep_modal_hooks():
     assert "prep-overage" not in html, "overage input should be gone from guide.html"
 
 
+def test_guide_has_cancel_button_and_confirm_modal():
+    # A "Cancel" control (left of Reagent Prep) stops the run via a confirm modal.
+    html = (FT / "guide.html").read_text(encoding="utf-8")
+    for token in ('id="cancel-protocol"', 'id="cancel-modal"', 'id="cancel-confirm"'):
+        assert token in html, f"guide.html missing {token}"
+    # Cancel sits to the LEFT of Reagent Prep in the breadcrumb markup.
+    assert html.index('id="cancel-protocol"') < html.index('id="prep-open"')
+
+
+def test_app_wires_cancel_through_ingest_spine():
+    # The Cancel button (and the "cancel protocol" voice command) route through the
+    # same /api/ingest spine as Confirm Action.
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert "wireGuideCancel" in js
+    assert "cancel protocol" in js
+    assert "ingestCommand" in js
+
+
+def test_commands_page_documents_cancel_protocol():
+    html = (FT / "commands.html").read_text(encoding="utf-8")
+    assert "Cancel protocol" in html or "cancel protocol" in html.lower()
+
+
 def test_dashboard_no_longer_has_reagent_prep_panel():
     # The static prep panel was moved off the dashboard into the Guide modal.
     html = (FT / "dashboard.html").read_text(encoding="utf-8")
@@ -525,6 +542,15 @@ def test_commands_page_documents_jump_to_guide():
     html = (FT / "commands.html").read_text(encoding="utf-8")
     assert "Jump to guide" in html, "commands.html missing Jump to guide reference"
     assert "show_protocol" in html, "commands.html missing show_protocol custom action"
+
+
+def test_commands_page_documents_page_navigation():
+    # The Commands page advertises the hands-free "go to <page>" shortcuts.
+    html = (FT / "commands.html").read_text(encoding="utf-8")
+    assert "Navigation" in html, "commands.html missing Navigation category"
+    for phrase in ("Go to the dashboard", "Open protocols", "Go to the notebook",
+                   "Show inventory", "Show commands"):
+        assert phrase in html, f"commands.html missing nav phrase {phrase!r}"
 
 
 def test_notebook_has_export_menu():

@@ -24,6 +24,7 @@ from .schema import (
     log_removed_event,
     log_update_event,
     navigate_event,
+    reset_event,
     step_change_event,
     timer_removed_event,
     timer_update_event,
@@ -379,13 +380,43 @@ def _handle_show_protocol(cmd: Command, state: SessionState) -> list[dict[str, A
     return [navigate_event("guide.html", "#run")]
 
 
+_PAGE_FILES = {
+    "dashboard": "dashboard.html",
+    "protocols": "protocols.html",
+    "notebook": "notebook.html",
+    "inventory": "inventory.html",
+    "commands": "commands.html",
+}
+
+
+def _handle_navigate_page(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    """Hands-free "go to <page>": navigate to a standalone page. No ``#run`` hash —
+    these pages hydrate from REST and need no anchor. No state precondition (unlike
+    the guide, they work without a loaded protocol)."""
+    target = _PAGE_FILES.get((cmd.page or "").lower())
+    if not target:
+        return [clarify_event("Which page? Try 'go to the notebook' or 'show inventory'.")]
+    return [navigate_event(target)]
+
+
 def _handle_unknown(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
-    msg = cmd.clarify_prompt or "Sorry, I didn't understand that."
+    msg = cmd.clarify_prompt or "Sorry, I didn't understand that. Check the Commands page to see what you can say."
     return [clarify_event(msg)]
+
+
+def _handle_cancel_protocol(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    """Stop the active run and return the guide to the empty state, keeping notes,
+    inventory, and recent-protocol history. Reuses the run-reset event with
+    ``notes_cleared=False`` so the client clears the run UI but not the notebook."""
+    if not state.active_protocol:
+        return [clarify_event("No protocol is loaded.")]
+    state.unload_protocol()
+    return [reset_event(notes_cleared=False)]
 
 
 _DISPATCH = {
     "load_protocol": _handle_load_protocol,
+    "cancel_protocol": _handle_cancel_protocol,
     "next_step": _handle_next_step,
     "skip_step": _handle_skip_step,
     "prev_step": _handle_prev_step,
@@ -400,6 +431,7 @@ _DISPATCH = {
     "add_inventory": _handle_add_inventory,
     "ask": _handle_ask,
     "show_protocol": _handle_show_protocol,
+    "navigate_page": _handle_navigate_page,
     "unknown": _handle_unknown,
 }
 

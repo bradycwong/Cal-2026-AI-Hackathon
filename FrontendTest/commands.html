@@ -81,6 +81,13 @@
 </tr>
 <tr class="cmd-row">
 <th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-error" style="font-size:18px">cancel</span>Cancel protocol</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Cancel protocol</span><span class="cmd-chip">Stop the protocol</span><span class="cmd-chip">Stop protocol</span><span class="cmd-chip">Cancel the protocol</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Stops the active run and clears the guide. Notes and inventory are kept.</td>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
 <span class="flex items-center gap-2"><span class="material-symbols-outlined text-secondary" style="font-size:18px">check_circle</span>Next step</span>
 </th>
 <td class="px-6 py-4 align-top"><span class="cmd-chip">Next</span><span class="cmd-chip">Next step</span><span class="cmd-chip">Continue</span><span class="cmd-chip">Confirm action</span><span class="cmd-chip">Done</span><span class="cmd-chip">Mark complete</span></td>
@@ -242,6 +249,51 @@
 <td class="px-6 py-4 align-top text-on-surface-variant">Resumes acting on commands.</td>
 </tr>
 </tbody>
+
+<!-- Navigation -->
+<tbody>
+<tr class="cmd-category">
+<th colspan="3" scope="colgroup" class="px-6 py-2 bg-surface-container-low border-y border-outline-variant">
+<span class="flex items-center gap-2 text-primary font-data-label text-xs uppercase tracking-widest font-bold">
+<span class="material-symbols-outlined" style="font-size:18px">near_me</span>Navigation</span>
+</th>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-on-surface-variant" style="font-size:18px">dashboard</span>Dashboard</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Go to the dashboard</span><span class="cmd-chip">Open dashboard</span><span class="cmd-chip">Home</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Opens the Dashboard.</td>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-on-surface-variant" style="font-size:18px">library_books</span>Protocols</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Open protocols</span><span class="cmd-chip">Go to protocols</span><span class="cmd-chip">Protocol library</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Opens the Protocol Library.</td>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-on-surface-variant" style="font-size:18px">list_alt</span>Notebook</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Go to the notebook</span><span class="cmd-chip">Open the notebook</span><span class="cmd-chip">Open my notes</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Opens the Notebook.</td>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-on-surface-variant" style="font-size:18px">inventory_2</span>Inventory</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Show inventory</span><span class="cmd-chip">Go to inventory</span><span class="cmd-chip">Open the inventory</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Opens the Inventory.</td>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-on-surface-variant" style="font-size:18px">record_voice_over</span>Commands</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Show commands</span><span class="cmd-chip">Open commands</span><span class="cmd-chip">Help</span><span class="cmd-chip">What can I say?</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Opens this Commands page.</td>
+</tr>
+</tbody>
 </table>
 <!-- Safety footnote -->
 <div class="px-6 py-4 border-t border-outline-variant flex items-start gap-3 text-sm text-on-surface-variant bg-surface-container-low/40">
@@ -320,11 +372,13 @@
     // against backend/router.py for both the LLM and deterministic paths).
     var ACTIONS = {
       load_protocol:  { label: "Load a protocol", arg: "Protocol name", ph: "DNA extraction",                  build: function (a) { return "load " + a + " protocol"; } },
+      cancel_protocol:{ label: "Cancel protocol", arg: null,            build: function () { return "cancel protocol"; } },
       next_step:      { label: "Next step",       arg: null,            build: function () { return "next step"; } },
       skip_step:      { label: "Skip step",       arg: null,            build: function () { return "skip step"; } },
       prev_step:      { label: "Previous step",   arg: null,            build: function () { return "previous step"; } },
       repeat_step:    { label: "Repeat step",     arg: null,            build: function () { return "repeat that"; } },
       show_protocol:  { label: "Jump to guide",   arg: null,            build: function () { return "jump to guide"; } },
+      navigate_page:  { label: "Go to a page",    arg: "Page", ph: "notebook",                                  build: function (a) { return "go to the " + a; } },
       start_timer:    { label: "Start a timer",   arg: "Duration", ph: "5 minutes", optional: true,             build: function (a) { return a ? "start a " + a + " timer" : "start the timer"; } },
       stop_timer:     { label: "Stop timer",      arg: null,            build: function () { return "stop timer"; } },
       clear_done_timers: { label: "Clear done timers", arg: null,       build: function () { return "clear done timers"; } },

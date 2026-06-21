@@ -748,6 +748,16 @@ class SessionState:
     def clear_timers(self) -> None:
         self.timers.clear()
 
+    def unload_protocol(self) -> None:
+        """Cancel the active run: clear the protocol cursor and its timers. Unlike
+        ``reset()``, this KEEPS the log, inventory, protocol library, and
+        recent-protocol history — it only stops the run in progress."""
+        self.active_protocol = None
+        self.current_step_index = -1
+        self.protocol_complete = False
+        self.skipped_steps.clear()
+        self.clear_timers()
+
     # --- demo reset --------------------------------------------------------
     def reset(self) -> None:
         """Clear stage state (protocol cursor + timers) for a fresh demo run.

@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 Intent = Literal[
     "load_protocol",
+    "cancel_protocol",
     "next_step",
     "skip_step",
     "prev_step",
@@ -32,6 +33,7 @@ Intent = Literal[
     "add_inventory",
     "ask",
     "show_protocol",
+    "navigate_page",
     "unknown",
 ]
 
@@ -56,6 +58,7 @@ class Command(BaseModel):
     unit: Optional[str] = None            # add_inventory (e.g. "g", "mL", "uL")
     location: Optional[str] = None        # add_inventory (e.g. "shelf 4", "Fridge 1")
     question: Optional[str] = None      # ask
+    page: Optional[str] = None            # navigate_page (page key: dashboard/notebook/...)
     clarify_prompt: Optional[str] = None  # unknown / missing param -> clarification area
 
 

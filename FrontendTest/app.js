@@ -303,6 +303,20 @@
     });
   }
 
+  // Drag-reorder: first row whose vertical midpoint is below the cursor, or null
+  // to drop at the end (the MDN reorder idiom). The dragged row is excluded.
+  function rowAfterCursor(list, y) {
+    const rows = [...list.querySelectorAll(".edit-step-row:not(.dragging)")];
+    return rows.reduce(
+      (closest, row) => {
+        const box = row.getBoundingClientRect();
+        const offset = y - box.top - box.height / 2;
+        return offset < 0 && offset > closest.offset ? { offset, element: row } : closest;
+      },
+      { offset: Number.NEGATIVE_INFINITY, element: null }
+    ).element;
+  }
+
   // Each row stashes its source step's params + timer_label on a JS property
   // (row._step), NOT in the DOM, so reorder/delete carry them with the row.
   function addStepRow(step) {
@@ -315,14 +329,13 @@
     const row = document.createElement("div");
     row.className = "edit-step-row flex items-center gap-2";
     row.innerHTML = `
+      <span class="edit-step-drag material-symbols-outlined text-on-surface-variant text-[20px] shrink-0 cursor-grab select-none active:cursor-grabbing" draggable="true" title="Drag to reorder" aria-label="Drag to reorder step">drag_indicator</span>
       <span class="edit-step-num text-on-surface-variant text-sm w-5 text-right shrink-0"></span>
-      <input class="edit-step-text flex-1 bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface text-sm" type="text" placeholder="Step description" />
+      <input class="edit-step-text flex-1 bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface text-base" type="text" placeholder="Step description" />
       <input class="edit-step-dur w-16 bg-surface-container-lowest border border-outline-variant rounded-lg px-2 py-2 text-on-surface text-sm" inputmode="decimal" placeholder="0" />
       <select class="edit-step-unit bg-surface-container-lowest border border-outline-variant rounded-lg px-2 py-2 text-on-surface text-sm">
         <option value="min">min</option><option value="sec">sec</option>
       </select>
-      <button type="button" class="edit-step-up ${iconBtn}" title="Move up" aria-label="Move step up"><span class="material-symbols-outlined text-[18px]">arrow_upward</span></button>
-      <button type="button" class="edit-step-down ${iconBtn}" title="Move down" aria-label="Move step down"><span class="material-symbols-outlined text-[18px]">arrow_downward</span></button>
       <button type="button" class="edit-step-remove ${iconBtn} hover:bg-error/10 hover:text-error" title="Remove step" aria-label="Remove step"><span class="material-symbols-outlined text-[18px]">close</span></button>`;
     row.querySelector(".edit-step-text").value = step.text || "";
     row.querySelector(".edit-step-dur").value = value;
@@ -417,23 +430,42 @@
     modal.addEventListener("click", (e) => {
       if (e.target === modal) closeEditProtocolModal();
     });
-    // Delegate per-row up/down/remove so they survive re-renders.
+    // Delegate per-row remove + drag-reorder so they survive re-renders.
     const list = $("edit-steps-list");
-    if (list)
+    if (list) {
       list.addEventListener("click", (ev) => {
         const row = ev.target.closest(".edit-step-row");
-        if (!row) return;
-        if (ev.target.closest(".edit-step-remove")) {
+        if (row && ev.target.closest(".edit-step-remove")) {
           row.remove();
-          renumberSteps();
-        } else if (ev.target.closest(".edit-step-up") && row.previousElementSibling) {
-          list.insertBefore(row, row.previousElementSibling);
-          renumberSteps();
-        } else if (ev.target.closest(".edit-step-down") && row.nextElementSibling) {
-          list.insertBefore(row.nextElementSibling, row);
           renumberSteps();
         }
       });
+      // Reorder by dragging the left grip. Drag events bubble, so delegate once.
+      list.addEventListener("dragstart", (ev) => {
+        const handle = ev.target.closest(".edit-step-drag");
+        if (!handle) return;
+        const row = handle.closest(".edit-step-row");
+        row.classList.add("dragging", "opacity-50");
+        if (ev.dataTransfer) {
+          ev.dataTransfer.effectAllowed = "move";
+          // Drag the whole row as the ghost, not just the tiny grip glyph.
+          ev.dataTransfer.setDragImage(row, 16, row.offsetHeight / 2);
+        }
+      });
+      list.addEventListener("dragover", (ev) => {
+        const dragging = list.querySelector(".dragging");
+        if (!dragging) return;
+        ev.preventDefault(); // mark this a valid drop target
+        const after = rowAfterCursor(list, ev.clientY);
+        if (after == null) list.appendChild(dragging);
+        else list.insertBefore(dragging, after);
+      });
+      list.addEventListener("dragend", (ev) => {
+        const row = ev.target.closest(".edit-step-row");
+        if (row) row.classList.remove("dragging", "opacity-50");
+        renumberSteps();
+      });
+    }
   }
 
   // --- inventory add / edit / delete ----------------------------------------
@@ -1670,6 +1702,9 @@
     // Reagent-prep is reachable from the breadcrumb once a protocol is active.
     const prepOpen = $("prep-open");
     if (prepOpen && idx >= 0) prepOpen.classList.remove("hidden");
+    // Cancel sits beside Reagent Prep; both appear only while a run is active.
+    const cancelBtn = $("cancel-protocol");
+    if (cancelBtn && idx >= 0) cancelBtn.classList.remove("hidden");
 
     // Live step counters (Guide): mirror the tracker so "STEP x / N" and the
     // "Protocol Phase 0x / 0N" header track the loaded protocol instead of fake data.
@@ -1941,6 +1976,12 @@
     if (tracker) tracker.innerHTML = "";
     const panel = $("step-panel");
     if (panel) panel.classList.add("hidden");
+    // Run-only breadcrumb controls + the cancel confirm modal go away with the run
+    // (this also re-hides Reagent Prep after a demo reset).
+    ["prep-open", "cancel-protocol", "cancel-modal"].forEach((id) => {
+      const el = $(id);
+      if (el) el.classList.add("hidden");
+    });
     const lookup = $("inventory-result");
     if (lookup) lookup.textContent = "";
     if (notesCleared) {
@@ -1991,6 +2032,38 @@
       if (btn.disabled) return;
       ingestCommand("next step").catch(() => {});
     });
+  }
+
+  // Guide "Cancel": opens a confirm modal; confirming sends "cancel protocol"
+  // through the SAME /api/ingest spine as the voice command. (Voice cancels
+  // immediately; only the on-screen button asks first.)
+  function wireGuideCancel() {
+    const openBtn = $("cancel-protocol");
+    if (openBtn && !openBtn.dataset.wired) {
+      openBtn.dataset.wired = "1";
+      openBtn.addEventListener("click", () => {
+        if (openBtn.classList.contains("hidden")) return;
+        const m = $("cancel-modal");
+        if (m) m.classList.remove("hidden");
+      });
+    }
+    const dismiss = $("cancel-dismiss");
+    if (dismiss && !dismiss.dataset.wired) {
+      dismiss.dataset.wired = "1";
+      dismiss.addEventListener("click", () => {
+        const m = $("cancel-modal");
+        if (m) m.classList.add("hidden");
+      });
+    }
+    const confirm = $("cancel-confirm");
+    if (confirm && !confirm.dataset.wired) {
+      confirm.dataset.wired = "1";
+      confirm.addEventListener("click", () => {
+        const m = $("cancel-modal");
+        if (m) m.classList.add("hidden");
+        ingestCommand("cancel protocol").catch(() => {});
+      });
+    }
   }
 
   // --- in-memory log mirror so WS deltas can re-render the feed --------------
@@ -2314,6 +2387,7 @@
     wireLogSort();
     wireDemoReset();
     wireGuideConfirm();
+    wireGuideCancel();
     wireStepActions();
     wireTimerList();
     // voice.js owns the mic; register clearInterim so a mic-stop also clears the
