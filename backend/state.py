@@ -329,6 +329,39 @@ class SessionState:
         self.protocols[proto.id] = proto
         return proto
 
+    def remove_protocol(self, protocol_id: str) -> bool:
+        """Drop a protocol from memory and delete its YAML so it does not reload.
+
+        Accepts an id, name, or alias (same resolver ``load`` uses). If the removed
+        protocol is the active one, the stage state is reset so the guide stops
+        pointing at a protocol that is gone. Returns True if one was removed.
+        """
+        proto = self.protocols.get(protocol_id.strip()) or self.find_protocol(protocol_id)
+        if proto is None:
+            return False
+        self.protocols.pop(proto.id, None)
+        # Delete the backing file. Convention is "<id>.yaml"; fall back to matching
+        # by loaded id so a filename that differs from the id is still removed.
+        proto_dir = self.data_dir / "protocols"
+        direct = proto_dir / f"{proto.id}.yaml"
+        if direct.exists():
+            direct.unlink()
+        else:
+            for path in proto_dir.glob("*.yaml"):
+                try:
+                    if load_protocol_file(path).id == proto.id:
+                        path.unlink()
+                        break
+                except Exception:
+                    continue
+        if self.active_protocol is not None and self.active_protocol.id == proto.id:
+            self.active_protocol = None
+            self.current_step_index = -1
+            self.protocol_complete = False
+            self.skipped_steps.clear()
+            self.clear_timers()
+        return True
+
     # --- protocol cursor ---------------------------------------------------
     def find_protocol(self, name: str) -> Optional[Protocol]:
         key = name.strip().lower()

@@ -86,6 +86,14 @@
     return r.json();
   }
 
+  async function deleteProtocol(id) {
+    const r = await fetch(`${API}/api/protocols/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+    if (!r.ok) throw new Error(`delete failed (${r.status})`);
+    await refreshProtocols();
+  }
+
   async function refreshProtocols() {
     if ($("protocol-cards")) renderProtocolCards(await fetchProtocols());
   }
@@ -482,9 +490,14 @@
     <div class="w-12 h-12 rounded-lg bg-surface-variant flex items-center justify-center">
       <span class="material-symbols-outlined text-primary" style="font-variation-settings:'FILL' 1;">science</span>
     </div>
-    <span class="font-data-label text-xs px-2 py-1 rounded ${badge}">${escapeHtml(
+    <div class="flex items-center gap-2">
+      <span class="font-data-label text-xs px-2 py-1 rounded ${badge}">${escapeHtml(
           p.status.replace("_", " ")
         )}</span>
+      <button class="protocol-delete w-8 h-8 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-error/10 hover:text-error transition-colors active:scale-95" data-protocol-id="${escapeHtml(
+          p.id
+        )}" data-protocol-name="${escapeHtml(p.name)}" title="Remove protocol" aria-label="Remove protocol"><span class="material-symbols-outlined text-[20px]">delete</span></button>
+    </div>
   </div>
   <h3 class="font-headline-md text-headline-md mb-2">${escapeHtml(p.name)}</h3>
   <p class="text-on-surface-variant text-sm mb-6 flex-1">${escapeHtml(p.description || "")}</p>
@@ -507,6 +520,17 @@
       .join("");
     host.querySelectorAll(".protocol-load").forEach((btn) => {
       btn.addEventListener("click", () => loadProtocol(btn.dataset.protocolId));
+    });
+    host.querySelectorAll(".protocol-delete").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const name = btn.dataset.protocolName || "this protocol";
+        if (!confirm(`Remove "${name}"? This deletes its file and cannot be undone.`)) return;
+        try {
+          await deleteProtocol(btn.dataset.protocolId);
+        } catch (e) {
+          alert("Could not remove protocol: " + e.message);
+        }
+      });
     });
   }
 

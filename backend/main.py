@@ -190,6 +190,15 @@ async def load_protocol_by_id(protocol_id: str) -> dict[str, Any]:
     return {"ok": True, "events": events}
 
 
+@app.delete("/api/protocols/{protocol_id}")
+async def delete_protocol(protocol_id: str) -> dict[str, Any]:
+    """Remove a protocol from the library and delete its YAML file. If it was the
+    active protocol, the stage is cleared server-side."""
+    if not state.remove_protocol(protocol_id):
+        raise HTTPException(status_code=404, detail="No such protocol.")
+    return {"ok": True, "protocols": state.protocol_catalog()}
+
+
 class StepAdvanceIn(BaseModel):
     # Confirm Action -> log=True (step completed); Skip -> log=False (skipped).
     log: bool = True

@@ -154,6 +154,38 @@ def test_upload_protocol_non_utf8_422(client):
     assert r.status_code == 422
 
 
+def test_delete_protocol(client):
+    client.post(
+        "/api/protocols",
+        files={"file": ("bca.yaml", VALID_PROTOCOL, "application/x-yaml")},
+    )
+    assert "bca_protein_assay" in main.state.protocols
+    r = client.delete("/api/protocols/bca_protein_assay")
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+    assert "bca_protein_assay" not in main.state.protocols
+    # The file is gone too, so it does not come back on a reload.
+    reloaded = SessionState(db_path=":memory:", data_dir=main.state.data_dir)
+    reloaded.load_files()
+    assert "bca_protein_assay" not in reloaded.protocols
+
+
+def test_delete_protocol_unknown_404(client):
+    r = client.delete("/api/protocols/does-not-exist")
+    assert r.status_code == 404
+
+
+def test_delete_active_protocol_clears_stage(client):
+    client.post(
+        "/api/protocols",
+        files={"file": ("bca.yaml", VALID_PROTOCOL, "application/x-yaml")},
+    )
+    client.post("/api/protocols/bca_protein_assay/load")
+    assert main.state.active_protocol is not None
+    client.delete("/api/protocols/bca_protein_assay")
+    assert main.state.active_protocol is None
+
+
 def test_stop_timer_endpoint_removes_one(client):
     timer = main.state.add_timer(600, "incubation")
     r = client.post(f"/api/timers/{timer.timer_id}/stop")
