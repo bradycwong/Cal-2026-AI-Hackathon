@@ -31,8 +31,10 @@ ROUTER_MODE = os.getenv("ROUTER_MODE", "auto").lower()
 SYSTEM_PROMPT = (
     "You convert a single spoken lab command into ONE structured Command. "
     "Choose exactly one intent from: load_protocol, next_step, prev_step, "
-    "repeat_step, log_entry, undo_log, correct_log, start_timer, "
+    "repeat_step, log_entry, undo_log, correct_log, start_timer, stop_timer, "
     "find_inventory, ask, unknown. "
+    "Map 'stop timer', 'cancel the timer', 'stop the alarm', or 'stop beeping' "
+    "to stop_timer. "
     "Map 'go back' or 'previous step' to prev_step. "
     "Map 'repeat that', 'say that again', or 'what step am I on' to repeat_step. "
     "Map 'scratch that', 'delete that', or 'undo the last note' to undo_log. "
@@ -164,6 +166,16 @@ def deterministic_route(transcript: str) -> Command:
                 clarify_prompt="What should I change the last note to?",
             )
         return Command(intent="correct_log", log_text=replacement)
+
+    # stop_timer — silence the alarm / cancel timers. MUST precede start_timer
+    # because "stop timer" also contains "timer".
+    if re.search(
+        r"\b(?:stop|cancel|dismiss|silence|kill|end)\s+"
+        r"(?:the\s+|that\s+|all\s+|this\s+|my\s+)*"
+        r"(?:timers?|alarms?|beep(?:ing|s)?|countdowns?)\b",
+        t,
+    ):
+        return Command(intent="stop_timer")
 
     # start_timer — must come before find/guide so "start a timer" wins
     if "timer" in t or re.search(r"\bstart (?:a |an )?\d", t):

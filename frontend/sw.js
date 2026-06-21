@@ -3,7 +3,7 @@
 // sockets (/ws/*) always go to the network and are never intercepted.
 //
 // Bump CACHE when the shell changes to evict the previous version on activate.
-const CACHE = "lab-shell-v1";
+const CACHE = "lab-shell-v2";
 const SHELL = ["/", "/static/styles.css", "/static/app.js"];
 
 self.addEventListener("install", (event) => {

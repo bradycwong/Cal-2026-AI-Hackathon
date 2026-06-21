@@ -64,6 +64,24 @@ def test_start_timer_no_duration_defers_to_handler():
     assert cmd.timer_label is None
 
 
+def test_stop_timer_variants_route_to_stop_timer():
+    for phrase in (
+        "Stop timer",
+        "stop the timer",
+        "stop all timers",
+        "cancel the timer",
+        "stop the alarm",
+        "stop beeping",
+    ):
+        assert route(phrase).intent == "stop_timer", phrase
+
+
+def test_stop_timer_wins_over_start_timer():
+    # "stop timer" contains "timer" but must not be parsed as start_timer.
+    assert route("stop timer").intent == "stop_timer"
+    assert route("start timer").intent == "start_timer"
+
+
 def test_find_inventory():
     cmd = route("Where's the proteinase K?")
     assert cmd.intent == "find_inventory"

@@ -306,5 +306,19 @@ class SessionState:
                 return timer
         return None
 
+    def remove_timer(self, timer_id: str) -> bool:
+        """Drop one timer (early stop / dismiss). True if it existed."""
+        for i, timer in enumerate(self.timers):
+            if timer.timer_id == timer_id:
+                del self.timers[i]
+                return True
+        return False
+
+    def remove_all_timers(self) -> list[str]:
+        """Drop every timer and return the ids removed (for "stop timer")."""
+        ids = [t.timer_id for t in self.timers]
+        self.timers.clear()
+        return ids
+
     def clear_timers(self) -> None:
         self.timers.clear()
