@@ -27,6 +27,7 @@ Intent = Literal[
     "start_timer",
     "stop_timer",
     "find_inventory",
+    "add_inventory",
     "ask",
     "unknown",
 ]
@@ -47,7 +48,11 @@ class Command(BaseModel):
     sample_id: Optional[str] = None       # log_entry
     duration_s: Optional[int] = None      # start_timer
     timer_label: Optional[str] = None     # start_timer
-    reagent_name: Optional[str] = None    # find_inventory
+    reagent_name: Optional[str] = None    # find_inventory / add_inventory (item name)
+    amount: Optional[str] = None          # add_inventory (numeric quantity, e.g. "5")
+    unit: Optional[str] = None            # add_inventory (e.g. "g", "mL", "uL")
+    location: Optional[str] = None        # add_inventory (e.g. "shelf 4", "Fridge 1")
+    expiration: Optional[str] = None      # add_inventory (expiration date if stated)
     question: Optional[str] = None      # ask
     clarify_prompt: Optional[str] = None  # unknown / missing param -> clarification area
 
@@ -66,8 +71,8 @@ def make_event(type: EventType, payload: dict[str, Any]) -> dict[str, Any]:
 
 # --- command_result kinds ---------------------------------------------------
 # kind in { step_change, log_entry, log_removed, log_update, inventory_result,
-#           clarify, voice_state, ask_result, timer_removed, protocol_imported,
-#           reset }
+#           inventory_added, clarify, voice_state, ask_result, timer_removed,
+#           protocol_imported, reset }
 
 
 def command_result(kind: str, **fields: Any) -> dict[str, Any]:
@@ -158,6 +163,21 @@ def inventory_result_event(
         name=name,
         location=location,
         quantity_approx=quantity_approx,
+    )
+
+
+def inventory_added_event(
+    name: str, amount: str, unit: str, location: str, expiration: str
+) -> dict[str, Any]:
+    """A reagent was added to inventory by voice/typed command. Clients refresh
+    the inventory feed off this. Additive ``kind`` on the locked envelope."""
+    return command_result(
+        "inventory_added",
+        name=name,
+        amount=amount,
+        unit=unit,
+        location=location,
+        expiration=expiration,
     )
 
 

@@ -44,6 +44,16 @@ SYSTEM_PROMPT = (
     "Map natural note phrasings such as 'make a note that X', 'record X', "
     "'write down X', 'note down X', and 'remark X' to log_entry with log_text "
     "set to X. "
+    "Map 'add X to the inventory', 'put X in inventory', 'register reagent X', or "
+    "'add a new reagent X' to add_inventory. Extract these fields when spoken: "
+    "reagent_name (the item's name, e.g. 'EDTA'), amount (the numeric quantity as "
+    "a string with no unit, e.g. '5'), unit (the unit alone, e.g. 'g', 'mL', "
+    "'uL'), location (where it's stored, e.g. 'shelf 4', 'Fridge 1'), and "
+    "expiration (an expiry date only if one is stated). For add_inventory the "
+    "item NAME is required: if no name is clearly stated, return intent='unknown' "
+    "with a clarify_prompt asking for the reagent name. Leave any other missing "
+    "field null (do NOT guess a quantity, unit, location, or date that was not "
+    "said). "
     "If the intent is clear but a required parameter is missing or ambiguous, do "
     "NOT guess: leave that field null (or return intent='unknown') and put a "
     "one-line question in clarify_prompt. Never invent a protocol name, reagent, "
@@ -121,6 +131,78 @@ def _parse_timer_label(text: str) -> str:
     return "timer"
 
 
+# Quantity + unit for add_inventory ("5g", "5 grams", "100 uL"). Spelled-out
+# units are canonicalized to their short form so the stored row stays tidy.
+_INV_UNIT_RE = re.compile(
+    r"\b(\d+(?:\.\d+)?)\s*"
+    r"(milligrams?|micrograms?|kilograms?|grams?|milliliters?|millilitres?|"
+    r"microliters?|microlitres?|liters?|litres?|mg|kg|ug|ng|g|ml|ul|cl|dl|l|"
+    r"units?|mol|mmol|nmol)\b",
+    flags=re.IGNORECASE,
+)
+
+_UNIT_CANON = {
+    "milligram": "mg", "milligrams": "mg",
+    "microgram": "ug", "micrograms": "ug",
+    "kilogram": "kg", "kilograms": "kg",
+    "gram": "g", "grams": "g",
+    "milliliter": "mL", "milliliters": "mL", "millilitre": "mL", "millilitres": "mL",
+    "microliter": "uL", "microliters": "uL", "microlitre": "uL", "microlitres": "uL",
+    "liter": "L", "liters": "L", "litre": "L", "litres": "L",
+    "ml": "mL", "ul": "uL", "l": "L",
+}
+
+
+def _canon_unit(unit: str) -> str:
+    return _UNIT_CANON.get(unit.lower(), unit)
+
+
+def _parse_add_inventory(body: str) -> Command:
+    """Pull reagent_name/amount/unit/location/expiration out of the phrase between
+    'add' and 'to the inventory'. Name is required; anything not said stays null
+    (the handler fills TBD / N/A). Never guesses a value that was not spoken."""
+    text = body.strip().rstrip(".")
+    amount = unit = location = expiration = None
+
+    # Expiration first, so its trailing date isn't captured as the location.
+    m = re.search(r"\b(?:that\s+)?(?:expir\w*|exp)\b\s*(?:on|date|in|:)?\s*(.+)$", text, flags=re.IGNORECASE)
+    if m:
+        expiration = m.group(1).strip().rstrip(".") or None
+        text = text[: m.start()].strip()
+
+    # Location: "on shelf 4", "in Fridge 1", "at bench 3".
+    m = re.search(r"\b(?:on|in|at|inside|from)\s+(?:the\s+)?(.+)$", text, flags=re.IGNORECASE)
+    if m:
+        location = m.group(1).strip().rstrip(".") or None
+        text = text[: m.start()].strip()
+
+    # Amount + unit ("5g", "5 grams", "100 uL").
+    m = _INV_UNIT_RE.search(text)
+    if m:
+        amount = m.group(1)
+        unit = _canon_unit(m.group(2))
+        text = (text[: m.start()] + " " + text[m.end():]).strip()
+
+    # Whatever remains, minus filler, is the reagent name.
+    text = re.sub(r"\b(?:of|a|an|the|new|some|reagent|item|called|named)\b", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"[,:]", " ", text)
+    name = re.sub(r"\s+", " ", text).strip() or None
+
+    if not name:
+        return Command(
+            intent="unknown",
+            clarify_prompt="What's the name of the reagent to add to the inventory?",
+        )
+    return Command(
+        intent="add_inventory",
+        reagent_name=name,
+        amount=amount,
+        unit=unit,
+        location=location,
+        expiration=expiration,
+    )
+
+
 def deterministic_route(transcript: str) -> Command:
     """Network-free parser for the demo set. Never raises; worst case -> unknown."""
     raw = normalize_ascii(transcript)
@@ -128,6 +210,17 @@ def deterministic_route(transcript: str) -> Command:
 
     if not t:
         return Command(intent="unknown", clarify_prompt="I didn't catch that. Could you repeat?")
+
+    # add_inventory - "add 5g of EDTA on shelf 4 to the inventory". Must precede
+    # log_entry/find so the "inventory" verb wins; requires the word "inventory".
+    m = re.match(
+        r"^\s*(?:add|create|register|put|store|stock)\s+(.*?)\s+"
+        r"(?:to|into|in|on)\s+(?:the\s+|my\s+|our\s+)?inventory\b.*$",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        return _parse_add_inventory(m.group(1))
 
     # log_entry - "log X", "note X", "record X", "make a note that X"
     m = re.match(

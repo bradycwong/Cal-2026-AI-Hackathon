@@ -810,6 +810,7 @@
       case "log_removed":
         return navTo("notebook.html");
       case "inventory_result":
+      case "inventory_added":
         return navTo("inventory.html");
     }
   }
@@ -846,6 +847,10 @@
         return onVoiceState(p);
       case "clarify":
         return renderClarify(p.message);
+      case "inventory_added":
+        showToast(`"${p.name}" was added to inventory`);
+        refreshInventory();
+        return;
       case "inventory_result":
       case "ask_result":
         return;
