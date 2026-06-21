@@ -220,7 +220,7 @@
     const host = $("inventory-rows");
     if (!host) return;
     const header = `<div class="grid grid-cols-12 gap-4 px-6 py-3 bg-surface-container-low text-on-surface-variant text-xs font-bold uppercase tracking-wider border-b border-outline-variant sticky top-0 z-10">
-      <div class="col-span-4">Reagent Name</div><div class="col-span-3">Location</div><div class="col-span-3">Category</div><div class="col-span-2">Status</div></div>`;
+      <div class="col-span-4">Reagent Name</div><div class="col-span-3">Location</div><div class="col-span-3">Date Created</div><div class="col-span-2">Status</div></div>`;
     const rows = items
       .map(
         (it) => `<div class="inventory-row grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors">
@@ -231,9 +231,9 @@
         )}</p></div>
       </div>
       <div class="col-span-3"><p class="text-on-surface text-sm">${escapeHtml(it.location)}</p></div>
-      <div class="col-span-3"><span class="bg-primary-container/20 text-primary-fixed px-2 py-0.5 rounded text-xs font-bold">${escapeHtml(
-        it.category
-      )}</span></div>
+      <div class="col-span-3"><p class="font-data-label text-on-surface-variant text-sm">${escapeHtml(
+        it.date || "—"
+      )}</p></div>
       <div class="col-span-2"><span class="text-xs font-bold uppercase">${escapeHtml(it.status)}</span></div>
     </div>`
       )
