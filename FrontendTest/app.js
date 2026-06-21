@@ -420,19 +420,28 @@
     const m = $("log-modal");
     if (m) m.classList.add("hidden");
   }
+  function looksLikeSampleOnly(text) {
+    return /^\d+$/.test((text || "").trim());
+  }
   async function submitLogForm(e) {
     if (e) e.preventDefault();
     const textEl = $("log-text");
     const sampleEl = $("log-sample");
     const result = $("log-result");
     const text = ((textEl && textEl.value) || "").trim();
+    const sample = ((sampleEl && sampleEl.value) || "").trim();
     if (!text) {
       if (result) result.textContent = "Enter an observation to log.";
       return;
     }
+    if (looksLikeSampleOnly(text) && !sample) {
+      if (result) result.textContent = "Put sample/tube values in the Sample / tube field.";
+      if (sampleEl) sampleEl.focus();
+      return;
+    }
     if (result) result.textContent = "Saving...";
     try {
-      await postLog(text, (sampleEl && sampleEl.value) || null, null);
+      await postLog(text, sample || null, null);
       if (textEl) textEl.value = "";
       if (sampleEl) sampleEl.value = "";
       await refreshNotebookFeed();
@@ -685,7 +694,8 @@
       host.innerHTML = `<div class="p-12 flex flex-col items-center justify-center opacity-30 select-none"><span class="material-symbols-outlined text-6xl mb-4">history_edu</span><p class="font-headline-md">No log entries yet</p></div>`;
       return;
     }
-    host.innerHTML = log
+    const displayLog = [...log].reverse();
+    host.innerHTML = displayLog
       .map((e) => {
         const flagged = e.flag && e.flag.status === "mismatch" ? " flagged" : "";
         return `<div class="log-entry-row${flagged} grid grid-cols-12 gap-4 px-6 py-5 border-b border-outline-variant items-center transition-colors" data-log-id="${e.id}">

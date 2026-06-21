@@ -40,6 +40,7 @@ from .schema import (
     voice_state_event,
 )
 from .handlers import advance_step, handle_command
+from .instrumentation import chain_span, setup_tracing
 from .state import ProtocolParseError, SessionState
 from .voice_control import VoiceControl, classify_control
 
@@ -114,8 +115,13 @@ async def ingest(
     if echo_transcript:
         events.append(transcript_update_event(text, is_final=True))
     if do_route:
-        cmd = route(text)
-        events.extend(handle_command(cmd, state))
+        # CHAIN span over the routing decision + command execution. The
+        # auto-instrumented Anthropic span (the `ask` path) nests under it.
+        with chain_span("ingest", text) as span:
+            cmd = route(text)
+            span.set_attribute("lab.intent", str(cmd.intent))
+            events.extend(handle_command(cmd, state))
+            span.set_output(cmd.intent)
     await manager.broadcast(events)
     return events
 
@@ -144,6 +150,9 @@ async def _timer_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Arize tracing: patches the Anthropic SDK before any client is created.
+    # No-ops without ARIZE_* creds or under pytest, so the typed demo stays free.
+    setup_tracing()
     state.load_files()
     print(
         f"[lab] loaded {len(state.protocols)} protocol(s), "
@@ -555,11 +564,14 @@ async def ws_audio(ws: WebSocket) -> None:
 
     async def on_interim(text: str) -> None:
         if voice.muted:
-            # Don't display while muted, but still watch for the resume word so
-            # "unmute" takes effect the instant it's heard.
+            # Watch for the resume word so "unmute" takes effect the instant it's
+            # heard; otherwise still display the interim so the transcript stays
+            # visible for debugging while muted (display-only — never routed).
             state = voice.process_interim(text)
             if state is not None:
                 await manager.broadcast([voice_state_event(state.muted, state.label)])
+                return
+            await manager.broadcast([transcript_update_event(text, is_final=False)])
             return
         await manager.broadcast([transcript_update_event(text, is_final=False)])
 
