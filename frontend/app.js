@@ -26,6 +26,30 @@ const els = {
   alertBanner: $("alert-banner"),
 };
 
+const DEMO_LINES = [
+  "Load DNA extraction protocol",
+  "What's next",
+  "Go back",
+  "Repeat that",
+  "log: added 200 uL lysis buffer to sample A",
+  "Scratch that",
+  "Change that to added 300 uL lysis buffer",
+  "Start a 10-minute timer",
+  "Where's the proteinase K?",
+  "How much lysis buffer in step 1?"
+];
+
+function populateDemoLines() {
+  const list = $("demo-lines");
+  if (!list) return;
+  list.innerHTML = "";
+  DEMO_LINES.forEach((line) => {
+    const option = document.createElement("option");
+    option.value = line;
+    list.appendChild(option);
+  });
+}
+
 const timers = new Map(); // timer_id -> element
 
 function setState(label, cls) {
@@ -115,6 +139,12 @@ function onCommandResult(p) {
       return onStepChange(p);
     case "log_entry":
       return onLogEntry(p);
+    case "log_removed":
+      return onLogRemoved(p);
+    case "log_update":
+      return onLogUpdate(p);
+    case "ask_result":
+      return onAskResult(p);
     case "inventory_result":
       return onInventory(p);
     case "clarify":
@@ -155,8 +185,24 @@ function clearTimerCards() {
   }
 }
 
+function removeLogEmptyState() {
+  const empty = els.log.querySelector(".log-empty");
+  if (empty) empty.remove();
+}
+
+function ensureLogEmptyState() {
+  if (els.log.querySelector("li:not(.log-empty)")) return;
+  if (els.log.querySelector(".log-empty")) return;
+  const li = document.createElement("li");
+  li.className = "muted log-empty";
+  li.textContent = 'No entries yet - say "log: added 200 uL to sample A," or type it below.';
+  els.log.appendChild(li);
+}
+
 function onLogEntry(p) {
   const li = document.createElement("li");
+  removeLogEmptyState();
+  li.dataset.logId = String(p.id);
   const sample = p.sample_id ? ` · sample ${p.sample_id}` : "";
   const step = p.step_ref ? ` · step ${p.step_ref}` : "";
   li.innerHTML = `<span class="log-time">${p.timestamp}</span>` +
@@ -165,6 +211,31 @@ function onLogEntry(p) {
   els.log.prepend(li);
   clearClarify();
   announce(`Logged: ${p.text}`);
+  setState("done", "chip-ok");
+}
+
+function onLogRemoved(p) {
+  const li = els.log.querySelector(`[data-log-id="${String(p.id)}"]`);
+  if (li) li.remove();
+  ensureLogEmptyState();
+  clearClarify();
+  announce("Removed last note");
+  setState("done", "chip-ok");
+}
+
+function onLogUpdate(p) {
+  const li = els.log.querySelector(`[data-log-id="${String(p.id)}"]`);
+  const text = li ? li.querySelector(".log-text") : null;
+  if (text) text.textContent = p.text;
+  clearClarify();
+  announce(`Updated note: ${p.text}`);
+  setState("done", "chip-ok");
+}
+
+function onAskResult(p) {
+  els.clarify.innerHTML = `<div class="clarify-msg">${escapeHtml(p.answer)}</div>`;
+  els.clarifyPanel.classList.add("active");
+  announce(p.answer);
   setState("done", "chip-ok");
 }
 
@@ -413,6 +484,7 @@ async function hydrate() {
     setState("idle", "");
   } catch (_) { /* fresh start */ }
 }
+populateDemoLines();
 hydrate();
 
 let audioCtx;

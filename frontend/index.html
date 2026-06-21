@@ -44,7 +44,7 @@
 
     <section class="panel" role="region" aria-labelledby="title-log">
       <h2 class="panel-title" id="title-log">Log</h2>
-      <ul class="log" id="log"></ul>
+      <ul class="log" id="log"><li class="muted log-empty">No entries yet - say "log: added 200 uL to sample A," or type it below.</li></ul>
     </section>
 
     <section class="panel" role="region" aria-labelledby="title-inventory">
@@ -63,7 +63,7 @@
   <!-- Typed command box: skeleton input AND permanent live fallback -->
   <form class="composer" id="composer" autocomplete="off">
     <label class="sr-only" for="composer-input">Type a command</label>
-    <input id="composer-input" type="text" placeholder="Type a command — e.g. 'Load DNA extraction protocol'" />
+    <input id="composer-input" type="text" list="demo-lines" placeholder="Type a command - e.g. 'Load DNA extraction protocol'" />
     <button type="submit">Send</button>
   </form>
 
