@@ -28,9 +28,10 @@ same spine. Requires `DEEPGRAM_API_KEY` in `.env`.
 
 **Mute/unmute.** After Start, every finished utterance is routed as a command.
 Say `mute`, type `mute` in the command box, or click **Mute** to stop transcript
-updates and command routing — all three toggle the same gate. The mic stays open
-so you can say/type `unmute` (or click **Unmute**) to resume. Other typed
-commands always work.
+updates and command routing — all three toggle the same gate. While muted the mic
+**keeps listening** but ignores everything except `unmute`; mute is sticky and
+survives reconnects, so it stays muted until you say/type `unmute` (or click
+**Unmute**) to resume. Other typed commands always work.
 
 ## Run
 

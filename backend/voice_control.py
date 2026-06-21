@@ -24,16 +24,18 @@ class VoiceDecision:
     label: str
 
 
+# Anchored to the whole utterance so a control word only fires when it IS the
+# command (never mid-sentence). The optional suffixes/spellings absorb common STT
+# variants (e.g. "muted", "un mute", "un-mute") so spoken unmute reliably resumes.
 _MUTE_PATTERNS = [
-    re.compile(r"^(?:please\s+)?mute(?:\s+lab)?$", re.IGNORECASE),
+    re.compile(r"^(?:please\s+)?mute(?:d)?(?:\s+lab)?$", re.IGNORECASE),
     re.compile(r"^(?:please\s+)?stop\s+listening$", re.IGNORECASE),
     re.compile(r"^(?:please\s+)?stop\s+reporting$", re.IGNORECASE),
 ]
 
 _UNMUTE_PATTERNS = [
-    re.compile(r"^(?:please\s+)?unmute(?:\s+lab)?$", re.IGNORECASE),
-    re.compile(r"^(?:please\s+)?start\s+listening$", re.IGNORECASE),
-    re.compile(r"^(?:please\s+)?resume\s+listening$", re.IGNORECASE),
+    re.compile(r"^(?:please\s+)?un[\s-]?mute(?:d)?(?:\s+lab)?$", re.IGNORECASE),
+    re.compile(r"^(?:please\s+)?(?:start|resume)\s+listening$", re.IGNORECASE),
 ]
 
 
