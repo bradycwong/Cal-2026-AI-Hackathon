@@ -42,11 +42,17 @@
                     No protocol loaded. Say or click "Load Protocol" to begin.
                 </h1>
 <div class="w-full max-w-md flex flex-col gap-4">
-<button id="confirm-step" type="button" disabled class="bg-primary text-on-primary h-14 rounded-full font-bold text-lg flex items-center justify-center gap-3 active:opacity-80 transition-all hover:scale-[1.02] pulse-glow disabled:opacity-40 disabled:hover:scale-100">
+<div class="flex gap-3">
+<button id="confirm-step" type="button" disabled title="Mark this step complete and advance (logs to the notebook)" class="flex-1 bg-primary text-on-primary h-14 rounded-full font-bold text-lg flex items-center justify-center gap-3 active:opacity-80 transition-all hover:scale-[1.02] pulse-glow disabled:opacity-40 disabled:hover:scale-100">
 <span class="material-symbols-outlined">check_circle</span>
                         Confirm Action
                     </button>
-<p class="text-on-surface-variant text-sm">Click, or say <span class="text-primary italic">"next step"</span> / <span class="text-primary italic">"move on"</span></p>
+<button id="skip-action" type="button" disabled title="Advance to the next step without logging" class="shrink-0 border border-outline text-on-surface px-6 h-14 rounded-full font-bold text-lg flex items-center justify-center gap-2 hover:bg-surface-variant active:opacity-80 transition-all disabled:opacity-40">
+<span class="material-symbols-outlined">skip_next</span>
+                        Skip
+                    </button>
+</div>
+<p class="text-on-surface-variant text-sm">Click, or say <span class="text-primary italic">"next step"</span> to log &amp; advance · Skip moves on without a note</p>
 </div>
 </div>
 <!-- Live Transcription Area -->
@@ -62,6 +68,18 @@
 </div>
 
 <div id="live-transcript" class="font-data-value text-data-value text-on-surface leading-relaxed relative z-10 max-h-40 overflow-y-auto" aria-live="polite"></div>
+</div>
+<!-- Notebook target + recent-log preview -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 mt-gutter">
+<div class="flex items-center justify-between gap-4 mb-4">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary">menu_book</span>
+<h3 class="font-data-label text-data-label text-on-surface uppercase tracking-widest">Logging To</h3>
+</div>
+<select id="notebook-select" title="Choose which notebook to log to" class="bg-surface-container-high border border-outline-variant text-on-surface text-sm rounded-lg px-3 py-2 focus:border-primary focus:ring-0 cursor-pointer min-w-[12rem]"></select>
+</div>
+<p class="text-[10px] text-on-surface-variant uppercase font-bold tracking-wider mb-2">Recent Entries</p>
+<div id="log-preview" class="flex flex-col gap-2"></div>
 </div>
 </section>
 <!-- Right: Sidebar -->

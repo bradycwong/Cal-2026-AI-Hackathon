@@ -28,11 +28,34 @@ def test_load_emits_step_change():
     assert p["loaded"] is True  # drives front-end navigation to the active protocol
 
 
+def _kind(events, kind):
+    """First event payload of the given command_result kind (order-agnostic).
+
+    ``next_step`` now emits a "Completed step N" log_entry alongside the
+    step_change, so tests locate the event they care about by kind.
+    """
+    return next(e["payload"] for e in events if e["payload"].get("kind") == kind)
+
+
 def test_next_step_advances():
     state = fresh_state()
     handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
     events = handle_command(Command(intent="next_step"), state)
-    assert events[0]["payload"]["current_step"]["id"] == 2
+    assert _kind(events, "step_change")["current_step"]["id"] == 2
+
+
+def test_next_step_logs_completed_step_to_active_notebook():
+    # A spoken/typed "next step" records the step it just left, so progress lands
+    # in the notebook automatically.
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    before = len(state.log)
+    events = handle_command(Command(intent="next_step"), state)
+    entry = _kind(events, "log_entry")
+    assert entry["text"].startswith("Completed step 1")
+    assert entry["step_ref"] == 1  # the step we left, not the one we advanced to
+    assert entry["step_log"] is True  # marks it so the UI stays on the guide page
+    assert len(state.log) == before + 1
 
 
 def test_step_nav_is_not_marked_loaded():
@@ -40,16 +63,15 @@ def test_step_nav_is_not_marked_loaded():
     state = fresh_state()
     handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
     for intent in ("next_step", "prev_step", "repeat_step"):
-        ev = handle_command(Command(intent=intent), state)[0]
-        assert ev["payload"]["loaded"] is False, intent
+        events = handle_command(Command(intent=intent), state)
+        assert _kind(events, "step_change")["loaded"] is False, intent
 
 
 def test_step_change_carries_tracker_fields():
     state = fresh_state()
     handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
     events = handle_command(Command(intent="next_step"), state)
-    payload = events[0]["payload"]
-    assert payload["kind"] == "step_change"
+    payload = _kind(events, "step_change")
     assert payload["all_steps"]
     assert payload["current_index"] == 1
     assert payload["protocol_name"] == "DNA Extraction"
@@ -59,6 +81,17 @@ def test_next_step_without_protocol_clarifies():
     state = fresh_state()
     events = handle_command(Command(intent="next_step"), state)
     assert events[0]["payload"]["kind"] == "clarify"
+
+
+def test_advance_step_skip_does_not_log():
+    # The Skip button advances without writing a note (log_event=False).
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    before = len(state.log)
+    events = handlers.advance_step(state, log_event=False)
+    assert _kind(events, "step_change")["current_step"]["id"] == 2
+    assert all(e["payload"].get("kind") != "log_entry" for e in events)
+    assert len(state.log) == before
 
 
 def test_log_entry_field_translation():
@@ -72,7 +105,8 @@ def test_log_entry_field_translation():
     assert p["text"] == "added 200 uL lysis buffer"  # log_text -> text
     assert p["sample_id"] == "A"
     assert p["step_ref"] == 1
-    assert set(p) == {"kind", "id", "text", "timestamp", "sample_id", "step_ref", "category", "flag"}
+    assert set(p) == {"kind", "id", "text", "timestamp", "sample_id", "step_ref", "category", "flag", "step_log"}
+    assert p["step_log"] is False  # a manual log entry is not a step-advance note
     # DNA Extraction step 1 expects 200 uL; the logged 200 uL matches.
     assert p["flag"]["status"] == "ok"
 
@@ -112,11 +146,13 @@ def test_advancing_to_timed_step_shows_paused_timer():
     # DNA Extraction step 1 is manual -> load emits only step_change.
     events = handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
     assert [e["type"] for e in events] == ["command_result"]
-    # Step 2 is a 10-min incubation -> advancing shows a paused labelled timer.
+    # Step 2 is a 10-min incubation -> advancing shows a paused labelled timer
+    # (plus the auto "completed step 1" note).
     events = handle_command(Command(intent="next_step"), state)
-    assert events[0]["type"] == "command_result"
-    timer = events[1]
-    assert timer["type"] == "timer_update"
+    assert _kind(events, "step_change")  # present
+    timers = [e for e in events if e["type"] == "timer_update"]
+    assert len(timers) == 1
+    timer = timers[0]
     assert timer["payload"]["label"] == "incubation"
     assert timer["payload"]["paused"] is True
     assert timer["payload"]["remaining_s"] == 600  # frozen at full duration
