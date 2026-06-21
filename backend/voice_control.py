@@ -38,6 +38,19 @@ _UNMUTE_PATTERNS = [
     re.compile(r"^(?:please\s+)?(?:start|resume)\s+listening$", re.IGNORECASE),
 ]
 
+# While muted EVERYTHING is ignored anyway, so the only job left is to catch the
+# resume word. This unanchored matcher finds "unmute" anywhere in an utterance or
+# interim (e.g. "okay, unmute"), so resuming never depends on perfect STT
+# segmentation. Only consulted in the muted state.
+_UNMUTE_LOOSE = re.compile(
+    r"\b(?:un[\s-]?mute(?:d)?|(?:start|resume)\s+listening)\b", re.IGNORECASE
+)
+
+
+def wants_unmute(text: str) -> bool:
+    """True if ``text`` contains a resume word anywhere (muted-state use only)."""
+    return bool(_UNMUTE_LOOSE.search(_clean(text)))
+
 
 def _clean(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").strip().strip(".,!?;:")).strip()
@@ -91,15 +104,31 @@ class VoiceControl:
         if not text:
             return self._decision(False, False, "", False)
 
+        # Muted: the mic keeps listening but the ONLY thing that can happen is a
+        # resume. Match "unmute" loosely so it works even if STT bundles it into
+        # a longer utterance; ignore everything else.
+        if self.muted:
+            if wants_unmute(text):
+                state = self.set_muted(False)
+                return self._decision(False, False, "", state.changed)
+            return self._decision(False, False, "", False)
+
         control = classify_control(text)
         if control is not None:
             state = self.set_muted(control == "mute")
             return self._decision(False, False, "", state.changed)
 
-        if self.muted:
-            return self._decision(False, False, "", False)
-
         return self._decision(True, True, text, False)
+
+    def process_interim(self, transcript: str) -> Optional[VoiceState]:
+        """Muted-state fast path: resume as soon as an interim shows "unmute".
+
+        Returns the new state when it unmutes, else None. Interims are otherwise
+        display-only (and suppressed entirely while muted).
+        """
+        if self.muted and wants_unmute(transcript):
+            return self.set_muted(False)
+        return None
 
     def _decision(
         self,

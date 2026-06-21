@@ -227,8 +227,14 @@ async def ws_audio(ws: WebSocket) -> None:
     await manager.broadcast([voice_state_event(voice.muted, voice.label)])
 
     async def on_interim(text: str) -> None:
-        if voice.should_report_interim():
-            await manager.broadcast([transcript_update_event(text, is_final=False)])
+        if voice.muted:
+            # Don't display while muted, but still watch for the resume word so
+            # "unmute" takes effect the instant it's heard.
+            state = voice.process_interim(text)
+            if state is not None:
+                await manager.broadcast([voice_state_event(state.muted, state.label)])
+            return
+        await manager.broadcast([transcript_update_event(text, is_final=False)])
 
     async def on_final(text: str) -> None:
         decision = voice.process_final(text)

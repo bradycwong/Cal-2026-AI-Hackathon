@@ -1,6 +1,6 @@
 """Voice control gate checks: always-listening plus mute/unmute."""
 
-from backend.voice_control import VoiceControl, classify_control
+from backend.voice_control import VoiceControl, classify_control, wants_unmute
 
 
 def test_normal_speech_reports_and_routes_while_unmuted():
@@ -117,3 +117,40 @@ def test_muted_mic_keeps_listening_and_only_unmute_resumes():
     assert not vc.muted
     assert decision.voice_state_changed
     assert vc.process_final("next step").route_command  # normal operation resumed
+
+
+def test_muted_final_resumes_when_unmute_is_embedded_in_a_phrase():
+    # STT can bundle the resume word into a longer utterance; still resume.
+    vc = VoiceControl(muted=True)
+    decision = vc.process_final("okay unmute please")
+    assert not vc.muted
+    assert decision.voice_state_changed
+
+
+def test_loose_unmute_only_applies_while_muted_not_for_muting():
+    # "unmute the rest" must NOT mute while listening (loose match is unmute-only).
+    vc = VoiceControl()
+    decision = vc.process_final("unmute the rest of the buffer")
+    assert not vc.muted  # still listening
+    assert decision.route_command  # treated as a normal command
+
+
+def test_wants_unmute_is_unmute_only():
+    assert wants_unmute("okay unmute now")
+    assert wants_unmute("please start listening again")
+    assert not wants_unmute("add 200 microliters")
+    assert not wants_unmute("mute the music")
+
+
+def test_process_interim_resumes_on_interim_unmute_only_while_muted():
+    vc = VoiceControl(muted=True)
+    assert vc.process_interim("uh") is None  # partial, no resume word yet
+    assert vc.muted
+    state = vc.process_interim("uh unmute")
+    assert state is not None and state.muted is False
+    assert not vc.muted
+
+    # When already listening, interims never toggle state.
+    vc2 = VoiceControl()
+    assert vc2.process_interim("unmute") is None
+    assert not vc2.muted
