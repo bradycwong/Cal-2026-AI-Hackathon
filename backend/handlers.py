@@ -84,6 +84,7 @@ def _handle_load_protocol(cmd: Command, state: SessionState) -> list[dict[str, A
     if proto is None:
         return [clarify_event(f"I don't have a protocol called '{cmd.protocol_name}'. Available: {_available_protocols(state)}.")]
     state.active_protocol = proto
+    state.mark_protocol_used(proto.id)  # single funnel for voice + REST loads
     state.current_step_index = 0
     state.protocol_complete = False
     state.skipped_steps.clear()

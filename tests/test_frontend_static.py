@@ -208,6 +208,19 @@ def test_dashboard_has_recent_notebooks_section():
     assert "dashboard-notebooks" in js, "app.js does not target the dashboard notebooks mount"
 
 
+def test_dashboard_recent_protocols_is_distinct_from_catalog():
+    # The dashboard "Recently Used Protocols" panel has its own mount + renderer,
+    # separate from the full-detail catalog (#protocol-cards) on the protocols page.
+    html = (FT / "dashboard.html").read_text(encoding="utf-8")
+    assert 'id="recent-protocols"' in html, "dashboard.html missing recent-protocols mount"
+    assert 'id="protocol-cards"' not in html, "dashboard must not reuse the full catalog mount"
+    assert "Recently Used Protocols" in html
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert "renderRecentProtocols" in js, "app.js missing renderRecentProtocols"
+    assert "/api/protocols/recent" in js, "app.js missing the recent endpoint"
+    assert "recent-protocols" in js, "app.js does not target the recent-protocols mount"
+
+
 # --- cleanup: de-duped shell, real branding, dead controls removed ----------
 
 def test_pages_use_shared_head_assets():
@@ -364,6 +377,22 @@ def test_app_handles_protocol_completion():
     # Both action buttons must be disabled when the protocol is finished.
     assert "confirmBtn.disabled = idx < 0 || finished" in js
     assert "skipBtn.disabled = idx < 0 || finished" in js
+
+
+def test_guide_transcript_box_has_minimum_height():
+    # The Guide page's Live Transcription panel is always visible (no `hidden`),
+    # so it reserves a minimum height instead of collapsing to nothing when empty
+    # (e.g. while muted, when the box shows no text).
+    css = (FT / "guide.css").read_text(encoding="utf-8")
+    assert "#live-transcript" in css, "guide.css must scope a rule to #live-transcript"
+    assert "min-height" in css, "guide.css must give #live-transcript a min-height"
+
+
+def test_app_clears_transcript_when_muted():
+    # Muting hides the transcript everywhere: on voice_state with muted=true the
+    # client wipes the box so no spoken text lingers while muted.
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert "clearTranscriptForMute" in js, "app.js must clear the transcript on mute"
 
 
 def test_guide_has_reagent_prep_modal_hooks():

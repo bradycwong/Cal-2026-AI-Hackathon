@@ -1,0 +1,66 @@
+Deterministic timer & control routing — implementation notes
+============================================================
+
+Goal
+----
+Keep basic lab controls (timers + step navigation) off the LLM-critical path.
+route() now resolves high-confidence control intents deterministically BEFORE any
+LLM attempt; the LLM is reserved for open-ended commands.
+
+Why it mattered
+---------------
+The LLM seam is dead-by-design (CLAUDE.md): _llm_route() calls
+client.messages.parse(), which does not exist in the pinned anthropic==0.40.0, so
+route() always threw there and fell back to deterministic_route(). Net effect:
+every command — including "start timer" — first paid a doomed LLM round-trip
+(client init + a parse that raises) before the regex parser ran, and control
+determinism was an accident of a broken SDK call rather than a guarantee.
+
+Change (backend/router.py only)
+-------------------------------
+1. control fast path, run first:
+   - _CONTROL_INTENTS = {start_timer, stop_timer, next_step, prev_step,
+     repeat_step, skip_step}
+   - control_route(transcript) delegates to deterministic_route() and returns the
+     Command only if its intent is a control intent, else None. This reuses the
+     existing match-priority order, so "log that I started the timer" still maps
+     to log_entry (returns None here -> deferred to the LLM).
+   - route() calls control_route() first; if it returns a Command, use it.
+     Otherwise the existing mode logic runs unchanged (LLM-primary in auto/llm,
+     deterministic in deterministic mode).
+2. Broadened the start_timer matcher (the trigger, not the duration parser) so
+   STT variants route correctly without stealing protocol loads:
+   - also fire on a start verb + "countdown" and on begin/set + <digit>.
+   - "start countdown" no longer mis-routes to load_protocol "countdown".
+   - _parse_timer_label exclusion set extended (begin, launch, restart, run,
+     countdown, now, please, this, that, my, our) so "begin timer" -> label None
+     and "start the incubation timer now" -> label "incubation".
+
+NOT changed (locked spine / CLAUDE.md constraints)
+--------------------------------------------------
+- _llm_route() left as-is (do NOT "fix" via messages.parse).
+- Command schema and WS event envelope unchanged.
+- handlers.py timer behavior unchanged (bare "start timer" resumes the paused
+  step timer; explicit duration runs immediately; "stop timer" removes all).
+- The robust compound/clock/fraction duration parser (_parse_duration, commit
+  8074c2c) is reused as-is.
+
+Tests
+-----
+- tests/test_router.py: noisy-phrase routing (start countdown / begin timer /
+  "start the incubation timer now" -> start_timer; stop/silence/cancel -> stop_timer)
+  + control-fast-path-beats-LLM (monkeypatch router.ROUTER_MODE="llm" and a
+  sentinel _llm_route; controls return real intents, a load command surfaces the
+  sentinel proving the LLM seam still runs for non-controls).
+- tests/test_api.py: /api/ingest timer commands produce timer events with the LLM
+  seam stubbed to a wrong intent (proves no LLM dependency), incl. resume-paused.
+- tests/test_handlers.py: unchanged; existing timer handler tests still green.
+
+Verification (done)
+-------------------
+- python -m pytest tests/test_router.py tests/test_handlers.py tests/test_api.py -q
+  -> 99 passed. Full suite: 271 passed (the only 5 failures are an unrelated,
+  in-progress PDF-import feature: backend/pdf_extract.py + tests/test_pdf_*).
+- Live uvicorn (default auto mode, throwaway DB): start/stop/resume timers via
+  /api/ingest all work; "start countdown"/"begin timer" -> start_timer;
+  "start DNA extraction protocol" still -> load_protocol.

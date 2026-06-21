@@ -239,3 +239,59 @@ def test_state_step_reflects_skipped_indices(client):
     step = client.get("/api/state").json()["step"]
     assert step["skipped_indices"] == [0]
     assert step["current_index"] == 1
+
+
+# --- recently-used protocols (dashboard) -----------------------------------
+def _recent(client):
+    r = client.get("/api/protocols/recent")
+    assert r.status_code == 200
+    return r.json()["recent"]
+
+
+def test_recent_cold_start_falls_back_to_catalog(client):
+    # Nothing loaded yet: surface up to 3 library protocols (catalog order) with
+    # no timestamp, so the dashboard is never blank on a fresh demo.
+    catalog = client.get("/api/protocols").json()["protocols"]
+    recent = _recent(client)
+    assert len(recent) == min(3, len(catalog))
+    assert [p["id"] for p in recent] == [p["id"] for p in catalog[:3]]
+    assert all(p["last_used_at"] is None for p in recent)
+
+
+def test_recent_lists_loaded_newest_first_and_caps_at_three(client):
+    order = ["bacterial_transformation", "dna_extraction", "pcr_setup", "plasmid_miniprep"]
+    for pid in order:
+        assert client.post(f"/api/protocols/{pid}/load").status_code == 200
+    recent = _recent(client)
+    # Capped at 3, newest first; the oldest load drops off the cap.
+    assert [p["id"] for p in recent] == ["plasmid_miniprep", "pcr_setup", "dna_extraction"]
+    assert all(
+        isinstance(p["last_used_at"], str) and p["last_used_at"].endswith("Z")
+        for p in recent
+    )
+    # Reduced cards still carry the catalog fields the renderer reads.
+    assert {"id", "name", "description", "last_used_at"} <= set(recent[0])
+
+
+def test_recent_reload_moves_protocol_to_front(client):
+    client.post("/api/protocols/dna_extraction/load")
+    client.post("/api/protocols/pcr_setup/load")
+    client.post("/api/protocols/dna_extraction/load")  # re-load -> back to front, no dupe
+    recent = _recent(client)
+    assert [p["id"] for p in recent] == ["dna_extraction", "pcr_setup"]
+
+
+def test_recent_excludes_deleted_protocol(client):
+    client.post("/api/protocols/dna_extraction/load")
+    client.post("/api/protocols/pcr_setup/load")
+    assert client.delete("/api/protocols/pcr_setup").status_code == 200
+    recent = _recent(client)
+    assert [p["id"] for p in recent] == ["dna_extraction"]
+
+
+def test_demo_reset_clears_recency(client):
+    client.post("/api/protocols/dna_extraction/load")
+    assert _recent(client)[0]["last_used_at"] is not None
+    assert client.post("/api/demo/reset").status_code == 200
+    # Back to cold-start fallback: timestamps cleared.
+    assert all(p["last_used_at"] is None for p in _recent(client))

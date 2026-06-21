@@ -236,6 +236,13 @@ async def list_protocols() -> dict[str, Any]:
     return {"protocols": state.protocol_catalog()}
 
 
+@app.get("/api/protocols/recent")
+async def list_recent_protocols() -> dict[str, Any]:
+    """The 3 most-recently-used protocols for the dashboard (newest first).
+    Declared before the ``/{protocol_id}`` routes so the static path wins."""
+    return {"recent": state.recent_protocols_view()}
+
+
 @app.post("/api/protocols/{protocol_id}/load")
 async def load_protocol_by_id(protocol_id: str) -> dict[str, Any]:
     """Deterministic catalog-card load: never touches the router LLM."""

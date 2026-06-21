@@ -112,6 +112,10 @@ def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
+# Dashboard "Recently Used Protocols" surfaces at most this many cards.
+RECENT_LIMIT = 3
+
+
 class ProtocolParseError(ValueError):
     """Raised when an uploaded/loaded protocol document is malformed."""
 
@@ -217,6 +221,11 @@ class SessionState:
         self.active_protocol: Optional[Protocol] = None
         self.current_step_index: int = -1
         self.protocol_complete: bool = False
+        # Recently-used protocols for the dashboard. Maps protocol id -> last-used
+        # ISO timestamp, insertion-ordered oldest->newest. In-memory like the
+        # cursor; insertion order (not the seconds-resolution timestamp) is the
+        # authoritative sort, so same-second loads still order correctly.
+        self.recent_protocols: dict[str, str] = {}
         # Indices of steps the user skipped (advanced past without confirming).
         # In-memory like the cursor; surfaced on step_change so the tracker can
         # render them yellow instead of green.
@@ -291,6 +300,31 @@ class SessionState:
                 }
             )
         return catalog
+
+    def mark_protocol_used(self, protocol_id: str) -> None:
+        """Record a successful protocol load for the dashboard's recent list.
+        Pop-then-reinsert moves the id to the newest position."""
+        self.recent_protocols.pop(protocol_id, None)
+        self.recent_protocols[protocol_id] = utc_now_iso()
+
+    def recent_protocols_view(self, limit: int = RECENT_LIMIT) -> list[dict[str, Any]]:
+        """The N most-recently-used protocols (newest first) for the dashboard,
+        each catalog entry tagged with ``last_used_at``. Deleted protocols are
+        dropped. Cold start (nothing used yet) falls back to the first ``limit``
+        catalog entries with ``last_used_at=None`` so the panel is never blank."""
+        by_id = {p["id"]: p for p in self.protocol_catalog()}
+        if not self.recent_protocols:
+            cold = list(by_id.values())[:limit]
+            return [{**p, "last_used_at": None} for p in cold]
+        recent: list[dict[str, Any]] = []
+        for pid in reversed(self.recent_protocols):  # newest first
+            meta = by_id.get(pid)
+            if meta is None:
+                continue  # protocol was deleted after use
+            recent.append({**meta, "last_used_at": self.recent_protocols[pid]})
+            if len(recent) >= limit:
+                break
+        return recent
 
     def inventory_view(self) -> list[dict[str, Any]]:
         """Read-only view of inventory for ``GET /api/inventory``."""
@@ -378,6 +412,7 @@ class SessionState:
         if proto is None:
             return False
         self.protocols.pop(proto.id, None)
+        self.recent_protocols.pop(proto.id, None)  # don't keep a stale recent id
         # Delete the backing file. Convention is "<id>.yaml"; fall back to matching
         # by loaded id so a filename that differs from the id is still removed.
         proto_dir = self.data_dir / "protocols"
@@ -596,6 +631,7 @@ class SessionState:
         self.current_step_index = -1
         self.protocol_complete = False
         self.skipped_steps.clear()
+        self.recent_protocols.clear()
         self.clear_timers()
         self._timer_seq = 0
 

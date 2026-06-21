@@ -60,6 +60,9 @@
   async function fetchProtocols() {
     return (await getJSON("/api/protocols")).protocols || [];
   }
+  async function fetchRecent() {
+    return (await getJSON("/api/protocols/recent")).recent || [];
+  }
   async function fetchInventory() {
     return (await getJSON("/api/inventory")).items || [];
   }
@@ -122,6 +125,10 @@
 
   async function refreshProtocols() {
     if ($("protocol-cards")) renderProtocolCards(await fetchProtocols());
+  }
+
+  async function refreshRecent() {
+    if ($("recent-protocols")) renderRecentProtocols(await fetchRecent());
   }
 
   function setImportResult(message, tone) {
@@ -695,6 +702,36 @@
           alert("Could not remove protocol: " + e.message);
         }
       });
+    });
+  }
+
+  // Dashboard "Recently Used Protocols": the 3 most recent, slimmed to just
+  // time/name/description. The whole card loads the protocol (opens the Guide);
+  // full detail lives on the protocols page. Cold-start entries have no
+  // last_used_at, so the time slot reads "Not used yet".
+  function renderRecentProtocols(recent) {
+    const host = $("recent-protocols");
+    if (!host) return;
+    if (!recent.length) {
+      host.innerHTML = `<p class="text-on-surface-variant text-sm col-span-3">No protocols available.</p>`;
+      return;
+    }
+    host.innerHTML = recent
+      .map((p) => {
+        const when = p.last_used_at ? fmtTime(p.last_used_at) : "Not used yet";
+        return `<button type="button" class="recent-card bg-surface-container-low rounded-xl p-5 flex flex-col text-left w-full border border-outline-variant hover:border-primary transition-colors active:scale-[0.99] cursor-pointer" data-protocol-id="${escapeHtml(
+          p.id
+        )}" title="Load ${escapeHtml(p.name)}">
+  <div class="flex items-center gap-2 text-on-surface-variant text-xs mb-3">
+    <span class="material-symbols-outlined text-sm">schedule</span><span>${escapeHtml(when)}</span>
+  </div>
+  <h3 class="font-headline-md text-headline-md mb-2">${escapeHtml(p.name)}</h3>
+  <p class="text-on-surface-variant text-sm flex-1">${escapeHtml(p.description || "")}</p>
+</button>`;
+      })
+      .join("");
+    host.querySelectorAll(".recent-card").forEach((btn) => {
+      btn.addEventListener("click", () => loadProtocol(btn.dataset.protocolId));
     });
   }
 
@@ -1509,8 +1546,11 @@
         // A fresh protocol load pops the prep modal; a plain step advance does
         // not (the prep table is run-level, not per-step). If the modal is
         // already open, keep its availability numbers fresh.
-        if (p.loaded) openPrepModal(p.protocol_name);
-        else if (prepModalOpen()) handlePrepCompute();
+        if (p.loaded) {
+          // A load (incl. voice) changes recency: refresh the dashboard panel.
+          refreshRecent();
+          openPrepModal(p.protocol_name);
+        } else if (prepModalOpen()) handlePrepCompute();
         return;
       case "log_entry":
         return applyLogEntry(p);
@@ -1521,6 +1561,7 @@
       case "timer_removed":
         return onTimerRemoved(p.timer_id);
       case "protocol_imported":
+        refreshRecent(); // keeps the cold-start fallback list current
         return refreshProtocols();
       case "notebook_list":
         renderNotebooks(p);
@@ -1647,6 +1688,9 @@
     await hydrateSection("protocols", async () => {
       if ($("protocol-cards")) renderProtocolCards(await fetchProtocols());
     });
+    await hydrateSection("recent protocols", async () => {
+      if ($("recent-protocols")) renderRecentProtocols(await fetchRecent());
+    });
     await hydrateSection("inventory", async () => {
       if ($("inventory-rows")) renderInventory(await fetchInventory());
     });
@@ -1700,6 +1744,7 @@
 
   window.LabClient = {
     fetchProtocols,
+    fetchRecent,
     fetchInventory,
     refreshInventory,
     addInventoryItem,
@@ -1716,6 +1761,7 @@
     patchLog,
     ingestCommand,
     renderProtocolCards,
+    renderRecentProtocols,
     renderDashboardNotebooks,
     renderInventory,
     renderLog,
