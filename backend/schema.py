@@ -119,10 +119,14 @@ def log_entry_event(
     category: Optional[str] = None,
     flag: Optional[dict[str, Any]] = None,
     step_log: bool = False,
+    entry_type: str = "manual",
+    edited: bool = False,
 ) -> dict[str, Any]:
     # ``step_log`` marks the auto-note emitted when advancing a step. The
     # frontend renders it into the feed like any log entry but does NOT navigate
     # to the notebook page for it, so "next step" keeps the user on the guide.
+    # ``entry_type``/``edited`` drive the notebook's manual/automatic provenance
+    # badge. (Both arrive via ``**entry`` from the persisted note dict.)
     return command_result(
         "log_entry",
         id=id,
@@ -133,6 +137,8 @@ def log_entry_event(
         category=category,
         flag=flag,
         step_log=step_log,
+        entry_type=entry_type,
+        edited=edited,
     )
 
 
@@ -158,9 +164,17 @@ def log_removed_event(id: int) -> dict[str, Any]:
 
 
 def log_update_event(
-    id: int, text: str, flag: Optional[dict[str, Any]] = None
+    id: int,
+    text: str,
+    flag: Optional[dict[str, Any]] = None,
+    entry_type: str = "manual",
+    edited: bool = True,
 ) -> dict[str, Any]:
-    return command_result("log_update", id=id, text=text, flag=flag)
+    # A log_update always reflects a human edit, so it defaults to manual+edited;
+    # the frontend re-renders the provenance badge from these fields.
+    return command_result(
+        "log_update", id=id, text=text, flag=flag, entry_type=entry_type, edited=edited
+    )
 
 
 def ask_result_event(question: str, answer: str) -> dict[str, Any]:

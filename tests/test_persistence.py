@@ -1,6 +1,9 @@
 """Persistence checks — the log survives a fresh SessionState (i.e. a restart)."""
 
-from backend.handlers import handle_command
+import sqlite3
+
+from backend.db import NoteStore
+from backend.handlers import edit_log_entry, handle_command
 from backend.schema import Command
 from backend.state import SessionState
 
@@ -105,3 +108,45 @@ def test_correct_log_persists_update(tmp_path):
     assert len(s2.log) == 1
     assert s2.log[0]["text"] == "corrected note"
     assert s2.log[0]["sample_id"] == "A"
+
+
+def test_edit_log_by_id_persists_retag(tmp_path):
+    db = str(tmp_path / "lab.db")
+
+    s1 = SessionState(db_path=db)
+    s1.load_files()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), s1)
+    handle_command(Command(intent="next_step"), s1)  # automatic "Completed step 1" note
+    auto_id = s1.log[-1]["id"]
+    assert s1.log[-1]["entry_type"] == "automatic"
+
+    edit_log_entry(s1, auto_id, "Completed step 1 (amended)")
+
+    s2 = SessionState(db_path=db)
+    s2.load_files()
+    edited = next(e for e in s2.log if e["id"] == auto_id)
+    assert edited["text"] == "Completed step 1 (amended)"
+    assert edited["entry_type"] == "manual"
+    assert edited["edited"] is True
+
+
+def test_migration_backfills_entry_type_on_old_db(tmp_path):
+    # An older DB predates entry_type/edited: notes are back-filled by text shape.
+    db = str(tmp_path / "old.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE notes (id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT NOT NULL, "
+        "timestamp TEXT NOT NULL, sample_id TEXT, step_ref INTEGER)"
+    )
+    conn.execute("INSERT INTO notes (text, timestamp) VALUES ('Completed step 1: Add buffer', '2026-01-01T00:00:00Z')")
+    conn.execute("INSERT INTO notes (text, timestamp) VALUES ('Skipped step 2: Incubate', '2026-01-01T00:00:01Z')")
+    conn.execute("INSERT INTO notes (text, timestamp) VALUES ('cells looked healthy', '2026-01-01T00:00:02Z')")
+    conn.commit()
+    conn.close()
+
+    store = NoteStore(db)  # __init__ runs _migrate()
+    notes = {n["text"]: n for n in store.all_notes()}
+    assert notes["Completed step 1: Add buffer"]["entry_type"] == "automatic"
+    assert notes["Skipped step 2: Incubate"]["entry_type"] == "automatic"
+    assert notes["cells looked healthy"]["entry_type"] == "manual"
+    assert notes["Completed step 1: Add buffer"]["edited"] is False

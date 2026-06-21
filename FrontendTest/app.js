@@ -775,14 +775,57 @@
     // list in sync without disturbing the feed.
     if ($("notebook-list")) fetchNotebooks().then(renderNotebooks).catch(() => {});
   }
+  // New-notebook modal. Mirrors the "Manual Entry" log modal (openLogModal /
+  // submitLogForm) so both share the same look, backdrop-close, and inline
+  // validation instead of a bare browser prompt dialog.
+  function openNotebookModal() {
+    const m = $("notebook-modal");
+    if (!m) return;
+    const res = $("notebook-result");
+    if (res) res.textContent = "";
+    const name = $("notebook-name");
+    if (name) name.value = "";
+    m.classList.remove("hidden");
+    if (name) name.focus();
+  }
+  function closeNotebookModal() {
+    const m = $("notebook-modal");
+    if (m) m.classList.add("hidden");
+  }
+  async function submitNotebookForm(e) {
+    if (e) e.preventDefault();
+    const nameEl = $("notebook-name");
+    const result = $("notebook-result");
+    const name = ((nameEl && nameEl.value) || "").trim();
+    if (!name) {
+      if (result) result.textContent = "Enter a name for your notebook.";
+      if (nameEl) nameEl.focus();
+      return;
+    }
+    if (result) result.textContent = "Creating...";
+    try {
+      await createNotebook(name);
+      if (nameEl) nameEl.value = "";
+      if (result) result.textContent = "";
+      closeNotebookModal();
+    } catch (err) {
+      if (result) result.textContent = "Could not create: " + err.message;
+    }
+  }
   function wireNotebookNew() {
     const btn = $("notebook-new");
     if (!btn || btn.dataset.wired) return;
     btn.dataset.wired = "1";
-    btn.addEventListener("click", () => {
-      const name = window.prompt("Name your new notebook:");
-      if (name && name.trim()) createNotebook(name.trim());
-    });
+    btn.addEventListener("click", openNotebookModal);
+    const cancel = $("notebook-cancel");
+    if (cancel) cancel.addEventListener("click", closeNotebookModal);
+    const form = $("notebook-form");
+    if (form) form.addEventListener("submit", submitNotebookForm);
+    const modal = $("notebook-modal");
+    if (modal)
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) closeNotebookModal();
+      });
   }
 
   // The guide page's notebook <select> picks the active notebook (where step

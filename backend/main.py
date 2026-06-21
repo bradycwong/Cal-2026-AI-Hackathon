@@ -31,6 +31,7 @@ from .schema import (
     Command,
     error_event,
     log_entry_event,
+    log_update_event,
     notebook_list_event,
     protocol_imported_event,
     reset_event,
@@ -39,7 +40,7 @@ from .schema import (
     transcript_update_event,
     voice_state_event,
 )
-from .handlers import advance_step, handle_command
+from .handlers import advance_step, edit_log_entry, handle_command
 from .instrumentation import chain_span, setup_tracing
 from .state import ProtocolParseError, SessionState
 from .voice_control import VoiceControl, classify_control
@@ -251,22 +252,16 @@ async def import_protocol_endpoint(body: ProtocolImportIn) -> dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
-def _demo_mode_enabled() -> bool:
-    return os.getenv("LAB_DEMO_MODE", "").strip().lower() in {"1", "true", "yes", "on"}
-
-
 @app.post("/api/demo/reset")
 async def demo_reset() -> dict[str, Any]:
-    """Pre-demo reset: clears stage state for every connected client. Notes are
-    wiped only under LAB_DEMO_MODE; protocol/inventory data is never deleted."""
-    notes_cleared = _demo_mode_enabled()
-    state.reset()
-    if notes_cleared:
-        state.clear_log()
+    """Full demo reset: returns everything to the original (seed) baseline —
+    clears run state, wipes notes + every created notebook, and restores the
+    inventory CSV and protocol library. Always wipes (no LAB_DEMO_MODE gate)."""
+    state.restore_factory_state()
     vs = voice.set_muted(False)
-    event = reset_event(notes_cleared)
+    event = reset_event(notes_cleared=True)
     await manager.broadcast([event, voice_state_event(vs.muted, vs.label)])
-    return {"ok": True, "notes_cleared": notes_cleared, "events": [event]}
+    return {"ok": True, "notes_cleared": True, "events": [event]}
 
 
 @app.get("/api/inventory")
@@ -366,6 +361,26 @@ async def add_log(body: LogEntryIn) -> dict[str, Any]:
     flag = check_reproducibility(step.parameters, body.text) if step else None
     entry = state.append_log(body.text, body.sample_id, body.category, flag)
     await manager.broadcast([log_entry_event(**entry)])
+    return {"ok": True, "entry": entry}
+
+
+class LogEditIn(BaseModel):
+    text: str
+
+
+@app.patch("/api/log/{log_id}")
+async def edit_log(log_id: int, body: LogEditIn) -> dict[str, Any]:
+    """Edit a notebook entry by id (the per-row edit button). Re-tags the entry
+    manual + edited and recomputes the reproducibility flag; 404 if no such id."""
+    entry = edit_log_entry(state, log_id, body.text)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="no such log entry")
+    await manager.broadcast([
+        log_update_event(
+            int(entry["id"]), str(entry["text"]), entry.get("flag"),
+            entry_type=entry.get("entry_type", "manual"), edited=bool(entry.get("edited")),
+        )
+    ])
     return {"ok": True, "entry": entry}
 
 

@@ -59,9 +59,6 @@
 <span class="material-symbols-outlined text-primary">history</span>
 <span class="font-bold text-on-surface">Activity Stream</span>
 </div>
-<div class="text-xs font-data-label text-outline uppercase tracking-wider">
-                            Live Sync: <span class="text-secondary">Active</span>
-</div>
 </div>
 <div id="log-rows" class="flex-1 overflow-y-auto custom-scrollbar p-0"><div class="p-12 text-center text-on-surface-variant text-sm">Loading log…</div></div>
 </div>
@@ -144,6 +141,19 @@
 <div class="flex justify-end gap-2">
 <button id="log-cancel" type="button" class="px-4 py-2 rounded-lg border border-outline-variant text-on-surface hover:bg-surface-variant">Cancel</button>
 <button id="log-submit" type="submit" class="px-4 py-2 rounded-lg bg-primary text-on-primary font-bold hover:bg-primary/90">Add entry</button>
+</div>
+</form>
+</div>
+<div id="notebook-modal" class="hidden fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4">
+<form id="notebook-form" class="bg-surface-container-high border border-outline-variant rounded-xl p-6 w-full max-w-md flex flex-col gap-4">
+<h3 class="font-headline-md text-headline-md text-on-surface">New notebook</h3>
+<label for="notebook-name" class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Notebook name</label>
+<input id="notebook-name" type="text" required placeholder="e.g. DNA Extraction — June 21" class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface outline-none focus:border-primary"/>
+<p class="text-xs text-on-surface-variant -mt-2">Give this notebook a name you'll recognize later. New entries land in the notebook you have selected.</p>
+<p id="notebook-result" class="text-sm text-on-surface-variant min-h-[1.25rem]" aria-live="polite"></p>
+<div class="flex justify-end gap-2">
+<button id="notebook-cancel" type="button" class="px-4 py-2 rounded-lg border border-outline-variant text-on-surface hover:bg-surface-variant">Cancel</button>
+<button id="notebook-submit" type="submit" class="px-4 py-2 rounded-lg bg-primary text-on-primary font-bold hover:bg-primary/90">Create notebook</button>
 </div>
 </form>
 </div>

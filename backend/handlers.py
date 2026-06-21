@@ -9,7 +9,7 @@ This is also where Command field names are translated to persistence field names
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from . import router
 from .inventory import find_inventory_match
@@ -119,7 +119,8 @@ def _handle_next_step(
                 state.skipped_steps.add(state.current_step_index)
                 verb = "Skipped"
             entry = state.append_log(
-                f"{verb} step {leaving.id}: {leaving.text}", None, category, None
+                f"{verb} step {leaving.id}: {leaving.text}", None, category, None,
+                entry_type="automatic",
             )
             events.append(log_entry_event(**entry, step_log=True))
         state.protocol_complete = True
@@ -140,7 +141,8 @@ def _handle_next_step(
             state.skipped_steps.add(state.current_step_index)
             verb = "Skipped"
         entry = state.append_log(
-            f"{verb} step {leaving.id}: {leaving.text}", None, category, None
+            f"{verb} step {leaving.id}: {leaving.text}", None, category, None,
+            entry_type="automatic",
         )
         # step_log=True so the frontend logs it without leaving the guide page.
         events.append(log_entry_event(**entry, step_log=True))
@@ -223,7 +225,36 @@ def _handle_correct_log(cmd: Command, state: SessionState) -> list[dict[str, Any
     entry = state.update_last_log(cmd.log_text, flag)
     if entry is None:
         return [clarify_event("There's nothing to correct.")]
-    return [log_update_event(int(entry["id"]), str(entry["text"]), entry.get("flag"))]
+    return [_log_update_for(entry)]
+
+
+def _log_update_for(entry: dict[str, Any]) -> dict[str, Any]:
+    """Build a log_update event from an edited entry (carries the new tag)."""
+    return log_update_event(
+        int(entry["id"]),
+        str(entry["text"]),
+        entry.get("flag"),
+        entry_type=entry.get("entry_type", "manual"),
+        edited=bool(entry.get("edited")),
+    )
+
+
+def edit_log_entry(
+    state: SessionState, log_id: int, text: str
+) -> Optional[dict[str, Any]]:
+    """Edit any notebook entry by id (the notebook's per-row edit button).
+
+    Mirrors ``_handle_correct_log`` but targets an arbitrary id: recompute the
+    reproducibility flag against the step the note was ORIGINALLY logged at, then
+    persist via ``update_log_by_id`` (which re-tags it manual + edited). Returns
+    the updated entry, or ``None`` if no entry with that id is in the active log.
+    """
+    entry = next((e for e in state.log if int(e["id"]) == int(log_id)), None)
+    if entry is None:
+        return None
+    params = _step_params_for_ref(state, entry.get("step_ref"))
+    flag = check_reproducibility(params, text)
+    return state.update_log_by_id(log_id, text, flag)
 
 
 def _handle_start_timer(cmd: Command, state: SessionState) -> list[dict[str, Any]]:

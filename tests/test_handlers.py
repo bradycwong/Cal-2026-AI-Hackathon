@@ -431,7 +431,11 @@ def test_correct_log_updates_last_entry():
     events = handle_command(Command(intent="correct_log", log_text="corrected"), state)
 
     assert state.log[-1]["text"] == "corrected"
-    assert events[0]["payload"] == {"kind": "log_update", "id": entry_id, "text": "corrected", "flag": None}
+    # A human correction re-tags the entry manual + edited.
+    assert events[0]["payload"] == {
+        "kind": "log_update", "id": entry_id, "text": "corrected", "flag": None,
+        "entry_type": "manual", "edited": True,
+    }
 
 
 def test_correct_log_without_replacement_clarifies():
@@ -451,6 +455,47 @@ def test_correct_log_on_empty_log_clarifies():
 
     assert events[0]["payload"]["kind"] == "clarify"
     assert "nothing to correct" in events[0]["payload"]["message"].lower()
+
+
+# --- manual/automatic tagging + by-id edit --------------------------------
+
+def test_log_entry_is_tagged_manual():
+    state = fresh_state()
+    events = handle_command(Command(intent="log_entry", log_text="added 200 uL", sample_id=None), state)
+    entry = _kind(events, "log_entry")
+    assert entry["entry_type"] == "manual"
+    assert entry["edited"] is False
+    assert state.log[-1]["entry_type"] == "manual"
+
+
+def test_step_advance_note_is_tagged_automatic():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    events = handle_command(Command(intent="next_step"), state)
+    entry = _kind(events, "log_entry")
+    assert entry["entry_type"] == "automatic"
+    assert entry["edited"] is False
+
+
+def test_edit_log_entry_retags_automatic_note_manual_edited():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    handle_command(Command(intent="next_step"), state)  # automatic "Completed step 1" note
+    auto_id = state.log[-1]["id"]
+    assert state.log[-1]["entry_type"] == "automatic"
+
+    entry = handlers.edit_log_entry(state, auto_id, "Completed step 1 (amended)")
+    assert entry is not None
+    assert entry["text"] == "Completed step 1 (amended)"
+    assert entry["entry_type"] == "manual"
+    assert entry["edited"] is True
+    assert state.log[-1]["text"] == "Completed step 1 (amended)"
+
+
+def test_edit_log_entry_unknown_id_returns_none():
+    state = fresh_state()
+    handle_command(Command(intent="log_entry", log_text="present", sample_id=None), state)
+    assert handlers.edit_log_entry(state, 999, "nope") is None
 
 
 def test_ask_without_question_clarifies():

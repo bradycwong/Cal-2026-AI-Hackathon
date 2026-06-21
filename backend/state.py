@@ -8,6 +8,7 @@ feed survives refresh/restart. With ``db_path=None`` (tests) it's pure in-memory
 
 from __future__ import annotations
 
+import shutil
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -20,6 +21,9 @@ from .db import _DEFAULT_NOTEBOOK_NAME, NoteStore
 from .inventory import InventoryItem, InventoryStore
 
 DATA_DIR = Path(__file__).parent / "data"
+# Read-only "golden image" of the shipped protocols + inventory. The demo only
+# ever writes to DATA_DIR; the factory reset copies SEED_DIR back over it.
+SEED_DIR = Path(__file__).parent / "seed"
 
 
 @dataclass
@@ -174,11 +178,40 @@ def load_protocol_file(path: Path) -> Protocol:
     return parse_protocol_text(path.read_text(encoding="utf-8"))
 
 
+def restore_seed_files(seed_dir: Path, data_dir: Path) -> None:
+    """Copy the seed baseline back over the live data dir (demo factory reset).
+
+    Protocols and inventory are file-driven, so restoring them means replacing the
+    working files. Each restore is guarded: a missing/empty seed leaves the live
+    files untouched rather than wiping the library out from under the operator.
+    """
+    seed_protocols = seed_dir / "protocols"
+    seed_yaml = sorted(seed_protocols.glob("*.yaml")) if seed_protocols.exists() else []
+    if seed_yaml:
+        proto_dst = data_dir / "protocols"
+        proto_dst.mkdir(parents=True, exist_ok=True)
+        for stale in proto_dst.glob("*.yaml"):
+            stale.unlink()
+        for src in seed_yaml:
+            shutil.copy(src, proto_dst / src.name)
+
+    seed_inventory = seed_dir / "inventory.csv"
+    if seed_inventory.exists():
+        data_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy(seed_inventory, data_dir / "inventory.csv")
+
+
 class SessionState:
     """Singleton-per-session state. One protocol loaded at a time (v1)."""
 
-    def __init__(self, data_dir: Path = DATA_DIR, db_path: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        data_dir: Path = DATA_DIR,
+        db_path: Optional[str] = None,
+        seed_dir: Path = SEED_DIR,
+    ) -> None:
         self.data_dir = data_dir
+        self.seed_dir = seed_dir
         self.protocols: dict[str, Protocol] = {}
         self._inventory = InventoryStore(data_dir)
         self.active_protocol: Optional[Protocol] = None
@@ -214,11 +247,16 @@ class SessionState:
         handlers/tests can still iterate ``state.inventory`` directly."""
         return self._inventory.items
 
-    def load_files(self) -> None:
+    def _reload_protocols(self) -> None:
+        """(Re)load the protocol library from ``data/protocols/*.yaml``."""
+        self.protocols.clear()
         proto_dir = self.data_dir / "protocols"
         for path in sorted(proto_dir.glob("*.yaml")):
             proto = load_protocol_file(path)
             self.protocols[proto.id] = proto
+
+    def load_files(self) -> None:
+        self._reload_protocols()
         self._inventory.load()
         if self.notes is not None:
             self.active_notebook_id = int(self.notes.get_active_notebook_id())
@@ -446,14 +484,18 @@ class SessionState:
         sample_id: Optional[str],
         category: Optional[str] = None,
         flag: Optional[dict[str, Any]] = None,
+        entry_type: str = "manual",
     ) -> dict[str, Any]:
+        # ``entry_type`` is caller-driven: step-advance notes pass "automatic";
+        # every other writer (manual log command, /api/log) keeps the "manual"
+        # default. New entries are never ``edited``.
         step = self.current_step()
         timestamp = utc_now_iso()
         step_ref = step.id if step else None
         if self.notes is not None:
             entry = self.notes.add_note(
                 text, timestamp, sample_id, step_ref, category, flag,
-                notebook_id=self.active_notebook_id,
+                notebook_id=self.active_notebook_id, entry_type=entry_type, edited=False,
             )
             self._log_seq = entry["id"]
         else:
@@ -466,6 +508,8 @@ class SessionState:
                 "step_ref": step_ref,
                 "category": category,
                 "flag": flag,
+                "entry_type": entry_type,
+                "edited": False,
             }
         self.log.append(entry)
         return entry
@@ -483,9 +527,25 @@ class SessionState:
     ) -> Optional[dict[str, Any]]:
         if not self.log:
             return None
-        entry = self.log[-1]
+        return self._apply_log_edit(self.log[-1], text, flag)
+
+    def update_log_by_id(
+        self, id: int, text: str, flag: Optional[dict[str, Any]] = None
+    ) -> Optional[dict[str, Any]]:
+        """Edit any entry in the active notebook by id (None if absent)."""
+        entry = next((e for e in self.log if int(e["id"]) == int(id)), None)
+        if entry is None:
+            return None
+        return self._apply_log_edit(entry, text, flag)
+
+    def _apply_log_edit(
+        self, entry: dict[str, Any], text: str, flag: Optional[dict[str, Any]]
+    ) -> dict[str, Any]:
+        # A human edit re-tags the entry manual + edited (mirrors db.update_text).
         entry["text"] = text
         entry["flag"] = flag
+        entry["entry_type"] = "manual"
+        entry["edited"] = True
         if self.notes is not None:
             self.notes.update_text(int(entry["id"]), text, flag)
         return entry
@@ -550,3 +610,28 @@ class SessionState:
             for notes in self._notebook_notes.values():
                 notes.clear()
             self.log = self._notebook_notes[self.active_notebook_id]
+
+    def restore_factory_state(self) -> None:
+        """Full demo reset: run state, notes + notebooks, inventory, and the
+        protocol library are all returned to the original (seed) baseline.
+
+        Unlike ``reset()``/``clear_log()`` (which only touch transient state),
+        this restores the file-driven stores from ``seed_dir`` and drops every
+        created notebook back to the single default."""
+        self.reset()
+        restore_seed_files(self.seed_dir, self.data_dir)
+        self._reload_protocols()
+        self._inventory.reload()
+        self._log_seq = 0
+        if self.notes is not None:
+            self.notes.factory_reset()
+            self.active_notebook_id = int(self.notes.get_active_notebook_id())
+            self.log = self.notes.all_notes(self.active_notebook_id)
+        else:
+            # In-memory (no-db) path — mirror the notebook setup in __init__.
+            self._notebooks = []
+            self._notebook_notes = {}
+            self._notebook_seq = 0
+            default = self._create_notebook_inmem(_DEFAULT_NOTEBOOK_NAME)
+            self.active_notebook_id = default["id"]
+            self.log = self._notebook_notes[default["id"]]

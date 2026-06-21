@@ -24,6 +24,7 @@ import re
 from typing import Optional
 
 from .schema import Command
+from .instrumentation import llm_span
 
 LAB_MODEL = os.getenv("LAB_MODEL", "claude-haiku-4-5")
 ROUTER_MODE = os.getenv("ROUTER_MODE", "auto").lower()
@@ -435,22 +436,30 @@ def answer_question(question: str, protocol) -> str:
         import anthropic
 
         client = anthropic.Anthropic()
-        resp = client.messages.create(
-            model=LAB_MODEL,
-            max_tokens=160,
-            system=(
-                "Answer ONLY from the protocol steps below in 1-2 sentences. "
-                "If the answer is not in the steps, say you do not see it.\n\n"
-                f"{_step_context(protocol)}"
-            ),
-            messages=[{"role": "user", "content": clean_question}],
+        system_prompt = (
+            "Answer ONLY from the protocol steps below in 1-2 sentences. "
+            "If the answer is not in the steps, say you do not see it.\n\n"
+            f"{_step_context(protocol)}"
         )
-        parts: list[str] = []
-        for block in getattr(resp, "content", []):
-            text = getattr(block, "text", None)
-            if text:
-                parts.append(text)
-        answer = normalize_ascii(" ".join(parts))
+        messages = [{"role": "user", "content": clean_question}]
+        # Manual LLM span (the auto-instrumentor is unusable on the pinned SDK);
+        # nests under the ingest CHAIN span. No-op when tracing is off.
+        with llm_span(
+            "answer_question", model=LAB_MODEL, system=system_prompt, user_messages=messages
+        ) as span:
+            resp = client.messages.create(
+                model=LAB_MODEL,
+                max_tokens=160,
+                system=system_prompt,
+                messages=messages,
+            )
+            parts: list[str] = []
+            for block in getattr(resp, "content", []):
+                text = getattr(block, "text", None)
+                if text:
+                    parts.append(text)
+            answer = normalize_ascii(" ".join(parts))
+            span.record_response(answer, usage=getattr(resp, "usage", None))
         return answer or _fallback_answer_question(clean_question, protocol)
     except Exception:
         return _fallback_answer_question(clean_question, protocol)

@@ -162,6 +162,16 @@ class InventoryStore:
             for item in self.items:
                 item.id = self._next_id()
 
+    def reload(self) -> None:
+        """Re-read items from the (restored) CSV, restarting ids from 1.
+
+        Used by the demo factory reset after the baseline CSV is copied back over
+        ``inventory.csv``; replaces the live list so edits/adds/deletes are undone.
+        """
+        self.items = []
+        self._seq = 0
+        self.load()
+
     def _index_by_id(self, item_id: int) -> int:
         for i, item in enumerate(self.items):
             if item.id == item_id:

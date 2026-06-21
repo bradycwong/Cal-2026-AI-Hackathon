@@ -18,11 +18,13 @@ from typing import Any, Optional
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS notes (
-    id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    text      TEXT    NOT NULL,
-    timestamp TEXT    NOT NULL,
-    sample_id TEXT,
-    step_ref  INTEGER
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    text       TEXT    NOT NULL,
+    timestamp  TEXT    NOT NULL,
+    sample_id  TEXT,
+    step_ref   INTEGER,
+    entry_type TEXT,
+    edited     INTEGER
 );
 CREATE TABLE IF NOT EXISTS notebooks (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,6 +73,20 @@ class NoteStore:
             self._conn.execute("ALTER TABLE notes ADD COLUMN flag TEXT")
         if "notebook_id" not in cols:
             self._conn.execute("ALTER TABLE notes ADD COLUMN notebook_id INTEGER")
+        if "entry_type" not in cols:
+            self._conn.execute("ALTER TABLE notes ADD COLUMN entry_type TEXT")
+            # Back-fill pre-existing rows by text shape: the only auto-generated
+            # notes are the step-advance notes ("Completed step N" / "Skipped
+            # step N"); everything else was written by a human.
+            self._conn.execute(
+                "UPDATE notes SET entry_type = CASE "
+                "WHEN text LIKE 'Completed step%' OR text LIKE 'Skipped step%' "
+                "THEN 'automatic' ELSE 'manual' END "
+                "WHERE entry_type IS NULL"
+            )
+        if "edited" not in cols:
+            self._conn.execute("ALTER TABLE notes ADD COLUMN edited INTEGER")
+            self._conn.execute("UPDATE notes SET edited = 0 WHERE edited IS NULL")
         self._conn.commit()
 
     # --- notebooks ---------------------------------------------------------
@@ -140,12 +156,16 @@ class NoteStore:
         category: Optional[str] = None,
         flag: Optional[dict[str, Any]] = None,
         notebook_id: Optional[int] = None,
+        entry_type: str = "manual",
+        edited: bool = False,
     ) -> dict[str, Any]:
         cur = self._conn.execute(
-            "INSERT INTO notes (text, timestamp, sample_id, step_ref, category, flag, notebook_id) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO notes (text, timestamp, sample_id, step_ref, category, flag, "
+            "notebook_id, entry_type, edited) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (text, timestamp, sample_id, step_ref, category,
-             json.dumps(flag) if flag is not None else None, notebook_id),
+             json.dumps(flag) if flag is not None else None, notebook_id,
+             entry_type, 1 if edited else 0),
         )
         self._conn.commit()
         return {
@@ -156,25 +176,29 @@ class NoteStore:
             "step_ref": step_ref,
             "category": category,
             "flag": flag,
+            "entry_type": entry_type,
+            "edited": edited,
         }
 
     def all_notes(self, notebook_id: Optional[int] = None) -> list[dict[str, Any]]:
         """Notes for one notebook (``notebook_id``), or every note when None."""
         if notebook_id is None:
             rows = self._conn.execute(
-                "SELECT id, text, timestamp, sample_id, step_ref, category, flag "
-                "FROM notes ORDER BY id ASC"
+                "SELECT id, text, timestamp, sample_id, step_ref, category, flag, "
+                "entry_type, edited FROM notes ORDER BY id ASC"
             ).fetchall()
         else:
             rows = self._conn.execute(
-                "SELECT id, text, timestamp, sample_id, step_ref, category, flag "
-                "FROM notes WHERE notebook_id = ? ORDER BY id ASC",
+                "SELECT id, text, timestamp, sample_id, step_ref, category, flag, "
+                "entry_type, edited FROM notes WHERE notebook_id = ? ORDER BY id ASC",
                 (notebook_id,),
             ).fetchall()
         notes = []
         for r in rows:
             note = dict(r)
             note["flag"] = json.loads(note["flag"]) if note["flag"] else None
+            note["entry_type"] = note["entry_type"] or "manual"  # NULL on legacy rows
+            note["edited"] = bool(note["edited"])
             notes.append(note)
         return notes
 
@@ -190,9 +214,28 @@ class NoteStore:
         self._conn.execute("DELETE FROM notes WHERE notebook_id = ?", (notebook_id,))
         self._conn.commit()
 
+    def factory_reset(self) -> None:
+        """Wipe every note + notebook and re-seed the single default notebook
+        (the DB's original state). Restarts ids at 1 for a truly fresh feed."""
+        self._conn.execute("DELETE FROM notes")
+        self._conn.execute("DELETE FROM notebooks")
+        self._conn.execute("DELETE FROM meta WHERE key = 'active_notebook_id'")
+        # sqlite_sequence only exists once an AUTOINCREMENT row has been written;
+        # guard the reset so a never-written DB doesn't raise "no such table".
+        if self._conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'"
+        ).fetchone():
+            self._conn.execute(
+                "DELETE FROM sqlite_sequence WHERE name IN ('notes', 'notebooks')"
+            )
+        self._conn.commit()
+        self._ensure_default_notebook()
+
     def update_text(self, id: int, text: str, flag: Optional[dict[str, Any]] = None) -> None:
+        # This is the human-edit path (voice "correct that" + the notebook edit
+        # button), so the entry becomes manual + edited regardless of its origin.
         self._conn.execute(
-            "UPDATE notes SET text = ?, flag = ? WHERE id = ?",
+            "UPDATE notes SET text = ?, flag = ?, entry_type = 'manual', edited = 1 WHERE id = ?",
             (text, json.dumps(flag) if flag is not None else None, id),
         )
         self._conn.commit()

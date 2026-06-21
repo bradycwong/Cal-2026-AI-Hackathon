@@ -107,6 +107,53 @@ def test_post_log_persists_and_lists(client):
     assert log[-1]["category"] == "Note"
 
 
+def test_post_log_is_tagged_manual(client):
+    r = client.post("/api/log", json={"text": "cells looked healthy"})
+    entry = r.json()["entry"]
+    assert entry["entry_type"] == "manual"
+    assert entry["edited"] is False
+    assert client.get("/api/log").json()["log"][-1]["entry_type"] == "manual"
+
+
+def test_step_note_is_tagged_automatic(client):
+    client.post("/api/protocols/dna_extraction/load")
+    client.post("/api/step/next")
+    last = client.get("/api/log").json()["log"][-1]
+    assert last["entry_type"] == "automatic"
+    assert last["edited"] is False
+
+
+def test_patch_log_edits_and_retags_manual_edited(client):
+    # An automatic step note, edited by id, becomes manual + edited.
+    client.post("/api/protocols/dna_extraction/load")
+    client.post("/api/step/next")
+    entry = client.get("/api/log").json()["log"][-1]
+    assert entry["entry_type"] == "automatic"
+
+    r = client.patch(f"/api/log/{entry['id']}", json={"text": "Completed step 1 (amended)"})
+    assert r.status_code == 200
+    updated = r.json()["entry"]
+    assert updated["text"] == "Completed step 1 (amended)"
+    assert updated["entry_type"] == "manual"
+    assert updated["edited"] is True
+    # GET reflects the edit
+    last = client.get("/api/log").json()["log"][-1]
+    assert last["text"] == "Completed step 1 (amended)"
+    assert last["entry_type"] == "manual"
+    assert last["edited"] is True
+
+
+def test_patch_log_unknown_id_returns_404(client):
+    r = client.patch("/api/log/9999", json={"text": "nope"})
+    assert r.status_code == 404
+
+
+def test_log_snapshot_carries_entry_type(client):
+    client.post("/api/log", json={"text": "note one"})
+    log = client.get("/api/log").json()["log"]
+    assert {"entry_type", "edited"} <= set(log[-1])
+
+
 def test_import_protocol_endpoint(client, monkeypatch):
     monkeypatch.setenv("IMPORT_MODE", "deterministic")
     r = client.post(

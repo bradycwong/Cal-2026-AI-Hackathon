@@ -1,0 +1,32 @@
+protocol:
+  id: dna_extraction
+  name: DNA Extraction
+  version: "1.0"
+  description: "Rapid silica-based genomic DNA extraction."
+  category: Genomics
+  status: READY
+  est_duration_min: 45
+  aliases: ["dna extraction protocol", "dna extraction", "dna"]
+  steps:
+    - id: 1
+      text: "Add 200 µL lysis buffer to sample tube."
+      duration_s: null            # null = manual advance
+      parameters: { volume_ul: 200, reagent: "lysis buffer" }
+    - id: 2
+      text: "Incubate at 65 °C for 10 minutes."
+      duration_s: 600             # auto-timer starts on advance
+      timer_label: incubation
+      parameters: { temp_c: 65 }
+    - id: 3
+      text: "Add 200 µL ethanol and mix by inversion."
+      duration_s: null
+      parameters: { volume_ul: 200, reagent: "ethanol" }
+    - id: 4
+      text: "Centrifuge at 13,000 g for 1 minute."
+      duration_s: 60
+      timer_label: centrifuge
+      parameters: { speed_g: 13000 }
+    - id: 5
+      text: "Elute DNA in 50 µL nuclease-free water."
+      duration_s: null
+      parameters: { volume_ul: 50, reagent: "nuclease-free water" }

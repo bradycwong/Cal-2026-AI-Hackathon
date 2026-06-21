@@ -77,11 +77,37 @@ def test_app_renders_skipped_step_status():
     assert "border-tertiary" in js  # yellow accent for the skipped tracker row
 
 
+def test_app_renders_manual_automatic_tag():
+    # Notebook entries carry a manual/automatic provenance tag, rendered + editable.
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert "entry_type" in js
+    assert "edited" in js
+    assert "entry-manual" in js
+    assert "entry-automatic" in js
+
+
+def test_app_wires_log_entry_editing():
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert "wireLogEditModal" in js
+    assert "patchLog" in js
+    assert "data-edit-id" in js
+    assert '"PATCH"' in js
+    assert "/api/log/" in js
+
+
+def test_notebook_has_edit_modal():
+    html = (FT / "notebook.html").read_text(encoding="utf-8")
+    for token in ('id="log-edit-modal"', 'id="log-edit-form"', 'id="log-edit-text"'):
+        assert token in html, f"notebook.html missing {token}"
+
+
 def test_notebook_css_has_flag_classes():
     css = (FT / "notebook.css").read_text(encoding="utf-8")
     assert ".log-flag" in css
     assert ".log-ok" in css
     assert ".flagged" in css
+    assert ".entry-manual" in css
+    assert ".entry-automatic" in css
 
 
 def test_every_page_has_demo_reset_control():
@@ -179,7 +205,10 @@ def test_dead_controls_removed():
         html = (FT / page).read_text(encoding="utf-8")
         assert ">Support<" not in html, f"{page} still has the dead Support control"
         assert ">Logout<" not in html, f"{page} still has the dead Logout control"
-    assert "Export PDF" not in (FT / "notebook.html").read_text(encoding="utf-8")
+    notebook = (FT / "notebook.html").read_text(encoding="utf-8")
+    assert "Export PDF" not in notebook
+    # The fake "Live Sync: Active" status indicator served no purpose and was removed.
+    assert "Live Sync" not in notebook
 
 
 def test_manual_entry_and_add_item_are_wired():
@@ -192,6 +221,19 @@ def test_manual_entry_and_add_item_are_wired():
     js = (FT / "app.js").read_text(encoding="utf-8")
     assert "wireLogModal" in js
     assert "wireAddItemModal" in js
+
+
+def test_new_notebook_uses_styled_modal_not_prompt():
+    notebook = (FT / "notebook.html").read_text(encoding="utf-8")
+    # The "New" notebook button opens a styled modal mirroring Manual Entry.
+    assert 'id="notebook-modal"' in notebook
+    assert 'id="notebook-form"' in notebook
+    assert 'id="notebook-name"' in notebook
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert "openNotebookModal" in js
+    assert "submitNotebookForm" in js
+    # The bare browser prompt() popup must be gone.
+    assert "window.prompt" not in js
 
 
 def test_notebook_page_allows_scrolling():
