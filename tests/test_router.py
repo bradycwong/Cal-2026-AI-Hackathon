@@ -199,6 +199,12 @@ def test_find_inventory():
     assert "proteinase" in cmd.reagent_name.lower()
 
 
+def test_find_inventory_with_leading_the():
+    cmd = route("where is the proteinase K")
+    assert cmd.intent == "find_inventory"
+    assert cmd.reagent_name == "proteinase K"  # leading "the" stripped, item kept
+
+
 def test_next_step():
     # Imperative advance phrasings still mutate. (The question "What's next?" now
     # routes to `ask` — see test_whats_next_is_a_safe_question.)

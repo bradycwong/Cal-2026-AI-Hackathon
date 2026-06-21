@@ -48,6 +48,18 @@
    colorblind users a non-color cue that this line is the AI. */
 .transcript-ai { color: #AFDCEB; }
 .transcript-ai::before { content: "> "; }
+/* "Thinking" line shown while an AI answer is in flight. JS only adds it after a
+   ~350ms delay, so fast deterministic commands (timer/step nav) never flicker it;
+   only a real LLM `ask` stays pending long enough to reveal it. Muted + italic
+   like an interim line, with the AI ">" marker and an animated ellipsis. */
+.transcript-thinking { color: #8A96B0; font-style: italic; }
+.transcript-thinking::before { content: "> "; }
+.transcript-thinking::after { content: "."; animation: thinking-dots 1.2s steps(1, end) infinite; }
+@keyframes thinking-dots {
+  0%  { content: "."; }
+  33% { content: ".."; }
+  66% { content: "..."; }
+}
 
 /* Single voice mic icon: one glyph, color carries the state. The id+class
    selector outranks the Tailwind text-* utilities the icon would otherwise pick
@@ -164,6 +176,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   #voice-pulse.voice-pulse-on { animation: none; }
+  .transcript-thinking::after { content: "..."; animation: none; }
   #voice-mic,
   #voice-mute,
   #voice-dock > div:not(#live-transcript) { transition: none; }

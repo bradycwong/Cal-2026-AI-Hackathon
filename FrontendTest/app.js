@@ -1518,6 +1518,43 @@
     return false;
   }
 
+  // --- inventory search (voice/typed "where is X") --------------------------
+  // "where is the X" routes to find_inventory and broadcasts an inventory_result
+  // event carrying the resolved canonical name. We drop that name into the
+  // inventory search box so the existing filter collapses the list to that item.
+  const INVENTORY_SEARCH_KEY = "inventory-search-on-load";
+
+  function applyInventorySearch(term) {
+    const box = $("inventory-search");
+    if (!box || !term) return; // not on the inventory page / nothing to search
+    box.value = term;
+    // The inline <script> in inventory.html listens for "input"; dispatching one
+    // reuses its collapse-to-top filter instead of duplicating the logic here.
+    box.dispatchEvent(new Event("input", { bubbles: true }));
+    box.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function flagInventorySearchOnLoad(term) {
+    try {
+      sessionStorage.setItem(INVENTORY_SEARCH_KEY, term);
+    } catch (e) {
+      /* sessionStorage unavailable (private mode); box just won't auto-fill */
+    }
+  }
+
+  function consumeInventorySearchOnLoad() {
+    try {
+      const term = sessionStorage.getItem(INVENTORY_SEARCH_KEY);
+      if (term) {
+        sessionStorage.removeItem(INVENTORY_SEARCH_KEY);
+        return term;
+      }
+    } catch (e) {
+      /* ignore */
+    }
+    return "";
+  }
+
   function prepModalOpen() {
     const modal = $("prep-modal");
     return !!modal && !modal.classList.contains("hidden");
@@ -2189,9 +2226,52 @@
     el.scrollTop = el.scrollHeight;
   }
 
+  // --- "Thinking..." pending indicator --------------------------------------
+  // A submitted command produces no on-screen change until its command_result
+  // returns over the WS. Fast deterministic commands (timer, step nav) resolve
+  // well under our delay; only the `ask` intent makes a real LLM call (~1-2s).
+  // We show a DELAYED "Thinking" line so a slow ask feels responsive while fast
+  // commands never flicker -- no need to detect the intent client-side.
+  //
+  // Hooked at two points because the channels surface their transcript at
+  // different times: the typed/Guide box triggers it in ingestCommand() (the
+  // server batches that channel's transcript echo with the result, so it can't
+  // tell us early), while a spoken utterance is broadcast BEFORE routing, so the
+  // is_final branch below triggers it the moment voice lands.
+  let thinkingTimer = null;
+  let thinkingEl = null;
+
+  function startPending() {
+    clearPending(); // this submission supersedes any previous in-flight one
+    thinkingTimer = setTimeout(() => {
+      thinkingTimer = null;
+      const el = $("live-transcript");
+      if (!el) return;
+      revealTranscript();
+      clearInterim();
+      thinkingEl = document.createElement("div");
+      thinkingEl.className = "transcript-line transcript-thinking";
+      thinkingEl.textContent = "Thinking";
+      el.appendChild(thinkingEl);
+      el.scrollTop = el.scrollHeight;
+    }, 350);
+  }
+
+  function clearPending() {
+    if (thinkingTimer) {
+      clearTimeout(thinkingTimer);
+      thinkingTimer = null;
+    }
+    if (thinkingEl) {
+      thinkingEl.remove();
+      thinkingEl = null;
+    }
+  }
+
   function onTranscript(p) {
     if (p && p.is_final) {
       appendFinalLine(p.text, "user");
+      startPending(); // a finalized utterance == a command is now being processed
       return;
     }
     const el = $("live-transcript");
@@ -2207,6 +2287,7 @@
   }
 
   function clearTranscript() {
+    clearPending();
     clearInterim();
     const el = $("live-transcript");
     if (el) {
@@ -2220,6 +2301,7 @@
   // the Guide's always-on panel (data-persistent) stays visible at its reserved
   // min-height so the layout doesn't jump.
   function clearTranscriptForMute() {
+    clearPending();
     clearInterim();
     const el = $("live-transcript");
     if (!el) return;
@@ -2301,6 +2383,9 @@
   // handle_command -> broadcast over /ws/events), so on-screen buttons and
   // spoken commands behave identically. Events arrive via WS; ignore the body.
   async function ingestCommand(transcript) {
+    // Typed/clicked channel: trigger the pending indicator now -- the server
+    // won't echo this transcript back until the (possibly slow) command finishes.
+    startPending();
     await fetch(API + "/api/ingest", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -2439,6 +2524,14 @@
       case "log_removed":
         return navTo("notebook.html");
       case "inventory_result":
+        // "where is X": land on inventory, then fill the box. When navigating in
+        // from another page, stash the resolved name so hydrate() re-applies it
+        // after rows render. Guard on currentPage so we never leave a stale flag
+        // when already on inventory (the dispatcher fills the box live there).
+        if (currentPage() !== "inventory.html" && p.name) {
+          flagInventorySearchOnLoad(p.name);
+        }
+        return navTo("inventory.html");
       case "inventory_added":
         return navTo("inventory.html");
     }
@@ -2446,6 +2539,7 @@
 
   // --- websocket dispatch ---------------------------------------------------
   function onCommandResult(p) {
+    clearPending(); // a result arrived -> stop/remove any "Thinking" indicator
     maybeNavigate(p);
     switch (p.kind) {
       case "step_change":
@@ -2514,6 +2608,11 @@
         refreshInventory();
         return;
       case "inventory_result":
+        // Same-page: maybeNavigate didn't reload, so fill the box live.
+        // Cross-page: this no-ops ($("inventory-search") is absent on the
+        // originating page); the flag set in maybeNavigate drives the fill after
+        // reload + hydrate.
+        applyInventorySearch(p.name);
         return;
       case "navigate": // navigation handled in maybeNavigate; nothing to render
         return;
@@ -2537,6 +2636,7 @@
       case "timer_update":
         return onTimerUpdate(evt.payload);
       case "error":
+        clearPending();
         return window.LabVoice.onError(evt.payload);
     }
   }
@@ -2626,7 +2726,13 @@
       if ($("recent-protocols")) renderRecentProtocols(await fetchRecent());
     });
     await hydrateSection("inventory", async () => {
-      if ($("inventory-rows")) renderInventory(await fetchInventory());
+      if ($("inventory-rows")) {
+        renderInventory(await fetchInventory());
+        // A cross-page "where is X" stashed the resolved name; apply it now that
+        // the .inventory-row elements exist so the filter can match + collapse.
+        const term = consumeInventorySearchOnLoad();
+        if (term) applyInventorySearch(term);
+      }
     });
     await hydrateSection("log", async () => {
       if ($("log-rows") || $("log-preview")) {

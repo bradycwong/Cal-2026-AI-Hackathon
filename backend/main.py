@@ -29,6 +29,7 @@ from fastapi import (
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from .deepgram_stt import run_deepgram_session, set_custom_keywords
 from .router import ROUTER_MODE, route
@@ -106,6 +107,13 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
+# Serializes the offloaded handle_command below. The threadpool frees the event
+# loop during the blocking `ask` LLM call, but two overlapping ingests could then
+# mutate the shared (non-thread-safe) SessionState from two worker threads. This
+# async lock keeps ingest-vs-ingest serialized WITHOUT re-blocking the loop: the
+# timer loop, other routes, and the WS keep running while it is held.
+ingest_lock = asyncio.Lock()
+
 
 async def ingest(
     transcript: str, *, echo_transcript: bool = True, do_route: bool = True
@@ -143,7 +151,14 @@ async def ingest(
                 span.set_attribute("lab.alias_trigger", text)
             cmd = route(route_text)
             span.set_attribute("lab.intent", str(cmd.intent))
-            events.extend(handle_command(cmd, state))
+            # handle_command stays synchronous + deterministic (the locked spine);
+            # we only change HOW it is invoked. The `ask` intent reaches a blocking
+            # Anthropic call, so run it off the event loop or it stalls EVERY client
+            # (timers, navigation, both WebSockets) for the whole 1-2s Haiku call.
+            # run_in_threadpool -> anyio.to_thread.run_sync copies the contextvars
+            # context, so the manual Arize chain/LLM span nesting is preserved.
+            async with ingest_lock:
+                events.extend(await run_in_threadpool(handle_command, cmd, state))
             span.set_output(cmd.intent)
     await manager.broadcast(events)
     return events
