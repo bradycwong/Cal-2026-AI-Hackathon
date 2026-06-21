@@ -30,7 +30,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .deepgram_stt import run_deepgram_session
+from .deepgram_stt import run_deepgram_session, set_custom_keywords
 from .router import ROUTER_MODE, route
 from .protocol_import import import_protocol
 from .pdf_extract import PdfExtractError, extract_pdf_text, reflow_pdf_text
@@ -229,6 +229,10 @@ async def set_aliases(body: AliasesIn) -> dict[str, Any]:
     copy here on load and on every add/delete, so a spoken/typed trigger expands
     to its mapped built-in phrase before routing."""
     count = aliases.set_all([{"trigger": a.trigger, "phrase": a.phrase} for a in body.aliases])
+    # Mirror the live trigger set into the Deepgram boost list so a user's custom
+    # phrase is heard reliably. Recomputed wholesale here, so deleting a command
+    # (which re-syncs the shrunken list) drops its boost on the next session.
+    set_custom_keywords([a.trigger for a in body.aliases])
     return {"ok": True, "count": count}
 
 
