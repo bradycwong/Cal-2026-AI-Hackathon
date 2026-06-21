@@ -154,7 +154,7 @@
 <form id="log-form" class="bg-surface-container-high border border-outline-variant rounded-xl p-6 w-full max-w-md flex flex-col gap-4">
 <h3 class="font-headline-md text-headline-md text-on-surface">Add log entry</h3>
 <label for="log-text" class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Observation</label>
-<input id="log-text" type="text" required placeholder="What happened? e.g. added 200 uL lysis buffer" class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface outline-none focus:border-primary"/>
+<textarea id="log-text" required placeholder="What happened? e.g. added 200 uL lysis buffer" rows="4" class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface outline-none focus:border-primary resize-y"></textarea>
 <label for="log-protocol" class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Related protocol (optional)</label>
 <select id="log-protocol" class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface outline-none focus:border-primary">
 <option value="">— None —</option>
@@ -171,7 +171,7 @@
 <h3 class="font-headline-md text-headline-md text-on-surface">Edit log entry</h3>
 <input id="log-edit-id" type="hidden"/>
 <label for="log-edit-text" class="text-xs font-bold text-on-surface-variant uppercase tracking-wider">Observation</label>
-<input id="log-edit-text" type="text" required placeholder="What happened?" class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface outline-none focus:border-primary"/>
+<textarea id="log-edit-text" required placeholder="What happened?" rows="4" class="w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface outline-none focus:border-primary resize-y"></textarea>
 <p class="text-xs text-on-surface-variant -mt-2">Editing re-tags this entry as <span class="text-secondary">manual · edited</span>.</p>
 <p id="log-edit-result" class="text-sm text-on-surface-variant min-h-[1.25rem]" aria-live="polite"></p>
 <div class="flex justify-end gap-2">
