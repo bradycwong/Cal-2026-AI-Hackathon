@@ -96,6 +96,104 @@
     return data;
   }
 
+  // --- AI voice output (TTS) ------------------------------------------------
+  // Output-side mirror of the mic: the AI speaks its answers/clarifications and
+  // step instructions aloud. Deepgram Aura when a server key is set
+  // (POST /api/tts), else the browser's built-in speechSynthesis so the demo
+  // still talks with zero keys. This mute is independent of the bottom-right mic
+  // mute, which gates voice *commands* separately.
+  const TTS_MUTED_KEY = "lab.tts.muted";
+  let _ttsAvailable = false;
+  let _ttsMuted = (() => {
+    try {
+      return window.localStorage.getItem(TTS_MUTED_KEY) === "1";
+    } catch (_) {
+      return false;
+    }
+  })();
+  let _ttsAudio = null;
+
+  function setTTSAvailable(v) {
+    _ttsAvailable = !!v;
+  }
+
+  async function fetchTTS(text) {
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text })
+    });
+    if (res.status === 204) return null; // no server key -> browser fallback
+    if (!res.ok) throw new Error("Could not synthesize speech");
+    return res.blob();
+  }
+
+  function browserSpeak(text) {
+    try {
+      if (!("speechSynthesis" in window)) return;
+      window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+    } catch (_) {}
+  }
+
+  function stopSpeaking() {
+    if (_ttsAudio) {
+      try {
+        _ttsAudio.pause();
+      } catch (_) {}
+      _ttsAudio = null;
+    }
+    try {
+      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+    } catch (_) {}
+  }
+
+  async function speak(text) {
+    const msg = (text || "").trim();
+    if (!msg || _ttsMuted) return;
+    stopSpeaking(); // latest message wins
+    if (_ttsAvailable) {
+      try {
+        const blob = await fetchTTS(msg);
+        if (blob) {
+          const audio = new Audio(URL.createObjectURL(blob));
+          _ttsAudio = audio;
+          audio.play().catch(() => browserSpeak(msg));
+          return;
+        }
+      } catch (_) {
+        // fall through to the browser voice
+      }
+    }
+    browserSpeak(msg);
+  }
+
+  function renderTTSMute() {
+    const btn = $("tts-mute");
+    if (!btn) return;
+    btn.setAttribute("aria-pressed", _ttsMuted ? "true" : "false");
+    btn.title = _ttsMuted ? "Unmute AI voice" : "Mute AI voice";
+    const icon = btn.querySelector(".material-symbols-outlined");
+    if (icon) icon.textContent = _ttsMuted ? "volume_off" : "volume_up";
+    const label = btn.querySelector("[data-tts-label]");
+    if (label) label.textContent = _ttsMuted ? "AI Voice Off" : "AI Voice On";
+  }
+
+  function setTTSMuted(m) {
+    _ttsMuted = !!m;
+    try {
+      window.localStorage.setItem(TTS_MUTED_KEY, _ttsMuted ? "1" : "0");
+    } catch (_) {}
+    if (_ttsMuted) stopSpeaking();
+    renderTTSMute();
+  }
+
+  function wireTTSMute() {
+    const btn = $("tts-mute");
+    if (!btn) return;
+    renderTTSMute();
+    btn.addEventListener("click", () => setTTSMuted(!_ttsMuted));
+  }
+
   async function fetchScaleWithPriority(body) {
     const res = await fetch("/api/scale/with-priority", {
       method: "POST",
@@ -2507,6 +2605,7 @@
     switch (p.kind) {
       case "step_change":
         renderStep(p);
+        if (p.current_step) speak(p.current_step.text);
         // A fresh protocol load pops the prep modal; a plain step advance does
         // not (the prep table is run-level, not per-step). If the modal is
         // already open, keep its availability numbers fresh.
@@ -2566,7 +2665,9 @@
         if (p && p.muted) clearTranscriptForMute();
         return window.LabVoice.onVoiceState(p);
       case "clarify":
-        return renderClarify(p.message);
+        renderClarify(p.message);
+        speak(p.message);
+        return;
       case "inventory_added":
         showToast(`"${p.name}" was added to inventory`);
         refreshInventory();
@@ -2585,6 +2686,7 @@
         // line so it's actually visible. maybeNavigate has no ask_result case, so
         // the user stays on the current page.
         appendFinalLine(p.answer, "ai");
+        speak(p.answer);
         return;
       default:
         return;
@@ -2745,7 +2847,11 @@
         renderResumeRun((await fetchState()).step);
       }
     });
+    await hydrateSection("tts", async () => {
+      setTTSAvailable((await fetchState()).tts_available);
+    });
     renderTimers();
+    wireTTSMute();
     wirePrepModal();
     wireImportModal();
     wireEditProtocolModal();
@@ -2774,6 +2880,8 @@
     fetchLog,
     fetchState,
     fetchScale,
+    speak,
+    setTTSMuted,
     renderPrepTable,
     openPrepModal,
     closePrepModal,

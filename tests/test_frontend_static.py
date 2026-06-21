@@ -586,6 +586,17 @@ def test_app_wires_notebook_export():
         assert token in js, f"app.js missing {token}"
 
 
+def test_guide_has_tts_mute_button():
+    html = (FT / "guide.html").read_text(encoding="utf-8")
+    assert 'id="tts-mute"' in html, "guide.html missing tts-mute button"
+
+
+def test_app_wires_tts_output():
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    for token in ("/api/tts", "speak", "lab.tts.muted", "wireTTSMute"):
+        assert token in js, f"app.js missing {token}"
+
+
 def test_app_wires_reagent_prep_voice_control():
     # The reagent prep popup is controllable hands-free: the client dispatches the
     # prep_control command_result and mirrors the gate + sample count to the backend.
