@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -31,7 +31,7 @@ from .schema import (
     voice_state_event,
 )
 from .handlers import handle_command
-from .state import SessionState
+from .state import ProtocolParseError, SessionState
 from .voice_control import VoiceControl, classify_control
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
@@ -40,7 +40,11 @@ FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 # ":memory:" to disable on-disk persistence.
 DB_PATH = os.getenv("LAB_DB_PATH", str(Path(__file__).parent / "data" / "lab.db"))
 
-state = SessionState(db_path=DB_PATH)
+# File-driven protocols + inventory live here. Override with LAB_DATA_DIR (e.g. a
+# scratch copy for tests) so uploads/adds don't mutate the shipped data.
+DATA_DIR = Path(os.getenv("LAB_DATA_DIR", str(Path(__file__).parent / "data")))
+
+state = SessionState(data_dir=DATA_DIR, db_path=DB_PATH)
 
 # Process-wide mute gate shared by every input channel: the typed box, the
 # spoken "mute"/"unmute", and the Mute button all toggle this one state.
@@ -186,6 +190,53 @@ async def get_state() -> dict[str, Any]:
             for t in state.timers
             if not t.expired
         ],
+    }
+
+
+class InventoryItemIn(BaseModel):
+    name: str
+    location: str = ""
+    quantity_approx: str = ""
+    notes: str = ""
+
+
+@app.post("/api/inventory", status_code=201)
+async def add_inventory(body: InventoryItemIn) -> dict[str, Any]:
+    """Manual add-item entry: persist a reagent to the file-driven inventory."""
+    try:
+        item = state.add_inventory_item(
+            body.name, body.location, body.quantity_approx, body.notes
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "ok": True,
+        "item": {
+            "name": item.name,
+            "location": item.location,
+            "quantity_approx": item.quantity_approx,
+            "notes": item.notes,
+        },
+        "inventory_count": len(state.inventory),
+    }
+
+
+@app.post("/api/protocols", status_code=201)
+async def upload_protocol(file: UploadFile = File(...)) -> dict[str, Any]:
+    """Standard file upload: validate a protocol YAML and register it for loading."""
+    raw = await file.read()
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=422, detail="file must be UTF-8 text") from exc
+    try:
+        proto = state.add_protocol_from_text(text)
+    except ProtocolParseError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "ok": True,
+        "protocol": {"id": proto.id, "name": proto.name, "steps": len(proto.steps)},
+        "protocols": list(state.protocols.keys()),
     }
 
 

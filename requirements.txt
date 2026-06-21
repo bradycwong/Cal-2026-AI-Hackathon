@@ -6,6 +6,7 @@ pyyaml==6.0.3              # 6.0.3 adds cp314 wheels (6.0.2 has none for Python 
 anthropic==0.40.0          # router LLM (structured outputs via messages.parse)
 websockets==14.1           # server-side Deepgram live STT proxy client
 python-dotenv==1.2.2        # load server-side .env keys during local runs
+python-multipart==0.0.20    # parse multipart/form-data for protocol file upload
 
 # dev / test
 pytest==8.3.4
