@@ -96,6 +96,28 @@
     return data;
   }
 
+  async function fetchScaleWithPriority(body) {
+    const res = await fetch("/api/scale/with-priority", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Could not compute deductions");
+    return data;
+  }
+
+  async function consumeReagents(deductions) {
+    const res = await fetch("/api/inventory/consume", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deductions })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Could not consume reagents");
+    return data;
+  }
+
   async function loadProtocol(id) {
     await fetch(`${API}/api/protocols/${encodeURIComponent(id)}/load`, {
       method: "POST",
@@ -1215,15 +1237,93 @@
     return row.verdict;
   }
 
+  // ---- Priority ordering state for the prep modal -------------------------
+  // Maps reagent name -> ordered array of {id, name} for the bottles shown.
+  // Rebuilt whenever renderPrepTable is called; mutated by drag-reorder.
+  let _prepPriorityState = {};
+
+  function _getPriorityOrder() {
+    const order = {};
+    for (const [reagent, bottles] of Object.entries(_prepPriorityState)) {
+      const ids = bottles.map((b) => b.id).filter((id) => id != null);
+      if (ids.length > 1) order[reagent] = ids; // only send when user has a real choice
+    }
+    return order;
+  }
+
+  // Wire drag-and-drop reordering on a priority list element.
+  function _wirePriorityDrag(listEl, reagentName) {
+    let dragging = null;
+    listEl.querySelectorAll("[draggable]").forEach((row) => {
+      row.addEventListener("dragstart", (e) => {
+        dragging = row;
+        e.dataTransfer.effectAllowed = "move";
+        row.classList.add("opacity-40");
+      });
+      row.addEventListener("dragend", () => {
+        if (dragging) dragging.classList.remove("opacity-40");
+        dragging = null;
+        listEl.querySelectorAll("[draggable]").forEach((r) => r.classList.remove("bg-surface-container"));
+        // Sync _prepPriorityState from DOM order
+        const ids = [];
+        const names = [];
+        listEl.querySelectorAll("[data-bottle-id]").forEach((r) => {
+          ids.push(Number(r.dataset.bottleId));
+          names.push(r.dataset.bottleName);
+        });
+        _prepPriorityState[reagentName] = ids.map((id, i) => ({ id, name: names[i] }));
+      });
+      row.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        if (!dragging || dragging === row) return;
+        row.classList.add("bg-surface-container");
+        const rect = row.getBoundingClientRect();
+        const mid = rect.top + rect.height / 2;
+        if (e.clientY < mid) listEl.insertBefore(dragging, row);
+        else listEl.insertBefore(dragging, row.nextSibling);
+      });
+      row.addEventListener("dragleave", () => {
+        row.classList.remove("bg-surface-container");
+      });
+      row.addEventListener("drop", (e) => {
+        e.preventDefault();
+        row.classList.remove("bg-surface-container");
+      });
+    });
+  }
+
   function renderPrepTable(data) {
     const mount = $("prep-table");
     if (!mount) return;
     const rows = data.reagents || [];
     if (!rows.length) {
       mount.innerHTML = `<div class="text-on-surface-variant">No scalable reagent volumes found in this protocol.</div>`;
+      _prepPriorityState = {};
       return;
     }
-    mount.innerHTML = `
+
+    // Rebuild priority state from fresh data (preserving any existing user order).
+    const existing = _prepPriorityState;
+    _prepPriorityState = {};
+    for (const row of rows) {
+      const sources = (row.sources || []);
+      if (sources.length === 0) continue;
+      // Map source names to ids via the inventory (names are unique enough for the session).
+      // The backend returns sources in anchor-first order already.
+      const prev = existing[row.reagent];
+      const prevIds = prev ? prev.map((b) => b.id) : [];
+      // Build bottles list: prefer user's previous order if ids match.
+      const bottlesByName = {};
+      sources.forEach((name, i) => {
+        // We don't have ids here yet — the prep table rows only carry names.
+        // Use name as a stable key; real ids come from /api/scale/with-priority.
+        bottlesByName[name] = { id: null, name };
+      });
+      // We'll fill ids lazily when the user hits "Confirm & Deduct".
+      _prepPriorityState[row.reagent] = sources.map((name) => ({ id: null, name }));
+    }
+
+    const tableHtml = `
       <div class="overflow-x-auto">
         <table class="prep-table w-full text-left border-collapse">
           <thead>
@@ -1236,7 +1336,17 @@
             </tr>
           </thead>
           <tbody>
-            ${rows.map((row) => `
+            ${rows.map((row) => {
+              const sources = row.sources || [];
+              const multiBottle = sources.length > 1;
+              const priorityRows = multiBottle ? sources.map((name, i) => `
+                <div draggable="true" data-bottle-id="" data-bottle-name="${escapeHtml(name)}"
+                     class="flex items-center gap-2 px-2 py-1 rounded cursor-grab text-xs text-on-surface border border-outline-variant/40 mb-1 transition-colors">
+                  <span class="material-symbols-outlined text-sm text-on-surface-variant select-none">drag_indicator</span>
+                  <span class="font-mono text-[10px] text-on-surface-variant w-4 shrink-0">${i + 1}</span>
+                  <span class="truncate">${escapeHtml(name)}</span>
+                </div>`).join("") : "";
+              return `
               <tr class="border-b border-outline-variant/60">
                 <td class="py-3 pr-3 text-on-surface font-medium">${escapeHtml(row.reagent)}</td>
                 <td class="py-3 pr-3 font-data-label">${escapeHtml(row.per_sample_ul)} uL</td>
@@ -1245,13 +1355,86 @@
                 <td class="py-3 pr-3">
                   <div class="${prepVerdictClass(row.verdict)} font-bold">${escapeHtml(prepVerdictLabel(row))}</div>
                   <div class="text-xs text-on-surface-variant">${escapeHtml(row.match_name || "No inventory match")}</div>
+                  ${multiBottle ? `
+                  <div class="mt-2">
+                    <div class="text-[10px] uppercase text-on-surface-variant mb-1 tracking-wide">Use order (drag to reorder)</div>
+                    <div class="priority-list" data-reagent="${escapeHtml(row.reagent)}">${priorityRows}</div>
+                  </div>` : ""}
                 </td>
-              </tr>
-            `).join("")}
+              </tr>`;
+            }).join("")}
           </tbody>
         </table>
       </div>
+      <div class="mt-4 pt-4 border-t border-outline-variant flex items-center justify-between gap-3">
+        <p class="text-xs text-on-surface-variant">After the run, deduct used amounts from inventory.</p>
+        <button id="prep-deduct" type="button"
+          class="flex items-center gap-1.5 bg-secondary text-on-secondary px-4 py-2 rounded-lg font-bold text-sm hover:bg-secondary/90 transition-all">
+          <span class="material-symbols-outlined text-base">remove_circle</span>
+          Confirm &amp; Deduct
+        </button>
+      </div>
     `;
+
+    mount.innerHTML = tableHtml;
+
+    // Wire drag-and-drop on each multi-bottle priority list.
+    mount.querySelectorAll(".priority-list").forEach((listEl) => {
+      const reagentName = listEl.dataset.reagent;
+      _wirePriorityDrag(listEl, reagentName);
+    });
+
+    // Wire the deduct button.
+    const deductBtn = $("prep-deduct");
+    if (deductBtn) {
+      deductBtn.addEventListener("click", () => handleDeductReagents(data));
+    }
+  }
+
+  async function handleDeductReagents(prepData) {
+    const deductBtn = $("prep-deduct");
+    if (deductBtn) { deductBtn.disabled = true; deductBtn.innerHTML = '<span class="material-symbols-outlined text-base animate-spin">refresh</span> Computing…'; }
+    try {
+      const samples = Number($("prep-samples")?.value || 1);
+
+      // Collect the current user-defined priority order from the DOM
+      // (ids are already back-filled by _backfillBottleIds).
+      const priorityOrder = _getPriorityOrder();
+
+      // Re-fetch a fresh deduction plan with the final priority order.
+      const plan = await fetchScaleWithPriority({
+        sample_count: samples,
+        overage_percent: 0,
+        priority_order: priorityOrder,
+      });
+
+      const deductions = plan.deductions || [];
+      if (!deductions.length) {
+        alert("No inventory items to deduct from for this run.");
+        return;
+      }
+
+      // Show confirmation summary.
+      const lines = deductions.map(
+        (d) => `• ${d.name}: −${d.deduct_ul} uL  →  ${d.new_amount > 0 ? d.new_amount + " " + d.new_unit + " remaining" : "EMPTY (will be removed)"}`
+      );
+      const ok = confirm(
+        `Deduct reagents from inventory?\n\n${lines.join("\n")}\n\nThis cannot be undone.`
+      );
+      if (!ok) return;
+
+      await consumeReagents(deductions);
+
+      // Refresh prep table to show new amounts.
+      await handlePrepCompute();
+    } catch (err) {
+      alert(`Deduction failed: ${err.message || err}`);
+    } finally {
+      if (deductBtn) {
+        deductBtn.disabled = false;
+        deductBtn.innerHTML = '<span class="material-symbols-outlined text-base">remove_circle</span> Confirm &amp; Deduct';
+      }
+    }
   }
 
   async function handlePrepCompute() {
@@ -1260,15 +1443,41 @@
     const samples = Number($("prep-samples")?.value || 0);
     table.textContent = "Calculating reagent prep...";
     try {
-      // Overage was removed from the UI: scale on the raw sample count only.
-      const data = await fetchScale({
+      // Use the priority endpoint so we get deductions (with item ids) back.
+      const data = await fetchScaleWithPriority({
         sample_count: samples,
-        overage_percent: 0
+        overage_percent: 0,
+        priority_order: _getPriorityOrder(),
       });
       renderPrepTable(data);
+      // Back-fill item ids into the priority-list rows from the deductions plan.
+      _backfillBottleIds(data.deductions || []);
     } catch (err) {
       table.innerHTML = `<div class="text-error">${escapeHtml(err.message || String(err))}</div>`;
     }
+  }
+
+  function _backfillBottleIds(deductions) {
+    // deductions: [{item_id, name, ...}] — gives us the id for each bottle name.
+    const nameToId = {};
+    for (const d of deductions) nameToId[d.name] = d.item_id;
+    const mount = $("prep-table");
+    if (!mount) return;
+    mount.querySelectorAll("[data-bottle-name]").forEach((el) => {
+      const name = el.dataset.bottleName;
+      if (name && nameToId[name] != null) {
+        el.dataset.bottleId = nameToId[name];
+        // Also sync _prepPriorityState so _getPriorityOrder() works immediately.
+        const listEl = el.closest(".priority-list");
+        if (listEl) {
+          const reagent = listEl.dataset.reagent;
+          if (_prepPriorityState[reagent]) {
+            const entry = _prepPriorityState[reagent].find((b) => b.name === name);
+            if (entry) entry.id = nameToId[name];
+          }
+        }
+      }
+    });
   }
 
   // --- reagent prep modal ---------------------------------------------------
@@ -1786,6 +1995,23 @@
       tracker.innerHTML = html;
     }
     renderResumeRun(step);
+
+    // Show/hide the post-protocol deduct banner in the main card.
+    const deductBanner = $("complete-deduct-banner");
+    if (deductBanner) {
+      if (finished) {
+        deductBanner.classList.remove("hidden");
+        const btn = deductBanner.querySelector("#complete-deduct-btn");
+        if (btn && !btn.dataset.wired) {
+          btn.dataset.wired = "1";
+          btn.addEventListener("click", () => {
+            openPrepModal(step.protocol_name);
+          });
+        }
+      } else {
+        deductBanner.classList.add("hidden");
+      }
+    }
   }
 
   // A muted, non-interactive hint row marking how many steps the window hides

@@ -281,3 +281,77 @@ def build_prep_table(
         row["verdict"] = status if status in {"low", "expiring", "critical"} else "in_stock"
 
     return rows
+
+
+def apply_reagent_deductions(
+    rows: list[dict[str, Any]],
+    priority_order: dict[str, list[int]],
+    inventory: list[InventoryItem],
+) -> list[dict[str, Any]]:
+    """Compute per-bottle volume deductions from a scaled prep table.
+
+    ``priority_order`` maps reagent name (as it appears in ``row["reagent"]``)
+    to an ordered list of item ids — first id is consumed first, down to the
+    last id. Bottles not listed keep their existing order (anchor first).
+
+    Returns a list of ``{item_id, name, deduct_ul, new_amount, new_unit}``
+    dicts — one per bottle that will be reduced. Bottles that are exhausted
+    by the deduction get ``new_amount == 0``. No state is mutated here; the
+    caller applies the deductions via the inventory store.
+    """
+    id_to_item: dict[int, InventoryItem] = {item.id: item for item in inventory}
+    deductions: list[dict[str, Any]] = []
+
+    for row in rows:
+        need_ul = float(row.get("total_ul") or 0)
+        if need_ul <= 0:
+            continue
+
+        # Build the ordered bottle list for this reagent from the prep-table
+        # sources, then re-sort by user priority if provided.
+        source_names: list[str] = row.get("sources") or []
+        if not source_names:
+            continue
+
+        # Map source names → items, preserving anchor-first order.
+        name_to_item = {item.name: item for item in inventory}
+        bottles: list[InventoryItem] = [
+            name_to_item[n] for n in source_names if n in name_to_item
+        ]
+
+        user_order: list[int] = priority_order.get(row["reagent"], [])
+        if user_order:
+            id_pos = {item_id: i for i, item_id in enumerate(user_order)}
+            bottles.sort(
+                key=lambda b: id_pos.get(b.id, len(user_order))
+            )
+
+        remaining_ul = need_ul
+        for bottle in bottles:
+            if remaining_ul <= 0:
+                break
+            amount, unit = _inventory_amount(bottle)
+            if amount is None or _volume_unit(unit) is None:
+                continue
+            available_ul = convert_volume(amount, unit, "uL")
+            if available_ul is None or available_ul <= 0:
+                continue
+
+            take_ul = min(remaining_ul, available_ul)
+            remaining_ul -= take_ul
+
+            leftover_ul = available_ul - take_ul
+            new_amount = _round_number(
+                convert_volume(leftover_ul, "uL", unit) or 0.0
+            )
+            deductions.append(
+                {
+                    "item_id": bottle.id,
+                    "name": bottle.name,
+                    "deduct_ul": _round_number(take_ul),
+                    "new_amount": new_amount,
+                    "new_unit": unit,
+                }
+            )
+
+    return deductions
