@@ -189,3 +189,156 @@ def test_find_inventory_miss_clarifies():
     events = handle_command(Command(intent="find_inventory", reagent_name="unobtainium"), state)
     assert events[0]["payload"]["kind"] == "clarify"
     assert "don't have a record" in events[0]["payload"]["message"]
+
+
+def test_prev_step_goes_back():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    handle_command(Command(intent="next_step"), state)
+
+    events = handle_command(Command(intent="prev_step"), state)
+
+    assert len(events) == 1
+    assert events[0]["payload"]["kind"] == "step_change"
+    assert events[0]["payload"]["current_step"]["id"] == 1
+    assert state.current_step_index == 0
+
+
+def test_prev_step_at_first_step_clarifies():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+
+    events = handle_command(Command(intent="prev_step"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert "first step" in events[0]["payload"]["message"]
+    assert state.current_step_index == 0
+
+
+def test_prev_step_without_protocol_clarifies():
+    state = fresh_state()
+
+    events = handle_command(Command(intent="prev_step"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+
+
+def test_repeat_step_reemits_current_step_without_advancing():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+
+    events = handle_command(Command(intent="repeat_step"), state)
+
+    assert len(events) == 1
+    assert events[0]["payload"]["kind"] == "step_change"
+    assert events[0]["payload"]["current_step"]["id"] == 1
+    assert state.current_step_index == 0
+
+
+def test_repeat_step_without_protocol_clarifies():
+    state = fresh_state()
+
+    events = handle_command(Command(intent="repeat_step"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+
+
+def test_prev_onto_timed_step_does_not_start_duplicate_timer(monkeypatch):
+    monkeypatch.setattr(handlers, "AUTO_TIMERS", True)
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    handle_command(Command(intent="next_step"), state)
+    handle_command(Command(intent="next_step"), state)
+    timer_count = len(state.timers)
+
+    events = handle_command(Command(intent="prev_step"), state)
+
+    assert events[0]["payload"]["kind"] == "step_change"
+    assert events[0]["payload"]["current_step"]["id"] == 2
+    assert all(e["type"] != "timer_update" for e in events)
+    assert len(state.timers) == timer_count
+
+
+def test_undo_log_removes_last_entry():
+    state = fresh_state()
+    handle_command(Command(intent="log_entry", log_text="first", sample_id=None), state)
+    entry_id = state.log[-1]["id"]
+
+    events = handle_command(Command(intent="undo_log"), state)
+
+    assert state.log == []
+    assert events[0]["payload"] == {"kind": "log_removed", "id": entry_id}
+
+
+def test_undo_log_on_empty_log_clarifies():
+    state = fresh_state()
+
+    events = handle_command(Command(intent="undo_log"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert "nothing to undo" in events[0]["payload"]["message"].lower()
+
+
+def test_correct_log_updates_last_entry():
+    state = fresh_state()
+    handle_command(Command(intent="log_entry", log_text="original", sample_id="A"), state)
+    entry_id = state.log[-1]["id"]
+
+    events = handle_command(Command(intent="correct_log", log_text="corrected"), state)
+
+    assert state.log[-1]["text"] == "corrected"
+    assert events[0]["payload"] == {"kind": "log_update", "id": entry_id, "text": "corrected"}
+
+
+def test_correct_log_without_replacement_clarifies():
+    state = fresh_state()
+    handle_command(Command(intent="log_entry", log_text="original", sample_id=None), state)
+
+    events = handle_command(Command(intent="correct_log"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert "change the last note" in events[0]["payload"]["message"].lower()
+
+
+def test_correct_log_on_empty_log_clarifies():
+    state = fresh_state()
+
+    events = handle_command(Command(intent="correct_log", log_text="replacement"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert "nothing to correct" in events[0]["payload"]["message"].lower()
+
+
+def test_ask_without_question_clarifies():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+
+    events = handle_command(Command(intent="ask"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert "what would you like to ask" in events[0]["payload"]["message"].lower()
+
+
+def test_ask_without_protocol_clarifies():
+    state = fresh_state()
+
+    events = handle_command(Command(intent="ask", question="How much lysis buffer?"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert "load a protocol first" in events[0]["payload"]["message"].lower()
+
+
+def test_ask_returns_answer(monkeypatch):
+    from backend import router
+
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    monkeypatch.setattr(router, "answer_question", lambda q, p: "Use 200 uL.")
+
+    events = handle_command(Command(intent="ask", question="How much lysis buffer?"), state)
+
+    assert events[0]["payload"] == {
+        "kind": "ask_result",
+        "question": "How much lysis buffer?",
+        "answer": "Use 200 uL.",
+    }

@@ -13,11 +13,15 @@ import difflib
 import os
 from typing import Any
 
+from . import router
 from .schema import (
     Command,
+    ask_result_event,
     clarify_event,
     inventory_result_event,
     log_entry_event,
+    log_removed_event,
+    log_update_event,
     step_change_event,
     timer_update_event,
 )
@@ -28,8 +32,8 @@ from .state import SessionState
 AUTO_TIMERS = os.getenv("LAB_AUTO_TIMERS", "false").lower() in {"true", "1", "yes"}
 
 
-def _step_change_events(state: SessionState) -> list[dict[str, Any]]:
-    """step_change for the new cursor; an auto-timer too only if AUTO_TIMERS is on."""
+def _step_change_events(state: SessionState, auto_timer: bool = True) -> list[dict[str, Any]]:
+    """step_change for the new cursor, plus an auto-timer if requested and timed."""
     idx = state.current_step_index
     prev = state.step_at(idx - 1)
     cur = state.step_at(idx)
@@ -41,7 +45,7 @@ def _step_change_events(state: SessionState) -> list[dict[str, Any]]:
             next_step=nxt.as_event() if nxt else None,
         )
     ]
-    if cur and cur.duration_s:
+    if auto_timer and cur and cur.duration_s:
         label = cur.timer_label or f"step {cur.id}"
         # Default: the timer appears paused and waits for "start timer".
         # LAB_AUTO_TIMERS=true restores the old auto-start-on-step-change.
@@ -82,12 +86,43 @@ def _handle_next_step(cmd: Command, state: SessionState) -> list[dict[str, Any]]
     return _step_change_events(state)
 
 
+def _handle_prev_step(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    if not state.active_protocol:
+        return [clarify_event("No protocol is loaded. Say 'load DNA extraction protocol' first.")]
+    if state.current_step_index <= 0:
+        return [clarify_event(f"You're on the first step of {state.active_protocol.name}.")]
+    state.current_step_index -= 1
+    return _step_change_events(state, auto_timer=False)
+
+
+def _handle_repeat_step(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    if not state.active_protocol:
+        return [clarify_event("No protocol is loaded. Say 'load DNA extraction protocol' first.")]
+    return _step_change_events(state, auto_timer=False)
+
+
 def _handle_log_entry(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
     if not cmd.log_text:
         msg = cmd.clarify_prompt or "What would you like to log?"
         return [clarify_event(msg)]
     entry = state.append_log(cmd.log_text, cmd.sample_id)  # log_text -> note.text
     return [log_entry_event(**entry)]
+
+
+def _handle_undo_log(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    entry = state.pop_log()
+    if entry is None:
+        return [clarify_event("There's nothing to undo.")]
+    return [log_removed_event(int(entry["id"]))]
+
+
+def _handle_correct_log(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    if not cmd.log_text:
+        return [clarify_event("What should I change the last note to?")]
+    entry = state.update_last_log(cmd.log_text)
+    if entry is None:
+        return [clarify_event("There's nothing to correct.")]
+    return [log_update_event(int(entry["id"]), str(entry["text"]))]
 
 
 def _handle_start_timer(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
@@ -128,6 +163,15 @@ def _handle_find_inventory(cmd: Command, state: SessionState) -> list[dict[str, 
     return [inventory_result_event(item.name, item.location, item.quantity_approx)]
 
 
+def _handle_ask(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    if not cmd.question:
+        return [clarify_event("What would you like to ask about the protocol?")]
+    if not state.active_protocol:
+        return [clarify_event("Load a protocol first, then ask about it.")]
+    answer = router.answer_question(cmd.question, state.active_protocol)
+    return [ask_result_event(cmd.question, answer)]
+
+
 def _handle_unknown(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
     msg = cmd.clarify_prompt or "Sorry, I didn't understand that."
     return [clarify_event(msg)]
@@ -136,9 +180,14 @@ def _handle_unknown(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
 _DISPATCH = {
     "load_protocol": _handle_load_protocol,
     "next_step": _handle_next_step,
+    "prev_step": _handle_prev_step,
+    "repeat_step": _handle_repeat_step,
     "log_entry": _handle_log_entry,
+    "undo_log": _handle_undo_log,
+    "correct_log": _handle_correct_log,
     "start_timer": _handle_start_timer,
     "find_inventory": _handle_find_inventory,
+    "ask": _handle_ask,
     "unknown": _handle_unknown,
 }
 

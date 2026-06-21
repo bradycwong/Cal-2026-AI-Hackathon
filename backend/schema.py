@@ -19,9 +19,14 @@ from pydantic import BaseModel
 Intent = Literal[
     "load_protocol",
     "next_step",
+    "prev_step",
+    "repeat_step",
     "log_entry",
+    "undo_log",
+    "correct_log",
     "start_timer",
     "find_inventory",
+    "ask",
     "unknown",
 ]
 
@@ -42,6 +47,7 @@ class Command(BaseModel):
     duration_s: Optional[int] = None      # start_timer
     timer_label: Optional[str] = None     # start_timer
     reagent_name: Optional[str] = None    # find_inventory
+    question: Optional[str] = None      # ask
     clarify_prompt: Optional[str] = None  # unknown / missing param -> clarification area
 
 
@@ -58,7 +64,8 @@ def make_event(type: EventType, payload: dict[str, Any]) -> dict[str, Any]:
 
 
 # --- command_result kinds ---------------------------------------------------
-# kind in { step_change, log_entry, inventory_result, clarify, voice_state }
+# kind in { step_change, log_entry, log_removed, log_update, inventory_result,
+#           clarify, voice_state, ask_result }
 
 
 def command_result(kind: str, **fields: Any) -> dict[str, Any]:
@@ -93,6 +100,18 @@ def log_entry_event(
         sample_id=sample_id,
         step_ref=step_ref,
     )
+
+
+def log_removed_event(id: int) -> dict[str, Any]:
+    return command_result("log_removed", id=id)
+
+
+def log_update_event(id: int, text: str) -> dict[str, Any]:
+    return command_result("log_update", id=id, text=text)
+
+
+def ask_result_event(question: str, answer: str) -> dict[str, Any]:
+    return command_result("ask_result", question=question, answer=answer)
 
 
 def inventory_result_event(
