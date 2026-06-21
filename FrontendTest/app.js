@@ -998,7 +998,7 @@
       case "timer_update":
         return onTimerUpdate(evt.payload);
       case "error":
-        return;
+        return onError(evt.payload);
     }
   }
 
@@ -1049,6 +1049,7 @@
   let manualStop = false;
   let reconnects = 0;
   let voiceMuted = getVoiceMutedStored();
+  let voiceErrorMsg = null; // sticky "off" reason (e.g. STT unavailable); see onVoiceUnavailable
   const MAX_RECONNECTS = 3;
 
   function pickMime() {
@@ -1077,7 +1078,7 @@
       mute.textContent = voiceMuted ? "mic_off" : "mic";
       mute.title = voiceMuted ? "Unmute" : "Mute";
     }
-    if (!active) setVoiceStatus("Voice off", false);
+    if (!active) setVoiceStatus(voiceErrorMsg || "Voice off", false);
     else setVoiceStatus(voiceMuted ? "Muted" : "Listening", !voiceMuted);
   }
 
@@ -1087,9 +1088,37 @@
     if (micStream) setVoiceUI(true);
   }
 
+  // A server-side STT failure (no DEEPGRAM_API_KEY, or a Deepgram auth/transport
+  // error) closes the audio socket the instant it opens. Without this, onclose
+  // would just flicker Listening -> Reconnecting -> retry forever. Stop the
+  // futile loop and tell the user *why* instead.
+  function onVoiceUnavailable(p) {
+    manualStop = true; // make any pending onclose finalize instead of reconnecting
+    setVoiceActiveStored(false); // don't auto-resume this on the next page
+    const msg = (p && p.message) || "";
+    // Sticky so the trailing onclose/finalizeStop renders the reason, not "Voice off".
+    voiceErrorMsg = /key|unauthor|forbidden|401|403/i.test(msg)
+      ? "Voice unavailable — STT key not configured"
+      : "Voice unavailable";
+    try {
+      if (audioWS) audioWS.close();
+    } catch (_) {}
+    finalizeStop(); // resets state + renders voiceErrorMsg via setVoiceUI(false)
+  }
+
+  function onError(p) {
+    // Only Deepgram/STT transport errors touch the voice session, and only when
+    // THIS page actually has a session running (the error is broadcast to every
+    // open client). Other error sources stay silent no-ops, as before.
+    if (p && (p.source === "deepgram" || p.code === "stt_failed") && micStream) {
+      onVoiceUnavailable(p);
+    }
+  }
+
   async function startMic() {
     manualStop = false;
     reconnects = 0;
+    voiceErrorMsg = null; // clear any prior fatal reason on a fresh start/retry
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setVoiceActiveStored(false); // can't run here; don't keep retrying on nav
       setVoiceStatus("Needs https/localhost", false);
