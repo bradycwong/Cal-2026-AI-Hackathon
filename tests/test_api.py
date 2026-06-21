@@ -141,6 +141,20 @@ def test_state_step_has_tracker_fields(client):
     assert step["current_index"] == 0
     assert step["protocol_name"] == "DNA Extraction"
     assert step["skipped_indices"] == []
+    assert step["finished"] is False
+
+
+def test_state_reports_finished_after_completing_protocol(client):
+    client.post("/api/protocols/dna_extraction/load")
+    # A fresh load is not finished.
+    assert client.get("/api/state").json()["step"]["finished"] is False
+    # Confirm through all five steps; the fifth completes the protocol.
+    for _ in range(5):
+        client.post("/api/step/next")
+    step = client.get("/api/state").json()["step"]
+    assert step["finished"] is True
+    assert step["current_step"]["id"] == 5
+    assert step["current_index"] == 4
 
 
 def test_state_step_reflects_skipped_indices(client):

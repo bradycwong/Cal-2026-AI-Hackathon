@@ -327,6 +327,7 @@ async def get_state() -> dict[str, Any]:
             "all_steps": [s.as_event() for s in proto.steps] if proto else [],
             "current_index": idx,
             "protocol_name": proto.name if proto else None,
+            "finished": state.protocol_complete,
             "skipped_indices": sorted(state.skipped_steps),
         }
         if cur
