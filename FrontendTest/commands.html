@@ -17,7 +17,7 @@
 <p class="text-on-surface-variant text-sm">AI Assistant</p>
 </a>
 <nav class="flex-1 space-y-1" id="main-nav">
-<a href="guide.html#run" id="resume-run" title="Jump back to the running protocol" class="nav-link hidden flex items-center px-4 py-3 mb-1 rounded-xl bg-primary text-on-primary font-bold hover:opacity-90 transition-opacity active:scale-95"><span class="material-symbols-outlined mr-3">play_arrow</span><span class="flex flex-col leading-tight"><span class="font-body-md text-body-md">Jump to run</span><span id="resume-run-name" class="text-xs font-medium opacity-80"></span></span></a>
+<a href="guide.html#run" id="resume-run" title="Jump to the protocol guide" class="nav-link hidden flex items-center px-4 py-3 mb-1 rounded-xl bg-primary text-on-primary font-bold hover:opacity-90 transition-opacity active:scale-95"><span class="material-symbols-outlined mr-3">play_arrow</span><span class="flex flex-col leading-tight"><span class="font-body-md text-body-md">Jump to guide</span><span id="resume-run-name" class="text-xs font-medium opacity-80"></span></span></a>
 <a href="dashboard.html" data-nav="dashboard.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">dashboard</span><span class="font-body-md text-body-md">Dashboard</span></a>
 <a href="protocols.html" data-nav="protocols.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">library_books</span><span class="font-body-md text-body-md">Protocols</span></a>
 <a href="notebook.html" data-nav="notebook.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">list_alt</span><span class="font-body-md text-body-md">Notebook</span></a>
@@ -109,9 +109,9 @@
 </tr>
 <tr class="cmd-row">
 <th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
-<span class="flex items-center gap-2"><span class="material-symbols-outlined text-primary" style="font-size:18px">my_location</span>Jump to run</span>
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-primary" style="font-size:18px">my_location</span>Jump to guide</span>
 </th>
-<td class="px-6 py-4 align-top"><span class="cmd-chip">Jump to run</span><span class="cmd-chip">Go to the protocol</span><span class="cmd-chip">Back to the guide</span><span class="cmd-chip">What step am I on?</span></td>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Jump to guide</span><span class="cmd-chip">Go to the protocol</span><span class="cmd-chip">Back to the guide</span><span class="cmd-chip">What step am I on?</span></td>
 <td class="px-6 py-4 align-top text-on-surface-variant">Hands-free jump back to the running protocol (the Guide); centers the current step on arrival.</td>
 </tr>
 </tbody>
@@ -324,7 +324,7 @@
       skip_step:      { label: "Skip step",       arg: null,            build: function () { return "skip step"; } },
       prev_step:      { label: "Previous step",   arg: null,            build: function () { return "previous step"; } },
       repeat_step:    { label: "Repeat step",     arg: null,            build: function () { return "repeat that"; } },
-      show_protocol:  { label: "Jump to run",     arg: null,            build: function () { return "jump to run"; } },
+      show_protocol:  { label: "Jump to guide",   arg: null,            build: function () { return "jump to guide"; } },
       start_timer:    { label: "Start a timer",   arg: "Duration", ph: "5 minutes", optional: true,             build: function (a) { return a ? "start a " + a + " timer" : "start the timer"; } },
       stop_timer:     { label: "Stop timer",      arg: null,            build: function () { return "stop timer"; } },
       clear_done_timers: { label: "Clear done timers", arg: null,       build: function () { return "clear done timers"; } },

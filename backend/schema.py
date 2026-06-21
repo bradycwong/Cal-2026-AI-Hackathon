@@ -226,7 +226,7 @@ def clarify_event(message: str) -> dict[str, Any]:
 
 def navigate_event(page: str, hash: str = "") -> dict[str, Any]:
     """Tell clients to navigate to a page (additive command_result kind). Drives
-    the hands-free ``show_protocol`` command: a voice "jump to run" lands the
+    the hands-free ``show_protocol`` command: a voice "jump to guide" lands the
     operator on the guide view, with ``hash`` (e.g. ``#run``) centering the step."""
     return command_result("navigate", page=page, hash=hash)
 

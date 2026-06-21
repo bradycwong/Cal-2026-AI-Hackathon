@@ -249,6 +249,7 @@ def test_show_protocol_routes_navigation_phrases():
     # operator to the running protocol instead of only re-rendering in place.
     for phrase in (
         "jump to run",
+        "jump to guide",
         "jump to the run",
         "go to the protocol",
         "go to the guide",

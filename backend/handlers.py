@@ -359,7 +359,7 @@ def _handle_ask(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
 
 
 def _handle_show_protocol(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
-    """Hands-free "jump to run": navigate to the running-protocol (guide) view.
+    """Hands-free "jump to guide": navigate to the running-protocol (guide) view.
 
     Read-only — never advances the cursor. Clarifies when nothing is loaded so we
     don't drop the operator on an empty guide. The ``#run`` hash tells the guide

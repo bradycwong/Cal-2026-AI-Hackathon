@@ -55,7 +55,7 @@ SYSTEM_PROMPT = (
     "duration_s null so the current step's declared time is used. "
     "Map 'go back' or 'previous step' to prev_step. "
     "Map 'repeat that' or 'say that again' to repeat_step. "
-    "Map 'jump to run', 'go to the protocol', 'back to the guide', 'show me the "
+    "Map 'jump to guide', 'go to the protocol', 'back to the guide', 'show me the "
     "protocol', or 'what step am I on' to show_protocol (navigate to the "
     "running-protocol view). "
     "Map 'scratch that', 'delete that', or 'undo the last note' to undo_log. "

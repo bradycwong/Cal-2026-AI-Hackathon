@@ -1877,7 +1877,7 @@
   function maybeNavigate(p) {
     switch (p.kind) {
       case "navigate":
-        // show_protocol ("jump to run" / "what step am I on"): land on the page;
+        // show_protocol ("jump to guide" / "what step am I on"): land on the page;
         // if already there, just center the current step. A fresh cross-page load
         // carries the #run hash, which re-centers after hydrate.
         if (currentPage() === p.page) {
@@ -2111,7 +2111,7 @@
         if (active && $("prep-modal") && consumePrepOnLoad()) {
           openPrepModal(st.step.protocol_name);
         }
-        // Arriving via the nav "Jump to run" button or a "jump to run" voice
+        // Arriving via the nav "Jump to guide" button or a "jump to guide" voice
         // command (#run): center the current step, then drop the hash so a later
         // refresh doesn't re-scroll.
         if (location.hash === "#run") {
@@ -2120,7 +2120,7 @@
         }
       }
     });
-    // Light the "Jump to run" nav button on non-Guide pages (the Guide already
+    // Light the "Jump to guide" nav button on non-Guide pages (the Guide already
     // does this via renderStep above). Guarded so the Guide doesn't double-fetch.
     await hydrateSection("active run", async () => {
       if ($("resume-run") && !($("step-tracker") || $("step-current"))) {

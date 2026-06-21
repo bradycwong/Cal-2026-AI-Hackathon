@@ -441,7 +441,7 @@ def test_repeat_step_without_protocol_clarifies():
 
 
 def test_show_protocol_emits_navigate_to_guide():
-    # "jump to run" / "what step am I on" navigates the operator to the guide view
+    # "jump to guide" / "what step am I on" navigates the operator to the guide view
     # (and the #run hash centers the current step on arrival). No state mutation.
     state = fresh_state()
     handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
