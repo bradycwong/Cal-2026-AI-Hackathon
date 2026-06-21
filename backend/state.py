@@ -346,6 +346,12 @@ class SessionState:
         self.protocols[proto.id] = proto
         return proto
 
+    def register_protocol(self, path: Path) -> Protocol:
+        """Validate a protocol file through the canonical loader and register it."""
+        proto = load_protocol_file(path)
+        self.protocols[proto.id] = proto
+        return proto
+
     # --- protocol cursor ---------------------------------------------------
     def find_protocol(self, name: str) -> Optional[Protocol]:
         key = name.strip().lower()

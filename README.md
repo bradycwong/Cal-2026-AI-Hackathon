@@ -113,5 +113,13 @@ Read snapshots for the UI: `GET /api/protocols` -> `{"protocols": [...]}`,
 `{"items": [...]}`, `GET /api/log` -> `{"log": [...]}`, and `GET /api/state`
 (step enriched with `all_steps`, `current_index`, `protocol_name`).
 
+Protocol import: `POST /api/protocols/import` with `{"text": "...", "name": "..."}`
+turns pasted prose into the canonical protocol YAML (written to
+`backend/data/protocols/`), registers it immediately, and surfaces it in
+`GET /api/protocols`. `IMPORT_MODE` (`auto|llm|deterministic`) selects the parser;
+with no API key it falls back to a deterministic line/duration parser, so import
+works offline. Imported protocols are always `READY` and survive a restart. The
+FrontendTest protocols page has an "Import Protocol" modal wired to this endpoint.
+
 Deferred swappable organs (NOT yet): VAD-gated streaming (cost), TTS,
 upload/library pages.

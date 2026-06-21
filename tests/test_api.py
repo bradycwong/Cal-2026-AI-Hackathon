@@ -78,6 +78,33 @@ def test_post_log_persists_and_lists(client):
     assert log[-1]["category"] == "Note"
 
 
+def test_import_protocol_endpoint(client, monkeypatch):
+    monkeypatch.setenv("IMPORT_MODE", "deterministic")
+    r = client.post(
+        "/api/protocols/import",
+        json={"name": "Quick DNA Prep", "text": "1. Add buffer\n2. Incubate 10 minutes"},
+    )
+    data = r.json()
+    assert r.status_code == 200
+    assert data["ok"] is True
+    assert data["protocol"]["id"] == "quick_dna_prep"
+    assert data["protocol"]["status"] == "READY"
+    assert "load_hint" in data
+    catalog = client.get("/api/protocols").json()["protocols"]
+    assert any(p["id"] == "quick_dna_prep" for p in catalog)
+    # Imported protocol loads immediately via the deterministic endpoint.
+    assert client.post("/api/protocols/quick_dna_prep/load").status_code == 200
+
+
+def test_import_empty_input_is_controlled_error(client, monkeypatch):
+    monkeypatch.setenv("IMPORT_MODE", "deterministic")
+    r = client.post("/api/protocols/import", json={"text": "   "})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is False
+    assert "error" in body
+
+
 def test_state_step_has_tracker_fields(client):
     client.post("/api/protocols/dna_extraction/load")
     step = client.get("/api/state").json()["step"]

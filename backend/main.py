@@ -24,10 +24,12 @@ from pydantic import BaseModel
 
 from .deepgram_stt import run_deepgram_session
 from .router import ROUTER_MODE, route
+from .protocol_import import import_protocol
 from .schema import (
     Command,
     error_event,
     log_entry_event,
+    protocol_imported_event,
     timer_removed_event,
     timer_update_event,
     transcript_update_event,
@@ -183,6 +185,31 @@ async def load_protocol_by_id(protocol_id: str) -> dict[str, Any]:
     )
     await manager.broadcast(events)
     return {"ok": True, "events": events}
+
+
+class ProtocolImportIn(BaseModel):
+    text: str
+    name: str | None = None
+
+
+@app.post("/api/protocols/import")
+async def import_protocol_endpoint(body: ProtocolImportIn) -> dict[str, Any]:
+    """Paste-to-import: prose -> YAML -> registered protocol. Malformed prose
+    returns a controlled {ok: False} response, never a 500."""
+    try:
+        proto, _ = import_protocol(body.text, body.name, state)
+        summary = next(p for p in state.protocol_catalog() if p["id"] == proto.id)
+        load_hint = f'Say "Load {proto.name}" to start it.'
+        event = protocol_imported_event(
+            proto.name, proto.id, len(proto.steps), proto.aliases, load_hint
+        )
+        await manager.broadcast([event])
+        return {"ok": True, "protocol": summary, "load_hint": load_hint}
+    except ValueError as exc:
+        await manager.broadcast(
+            [error_event("protocol_import_failed", str(exc), "protocol_import")]
+        )
+        return {"ok": False, "error": str(exc)}
 
 
 @app.get("/api/inventory")

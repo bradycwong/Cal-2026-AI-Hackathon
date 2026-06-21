@@ -66,7 +66,7 @@ def make_event(type: EventType, payload: dict[str, Any]) -> dict[str, Any]:
 
 # --- command_result kinds ---------------------------------------------------
 # kind in { step_change, log_entry, log_removed, log_update, inventory_result,
-#           clarify, voice_state, ask_result, timer_removed }
+#           clarify, voice_state, ask_result, timer_removed, protocol_imported }
 
 
 def command_result(kind: str, **fields: Any) -> dict[str, Any]:
@@ -108,6 +108,23 @@ def log_entry_event(
         sample_id=sample_id,
         step_ref=step_ref,
         category=category,
+    )
+
+
+def protocol_imported_event(
+    name: str,
+    protocol_id: str,
+    step_count: int,
+    aliases: list[str],
+    load_hint: str,
+) -> dict[str, Any]:
+    return command_result(
+        "protocol_imported",
+        name=name,
+        protocol_id=protocol_id,
+        step_count=step_count,
+        aliases=aliases,
+        load_hint=load_hint,
     )
 
 

@@ -48,6 +48,20 @@ def test_app_dispatches_command_kinds():
         assert kind in js, f"app.js missing dispatch for {kind}"
 
 
+def test_protocols_page_has_import_modal():
+    html = (FT / "protocols.html").read_text(encoding="utf-8")
+    for token in ("import-protocol", "import-modal", "import-text", "import-submit"):
+        assert token in html, f"protocols.html missing {token}"
+
+
+def test_app_wires_protocol_import():
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert "/api/protocols/import" in js
+    assert "handleProtocolImport" in js
+    assert "protocol_imported" in js
+    assert "/api/protocols/${encodeURIComponent(id)}/load" in js
+
+
 def test_pages_expose_live_hooks():
     cards = (FT / "protocols.html").read_text(encoding="utf-8")
     assert 'id="protocol-cards"' in cards

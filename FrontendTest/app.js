@@ -64,6 +64,85 @@
     window.location.href = "guide.html";
   }
 
+  async function importProtocol(text, name) {
+    const r = await fetch(API + "/api/protocols/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, name: name || null }),
+    });
+    return r.json();
+  }
+
+  async function refreshProtocols() {
+    if ($("protocol-cards")) renderProtocolCards(await fetchProtocols());
+  }
+
+  async function handleProtocolImport() {
+    const result = $("import-result");
+    const name = ($("import-name") || {}).value || "";
+    const text = ($("import-text") || {}).value || "";
+    if (!text.trim()) {
+      if (result) {
+        result.textContent = "Paste at least one step.";
+        result.className = "text-sm mb-4 min-h-[1.25rem] text-tertiary";
+      }
+      return;
+    }
+    if (result) {
+      result.textContent = "Importing...";
+      result.className = "text-sm mb-4 min-h-[1.25rem] text-on-surface-variant";
+    }
+    try {
+      const data = await importProtocol(text, name);
+      if (data.ok) {
+        if (result) {
+          result.textContent = `Imported "${data.protocol.name}". ${data.load_hint || ""}`;
+          result.className = "text-sm mb-4 min-h-[1.25rem] text-secondary";
+        }
+        await refreshProtocols();
+        const ta = $("import-text");
+        const nm = $("import-name");
+        if (ta) ta.value = "";
+        if (nm) nm.value = "";
+        setTimeout(closeImportModal, 1200);
+      } else if (result) {
+        result.textContent = data.error || "Import failed.";
+        result.className = "text-sm mb-4 min-h-[1.25rem] text-tertiary";
+      }
+    } catch (e) {
+      if (result) {
+        result.textContent = "Import failed: " + e.message;
+        result.className = "text-sm mb-4 min-h-[1.25rem] text-tertiary";
+      }
+    }
+  }
+
+  function openImportModal() {
+    const m = $("import-modal");
+    if (m) m.classList.remove("hidden");
+  }
+  function closeImportModal() {
+    const m = $("import-modal");
+    if (m) m.classList.add("hidden");
+  }
+
+  function wireImportModal() {
+    const open = $("import-protocol");
+    if (!open) return;
+    open.addEventListener("click", openImportModal);
+    ["import-cancel", "import-cancel-2"].forEach((id) => {
+      const b = $(id);
+      if (b) b.addEventListener("click", closeImportModal);
+    });
+    const submit = $("import-submit");
+    if (submit) submit.addEventListener("click", handleProtocolImport);
+    const modal = $("import-modal");
+    if (modal)
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) closeImportModal();
+      });
+  }
+
   async function postLog(text, sample_id, category) {
     const r = await fetch(API + "/api/log", {
       method: "POST",
@@ -331,6 +410,8 @@
         return applyLogUpdate(p);
       case "timer_removed":
         return onTimerRemoved(p.timer_id);
+      case "protocol_imported":
+        return refreshProtocols();
       case "voice_state":
         return; // mute/unmute badge is non-essential for the snapshot pages
       case "clarify":
@@ -389,6 +470,7 @@
       }
     } catch (_) {}
     renderTimers();
+    wireImportModal();
   }
 
   window.LabClient = {
@@ -397,6 +479,8 @@
     fetchLog,
     fetchState,
     loadProtocol,
+    importProtocol,
+    handleProtocolImport,
     postLog,
     renderProtocolCards,
     renderInventory,
