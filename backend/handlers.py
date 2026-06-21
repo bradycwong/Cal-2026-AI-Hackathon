@@ -9,6 +9,7 @@ This is also where Command field names are translated to persistence field names
 
 from __future__ import annotations
 
+import re
 from typing import Any, Optional
 
 from . import router
@@ -364,6 +365,18 @@ def _handle_ask(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
         return [clarify_event("What would you like to ask about the protocol?")]
     if not state.active_protocol:
         return [clarify_event("Load a protocol first, then ask about it.")]
+    # "What is the next step?" — answered directly from state so the cursor never
+    # moves and we don't need an LLM call for a deterministic lookup.
+    if re.search(
+        r"\bnext\s+step\b|\bstep\s+after\b|\bfollowing\s+step\b",
+        router.normalize_ascii(cmd.question).lower(),
+    ):
+        nxt = state.step_at(state.current_step_index + 1)
+        if nxt:
+            answer = f"Step {nxt.id}: {nxt.text}"
+        else:
+            answer = "You are already on the last step of the protocol."
+        return [ask_result_event(cmd.question, answer)]
     answer = router.answer_question(cmd.question, state.active_protocol)
     return [ask_result_event(cmd.question, answer)]
 
