@@ -37,12 +37,15 @@ def client(tmp_path):
 def test_add_inventory_item(client):
     r = client.post(
         "/api/inventory",
-        json={"name": "Agarose", "location": "Cabinet 2", "quantity_approx": "~500 g"},
+        json={"name": "Agarose", "location": "Cabinet 2", "amount": "500", "unit": "g"},
     )
     assert r.status_code == 201
     body = r.json()
     assert body["ok"] is True
     assert body["item"]["name"] == "Agarose"
+    assert body["item"]["amount"] == "500"
+    assert body["item"]["unit"] == "g"
+    assert body["item"]["quantity_approx"] == "500 g"
     assert body["inventory_count"] == 1
     # Now findable through the normal voice/typed lookup path.
     assert any(i.name == "Agarose" for i in main.state.inventory)

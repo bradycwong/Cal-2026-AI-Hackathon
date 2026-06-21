@@ -36,7 +36,9 @@ def client(tmp_path):
 
 def test_frontendtest_is_served(client):
     assert client.get("/").status_code == 200
-    assert "Operation Center" in client.get("/").text
+    # Root serves the dashboard; assert a stable structural marker rather than a
+    # branding/title string (those are polish-churned).
+    assert 'id="side-nav"' in client.get("/").text
     assert client.get("/protocols.html").status_code == 200
     assert client.get("/api/health").json()["ok"] is True
 

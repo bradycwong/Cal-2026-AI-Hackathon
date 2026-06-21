@@ -1,109 +1,19 @@
 ﻿<!DOCTYPE html><html class="dark" lang="en" style=""><head>
 <meta charset="utf-8">
 <meta content="width=device-width, initial-scale=1.0" name="viewport">
-<title>Operation Center | Modern Laboratory AI</title>
+<title>LIMS AI Assistant - Dashboard</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500&family=DM+Sans:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
 <link href="dashboard.css" rel="stylesheet">
-<script id="tailwind-config">
-        tailwind.config = {
-          darkMode: "class",
-          theme: {
-            extend: {
-              "colors": {
-                "surface-bright": "#253050",
-                "on-tertiary-fixed": "#1A0D00",
-                "on-surface": "#E8EDF7",
-                "on-secondary-fixed": "#0D1117",
-                "error": "#FF6B6B",
-                "tertiary-fixed": "#FFD580",
-                "on-tertiary-container": "#FFD580",
-                "tertiary-fixed-dim": "#F5A623",
-                "surface": "#0D1117",
-                "on-primary-fixed": "#051025",
-                "on-tertiary": "#1A0D00",
-                "on-tertiary-fixed-variant": "#7A4A00",
-                "surface-container-high": "#1A2235",
-                "primary": "#7BA7F5",
-                "primary-container": "#2352C8",
-                "on-error": "#1A0000",
-                "inverse-surface": "#E8EDF7",
-                "on-secondary": "#0D1117",
-                "surface-tint": "#7BA7F5",
-                "secondary-fixed": "#B8FF7C",
-                "surface-container-lowest": "#080C14",
-                "secondary": "#B8FF7C",
-                "error-container": "#7A1515",
-                "surface-container-low": "#111724",
-                "on-surface-variant": "#8A96B0",
-                "on-secondary-fixed-variant": "#3A7A1A",
-                "tertiary": "#F5A623",
-                "secondary-container": "#3A7A1A",
-                "on-secondary-container": "#0D1117",
-                "background": "#0D1117",
-                "primary-fixed": "#C5D5F5",
-                "on-primary-fixed-variant": "#1A3A7A",
-                "surface-variant": "#1E2A3F",
-                "inverse-on-surface": "#131929",
-                "on-error-container": "#FFD5D5",
-                "primary-fixed-dim": "#7BA7F5",
-                "surface-container": "#131929",
-                "inverse-primary": "#2352C8",
-                "surface-container-highest": "#1E2A3F",
-                "secondary-fixed-dim": "#8FD95A",
-                "outline-variant": "#253050",
-                "on-primary-container": "#E8EDF7",
-                "tertiary-container": "#7A4A00",
-                "outline": "#4A5570",
-                "on-background": "#E8EDF7",
-                "surface-dim": "#0D1117",
-                "on-primary": "#051025"
-              },
-              "borderRadius": {
-                "DEFAULT": "0.125rem",
-                "lg": "0.25rem",
-                "xl": "0.5rem",
-                "full": "0.75rem"
-              },
-              "spacing": {
-                "touch-target": "48px",
-                "gutter": "24px",
-                "unit": "8px",
-                "stack-gap": "16px",
-                "container-padding": "32px"
-              },
-              "fontFamily": {
-                "display-timer": ["JetBrains Mono"],
-                "headline-lg": ["DM Mono"],
-                "headline-lg-mobile": ["DM Mono"],
-                "headline-md": ["DM Mono"],
-                "data-value": ["JetBrains Mono"],
-                "body-md": ["DM Sans"],
-                "data-label": ["JetBrains Mono"],
-                "body-lg": ["DM Sans"]
-              },
-              "fontSize": {
-                "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "600"}],
-                "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
-                "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "500"}],
-                "data-label": ["14px", {"lineHeight": "20px", "fontWeight": "500"}],
-                "display-timer": ["72px", {"lineHeight": "80px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
-                "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
-                "data-value": ["18px", {"lineHeight": "24px", "fontWeight": "600"}],
-                "body-lg": ["20px", {"lineHeight": "30px", "fontWeight": "400"}]
-              }
-            },
-          }
-        }
-    </script>
+<link href="shared.css" rel="stylesheet">
+<script src="tailwind-config.js"></script>
 </head>
 <body class="bg-background text-on-surface font-body-md selection:bg-primary-container selection:text-on-primary-container">
 <!-- Side Navigation Shell -->
 <aside class="h-screen w-64 fixed left-0 top-0 border-r border-outline-variant flex flex-col py-gutter px-unit z-50 bg-surface-container-low" id="side-nav">
 <a href="dashboard.html" class="px-gutter mb-8 block hover:opacity-80 transition-opacity cursor-pointer">
-<h1 class="font-headline-md text-headline-md text-primary">Placeholder</h1>
+<h1 class="font-headline-md text-headline-md text-primary">Lab</h1>
 <p class="text-on-surface-variant text-sm">AI Assistant</p>
 </a>
 <nav class="flex-1 space-y-1" id="main-nav">
@@ -113,10 +23,6 @@
 <a href="guide.html" data-nav="guide.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">menu_book</span><span class="font-body-md text-body-md">Guide</span></a>
 <a href="inventory.html" data-nav="inventory.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">inventory_2</span><span class="font-body-md text-body-md">Inventory</span></a>
 </nav>
-<div class="mt-auto px-4 pt-4 border-t border-outline-variant"><div class="space-y-1">
-<div class="flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors cursor-pointer active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">help</span><span class="font-body-md text-body-md">Support</span></div>
-<div class="flex items-center px-4 py-3 text-error font-medium hover:bg-error-container/10 transition-colors cursor-pointer active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">logout</span><span class="font-body-md text-body-md">Logout</span></div>
-</div></div>
 </aside>
 <!-- Top App Bar Shell -->
 
@@ -134,110 +40,8 @@
                         View Full Library <span class="material-symbols-outlined ml-1 text-sm">arrow_forward</span>
 </a>
 </div>
-<div id="quick-launch-cards" class="grid grid-cols-3 gap-stack-gap">
-<!-- DNA Extraction Card -->
-<div class="glass-panel p-6 rounded-lg group hover:border-primary transition-all duration-300 relative overflow-hidden active-glow flex flex-col" style="transform: translateY(0px);">
-<div class="absolute top-0 right-0 p-2 opacity-10">
-<span class="material-symbols-outlined text-6xl">science</span>
-</div>
-<div class="mb-4 flex-1">
-<span class="inline-block px-2 py-1 bg-primary-container text-[10px] font-bold text-on-primary-container rounded uppercase mb-3">Molecular</span>
-<h4 class="text-headline-md font-headline-md text-on-surface leading-tight">DNA Extraction</h4>
-<p class="text-on-surface-variant text-xs mt-2 font-medium">Est. Duration: 45 min</p>
-</div>
-<button class="w-full py-3 border border-primary text-primary font-bold rounded flex items-center justify-center space-x-2 active:scale-95 transition-all hover:bg-primary hover:text-on-primary">
-<span class="">Start Now</span>
-<span class="material-symbols-outlined text-sm">play_arrow</span>
-</button>
-</div>
-<!-- PCR Setup Card -->
-<div class="glass-panel p-6 rounded-lg group hover:border-primary transition-all duration-300 relative overflow-hidden flex flex-col" style="transform: translateY(0px);">
-<div class="absolute top-0 right-0 p-2 opacity-10">
-<span class="material-symbols-outlined text-6xl">biotech</span>
-</div>
-<div class="mb-4 flex-1">
-<span class="inline-block px-2 py-1 bg-primary-container text-[10px] font-bold text-on-primary-container rounded uppercase mb-3">Amplification</span>
-<h4 class="text-headline-md font-headline-md text-on-surface leading-tight">PCR Setup</h4>
-<p class="text-on-surface-variant text-xs mt-2 font-medium">Est. Duration: 20 min</p>
-</div>
-<button class="w-full py-3 border border-primary text-primary font-bold rounded flex items-center justify-center space-x-2 active:scale-95 transition-all hover:bg-primary hover:text-on-primary">
-<span class="">Start Now</span>
-<span class="material-symbols-outlined text-sm">play_arrow</span>
-</button>
-</div>
-<!-- Gel Electrophoresis Card -->
-<div class="glass-panel p-6 rounded-lg group hover:border-primary transition-all duration-300 relative overflow-hidden flex flex-col">
-<div class="absolute top-0 right-0 p-2 opacity-10">
-<span class="material-symbols-outlined text-6xl">layers</span>
-</div>
-<div class="mb-4 flex-1">
-<span class="inline-block px-2 py-1 bg-primary-container text-[10px] font-bold text-on-primary-container rounded uppercase mb-3">Analysis</span>
-<h4 class="text-headline-md font-headline-md text-on-surface leading-tight">Gel Electrophoresis</h4>
-<p class="text-on-surface-variant text-xs mt-2 font-medium">Est. Duration: 60 min</p>
-</div>
-<button class="w-full py-3 border border-primary text-primary font-bold rounded flex items-center justify-center space-x-2 active:scale-95 transition-all hover:bg-primary hover:text-on-primary">
-<span class="">Start Now</span>
-<span class="material-symbols-outlined text-sm">play_arrow</span>
-</button>
-</div>
-</div>
-</div>
-<!-- Recently Opened Notebooks -->
-<div>
-<div class="flex justify-between items-end mb-6">
-<div>
-<h3 class="text-headline-lg font-headline-lg text-on-surface">Notebooks</h3>
-</div>
-<a href="notebook.html" class="text-primary text-sm font-semibold flex items-center hover:underline">
-                        View All Notebooks <span class="material-symbols-outlined ml-1 text-sm">arrow_forward</span>
-</a>
-</div>
-<div class="grid grid-cols-3 gap-stack-gap">
-<!-- Notebook Card: CRISPR Knockout -->
-<div class="glass-panel p-6 rounded-lg group hover:border-primary transition-all duration-300 relative overflow-hidden flex flex-col">
-<div class="absolute top-0 right-0 p-2 opacity-10">
-<span class="material-symbols-outlined text-6xl">menu_book</span>
-</div>
-<div class="mb-4 flex-1">
-<span class="inline-block px-2 py-1 bg-primary-container text-[10px] font-bold text-on-primary-container rounded uppercase mb-3">Gene Editing</span>
-<h4 class="text-headline-md font-headline-md text-on-surface leading-tight">CRISPR Knockout — Line 7</h4>
-<p class="text-on-surface-variant text-xs mt-2 font-medium">Last opened: 2 hours ago</p>
-</div>
-<button class="w-full py-3 border border-primary text-primary font-bold rounded flex items-center justify-center space-x-2 active:scale-95 transition-all hover:bg-primary hover:text-on-primary">
-<span class="">Open</span>
-<span class="material-symbols-outlined text-sm">arrow_forward</span>
-</button>
-</div>
-<!-- Notebook Card: Protein Expression -->
-<div class="glass-panel p-6 rounded-lg group hover:border-primary transition-all duration-300 relative overflow-hidden flex flex-col">
-<div class="absolute top-0 right-0 p-2 opacity-10">
-<span class="material-symbols-outlined text-6xl">science</span>
-</div>
-<div class="mb-4 flex-1">
-<span class="inline-block px-2 py-1 bg-primary-container text-[10px] font-bold text-on-primary-container rounded uppercase mb-3">Proteomics</span>
-<h4 class="text-headline-md font-headline-md text-on-surface leading-tight">Protein Expression Assay</h4>
-<p class="text-on-surface-variant text-xs mt-2 font-medium">Last opened: Yesterday</p>
-</div>
-<button class="w-full py-3 border border-primary text-primary font-bold rounded flex items-center justify-center space-x-2 active:scale-95 transition-all hover:bg-primary hover:text-on-primary">
-<span class="">Open</span>
-<span class="material-symbols-outlined text-sm">arrow_forward</span>
-</button>
-</div>
-<!-- Notebook Card: qPCR Standard Curve -->
-<div class="glass-panel p-6 rounded-lg group hover:border-primary transition-all duration-300 relative overflow-hidden flex flex-col">
-<div class="absolute top-0 right-0 p-2 opacity-10">
-<span class="material-symbols-outlined text-6xl">analytics</span>
-</div>
-<div class="mb-4 flex-1">
-<span class="inline-block px-2 py-1 bg-primary-container text-[10px] font-bold text-on-primary-container rounded uppercase mb-3">Quantification</span>
-<h4 class="text-headline-md font-headline-md text-on-surface leading-tight">qPCR Standard Curve</h4>
-<p class="text-on-surface-variant text-xs mt-2 font-medium">Last opened: 3 days ago</p>
-</div>
-<button class="w-full py-3 border border-primary text-primary font-bold rounded flex items-center justify-center space-x-2 active:scale-95 transition-all hover:bg-primary hover:text-on-primary">
-<span class="">Open</span>
-<span class="material-symbols-outlined text-sm">arrow_forward</span>
-</button>
-</div>
+<div id="protocol-cards" class="grid grid-cols-3 gap-stack-gap">
+<div class="text-on-surface-variant text-sm col-span-3">Loading protocols…</div>
 </div>
 </div>
 </section>
@@ -246,51 +50,12 @@
 <!-- AI Lab Status -->
 <div class="glass-panel rounded-lg overflow-hidden flex flex-col h-full border-primary/20">
 <div class="bg-primary/5 p-4 border-b border-outline-variant flex justify-between items-center">
-<h3 class="text-sm font-bold text-primary uppercase tracking-widest">AI Lab Status</h3>
+<h3 class="text-sm font-bold text-primary uppercase tracking-widest">Live Status</h3>
 <div class="w-2 h-2 rounded-full bg-secondary animate-pulse shadow-[0_0_8px_#40e56c]"></div>
 </div>
 <div class="p-6 space-y-6">
-<!-- Reagent Alerts -->
-<div>
-<div class="flex justify-between items-center mb-4">
-<p class="text-xs font-bold text-on-surface uppercase">Inventory Alerts</p>
-<span class="text-[10px] bg-error-container text-on-error-container px-1.5 py-0.5 rounded font-bold">2 CRITICAL</span>
-</div>
-<div class="space-y-3">
-<div class="flex items-center justify-between p-3 bg-surface-container-lowest border border-outline-variant rounded">
-<div class="flex items-center space-x-3">
-<span class="material-symbols-outlined text-tertiary">warning</span>
-<div>
-<p class="text-xs font-bold text-on-surface">Ethanol 70%</p>
-<p class="text-[10px] text-on-surface-variant">Current: 500mL / Low</p>
-</div>
-</div>
-<button class="text-[10px] font-bold text-primary hover:underline">REORDER</button>
-</div>
-<div class="flex items-center justify-between p-3 bg-surface-container-lowest border border-outline-variant rounded">
-<div class="flex items-center space-x-3">
-<span class="material-symbols-outlined text-error" style="font-variation-settings: &quot;FILL&quot; 1;">error</span>
-<div>
-<p class="text-xs font-bold text-on-surface">SYBR Green Dye</p>
-<p class="text-[10px] text-on-surface-variant">Expiring in 48 hours</p>
-</div>
-</div>
-<button class="text-[10px] font-bold text-primary hover:underline">DISPOSE</button>
-</div>
-</div>
-</div>
-<!-- Last Research Log -->
-<div>
-<p class="text-xs font-bold text-on-surface uppercase mb-4">Last Research Log</p>
-<div class="p-4 bg-surface-container-high rounded border border-outline-variant text-xs leading-relaxed text-on-surface-variant italic">
-                            "Sample batch #402-A showed unexpected high absorbance at 260nm. Verified dilution ratio. AI recommends re-calibration of the spectrophotometer before next run. Logged by Dr. Aris at 09:45 AM."
-                        </div>
-<div class="mt-3 flex justify-end">
-<span class="text-[10px] font-bold text-secondary uppercase">Verified by System</span>
-</div>
-</div>
 <!-- Active Protocol -->
-<div class="pt-4 border-t border-outline-variant">
+<div>
 <p class="text-xs font-bold text-on-surface uppercase mb-4">Active Protocol</p>
 <p id="step-current" class="text-sm text-on-surface-variant mb-4">No protocol loaded.</p>
 <p class="text-xs font-bold text-on-surface uppercase mb-4 mt-8">Active Timers</p>
@@ -318,15 +83,6 @@
 </div>
 </div>
 <script>
-        // Micro-interaction: Animated Waveform
-        const bars = document.querySelectorAll('.waveform-bar');
-        setInterval(() => {
-            bars.forEach(bar => {
-                const randomHeight = Math.floor(Math.random() * 24) + 8;
-                bar.style.height = `${randomHeight}px`;
-            });
-        }, 150);
-
         // Hover effect for protocol cards
         const protocolCards = document.querySelectorAll('.glass-panel.group');
         protocolCards.forEach(card => {

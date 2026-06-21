@@ -331,11 +331,11 @@ class InventoryItemIn(BaseModel):
     name: str
     location: str = ""
     quantity_approx: str = ""
+    amount: str = ""
+    unit: str = ""
     notes: str = ""
     date: str = ""
     expiration: str = ""
-    amount: str = ""
-    unit: str = ""
 
 
 class InventoryItemEdit(BaseModel):

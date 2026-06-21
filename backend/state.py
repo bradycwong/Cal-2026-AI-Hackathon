@@ -207,9 +207,9 @@ def load_inventory_file(path: Path) -> list[InventoryItem]:
                     category=(row.get("category") or "General").strip() or "General",
                     date=(row.get("date") or "").strip(),
                     expiration=(row.get("expiration") or "").strip(),
+                    status=status,
                     amount=(row.get("amount") or "").strip(),
                     unit=(row.get("unit") or "").strip(),
-                    status=status,
                 )
             )
     return items
@@ -221,12 +221,48 @@ _INVENTORY_COLUMNS = [
 ]
 
 
-def _inventory_row(item: "InventoryItem") -> list[str]:
+def _quantity_from_parts(quantity_approx: str, amount: str, unit: str) -> str:
+    quantity = quantity_approx.strip()
+    if quantity:
+        return quantity
+    amount = amount.strip()
+    unit = unit.strip()
+    if amount and unit:
+        return f"{amount} {unit}"
+    return amount
+
+
+def _inventory_row(item: InventoryItem) -> list[str]:
     """One CSV row for an item, in ``_INVENTORY_COLUMNS`` order."""
     return [
-        item.name, item.amount, item.unit, item.location, item.quantity_approx,
-        item.notes, item.code, item.category, item.date, item.expiration, item.status,
+        item.name,
+        item.amount,
+        item.unit,
+        item.location,
+        item.quantity_approx,
+        item.notes,
+        item.code,
+        item.category,
+        item.date,
+        item.expiration,
+        item.status,
     ]
+
+
+def _inventory_file_has_current_columns(path: Path) -> bool:
+    if not path.exists() or path.stat().st_size == 0:
+        return True
+    with path.open(newline="", encoding="utf-8") as fh:
+        reader = csv.reader(fh)
+        return next(reader, []) == _INVENTORY_COLUMNS
+
+
+def _write_inventory_file(path: Path, items: list[InventoryItem]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(_INVENTORY_COLUMNS)
+        writer.writerows(_inventory_row(item) for item in items)
 
 
 class SessionState:
@@ -345,21 +381,26 @@ class SessionState:
         status = (status or "ok").strip().lower()
         if status not in _INVENTORY_STATUSES:
             status = "ok"
+        amount = amount.strip()
+        unit = unit.strip()
         item = InventoryItem(
             name=name,
             location=location.strip(),
-            quantity_approx=quantity_approx.strip(),
+            quantity_approx=_quantity_from_parts(quantity_approx, amount, unit),
             notes=notes.strip(),
             code=code.strip(),
             category=(category or "General").strip() or "General",
             date=date.strip(),
             expiration=expiration.strip(),
-            amount=str(amount).strip(),
-            unit=str(unit).strip(),
             status=status,
+            amount=amount,
+            unit=unit,
         )
         self.inventory.append(item)
         inv_path = self.data_dir / "inventory.csv"
+        if not _inventory_file_has_current_columns(inv_path):
+            _write_inventory_file(inv_path, self.inventory)
+            return item
         write_header = not inv_path.exists() or inv_path.stat().st_size == 0
         inv_path.parent.mkdir(parents=True, exist_ok=True)
         with inv_path.open("a", newline="", encoding="utf-8") as fh:
@@ -407,6 +448,8 @@ class SessionState:
             item.amount = str(amount).strip()
         if unit is not None:
             item.unit = str(unit).strip()
+        if amount is not None or unit is not None:
+            item.quantity_approx = _quantity_from_parts("", item.amount, item.unit)
         if date is not None:
             item.date = date.strip()
         if expiration is not None:

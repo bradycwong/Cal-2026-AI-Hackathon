@@ -1,50 +1,29 @@
-// sw.js — cache the app shell so the page loads instantly / offline.
-// Only the static shell is cached; live data (/api/*) and the event/audio
-// sockets (/ws/*) always go to the network and are never intercepted.
+// sw.js — self-unregistering "kill" worker.
 //
-// Bump CACHE when the shell changes to evict the previous version on activate.
-const CACHE = "lab-shell-v2";
-const SHELL = ["/", "/static/styles.css", "/static/app.js"];
-
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting())
-  );
-});
+// The app no longer uses a service worker. The live UI is FrontendTest/, served
+// fresh from the network; an earlier shell-caching worker cached now-nonexistent
+// /static/* paths. This stub replaces it: on activate it deletes every cache,
+// unregisters itself, and reloads open clients so they pick up the live UI.
+// Browsers re-fetch /sw.js periodically, so a stale registration from an earlier
+// visit gets cleaned up automatically the next time this is served.
+self.addEventListener("install", () => self.skipWaiting());
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim())
+    (async () => {
+      try {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      } catch (_) {}
+      try {
+        await self.registration.unregister();
+      } catch (_) {}
+      try {
+        const clients = await self.clients.matchAll({ type: "window" });
+        clients.forEach((c) => c.navigate(c.url));
+      } catch (_) {}
+    })()
   );
 });
 
-function isShellRequest(request, url) {
-  if (request.mode === "navigate") return true; // the page itself ("/")
-  return SHELL.includes(url.pathname);
-}
-
-self.addEventListener("fetch", (event) => {
-  const request = event.request;
-  if (request.method !== "GET") return;
-  const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/ws/")) return;
-  if (!isShellRequest(request, url)) return;
-
-  // Stale-while-revalidate: answer from cache instantly, refresh in background.
-  event.respondWith(
-    caches.open(CACHE).then(async (cache) => {
-      const cached = await cache.match(request, { ignoreSearch: true });
-      const network = fetch(request)
-        .then((response) => {
-          if (response && response.ok) cache.put(request, response.clone());
-          return response;
-        })
-        .catch(() => cached);
-      return cached || network;
-    })
-  );
-});
+// No fetch handler on purpose: every request goes straight to the network.

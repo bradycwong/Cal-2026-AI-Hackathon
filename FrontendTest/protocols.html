@@ -4,106 +4,16 @@
 <title>LIMS AI Assistant - Protocol Library</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500&family=DM+Sans:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500;600;700&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300..500&family=DM+Sans:wght@300..700&amp;family=JetBrains+Mono:wght@100..900&amp;display=swap" rel="stylesheet">
-<script id="tailwind-config">
-      tailwind.config = {
-        darkMode: "class",
-        theme: {
-          extend: {
-            "colors": {
-                    "inverse-surface": "#E8EDF7",
-                    "surface-dim": "#0D1117",
-                    "on-error": "#1A0000",
-                    "secondary-fixed-dim": "#8FD95A",
-                    "error": "#FF6B6B",
-                    "on-secondary": "#0D1117",
-                    "on-secondary-fixed": "#0D1117",
-                    "surface": "#0D1117",
-                    "on-primary-fixed-variant": "#1A3A7A",
-                    "on-primary": "#051025",
-                    "background": "#0D1117",
-                    "secondary-fixed": "#B8FF7C",
-                    "surface-container-high": "#1A2235",
-                    "on-tertiary-container": "#FFD580",
-                    "primary": "#7BA7F5",
-                    "outline": "#4A5570",
-                    "tertiary-container": "#7A4A00",
-                    "on-tertiary-fixed-variant": "#7A4A00",
-                    "error-container": "#7A1515",
-                    "secondary-container": "#3A7A1A",
-                    "on-background": "#E8EDF7",
-                    "on-tertiary-fixed": "#1A0D00",
-                    "on-primary-fixed": "#051025",
-                    "on-tertiary": "#1A0D00",
-                    "tertiary": "#F5A623",
-                    "on-secondary-container": "#0D1117",
-                    "on-primary-container": "#E8EDF7",
-                    "primary-fixed-dim": "#7BA7F5",
-                    "secondary": "#B8FF7C",
-                    "surface-bright": "#253050",
-                    "inverse-on-surface": "#131929",
-                    "surface-container-low": "#111724",
-                    "outline-variant": "#253050",
-                    "surface-container-lowest": "#080C14",
-                    "on-secondary-fixed-variant": "#3A7A1A",
-                    "primary-container": "#2352C8",
-                    "on-surface": "#E8EDF7",
-                    "tertiary-fixed-dim": "#F5A623",
-                    "on-surface-variant": "#8A96B0",
-                    "primary-fixed": "#C5D5F5",
-                    "on-error-container": "#FFD5D5",
-                    "tertiary-fixed": "#FFD580",
-                    "surface-tint": "#7BA7F5",
-                    "surface-variant": "#1E2A3F",
-                    "surface-container": "#131929",
-                    "inverse-primary": "#2352C8",
-                    "surface-container-highest": "#1E2A3F"
-            },
-            "borderRadius": {
-                    "DEFAULT": "0.125rem",
-                    "lg": "0.25rem",
-                    "xl": "0.5rem",
-                    "full": "0.75rem"
-            },
-            "spacing": {
-                    "gutter": "24px",
-                    "touch-target": "48px",
-                    "stack-gap": "16px",
-                    "container-padding": "32px",
-                    "unit": "8px"
-            },
-            "fontFamily": {
-                    "headline-lg": ["DM Mono"],
-                    "data-label": ["JetBrains Mono"],
-                    "display-timer": ["JetBrains Mono"],
-                    "body-md": ["DM Sans"],
-                    "data-value": ["JetBrains Mono"],
-                    "body-lg": ["DM Sans"],
-                    "headline-lg-mobile": ["DM Mono"],
-                    "headline-md": ["DM Mono"]
-            },
-            "fontSize": {
-                    "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "600"}],
-                    "data-label": ["14px", {"lineHeight": "20px", "fontWeight": "500"}],
-                    "display-timer": ["72px", {"lineHeight": "80px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
-                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
-                    "data-value": ["18px", {"lineHeight": "24px", "fontWeight": "600"}],
-                    "body-lg": ["20px", {"lineHeight": "30px", "fontWeight": "400"}],
-                    "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
-                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "500"}]
-            }
-          },
-        },
-      }
-    </script>
+<script src="tailwind-config.js"></script>
 <link href="protocols.css" rel="stylesheet">
+<link href="shared.css" rel="stylesheet">
 </head>
-<body class="bg-background text-on-background font-body-md min-h-screen flex">
+<body class="bg-background text-on-surface font-body-md min-h-screen flex">
 <!-- SideNavBar -->
 <aside class="h-screen w-64 fixed left-0 top-0 border-r border-outline-variant flex flex-col py-gutter px-unit z-50 bg-surface-container-low" id="side-nav">
 <a href="dashboard.html" class="px-gutter mb-8 block hover:opacity-80 transition-opacity cursor-pointer">
-<h1 class="font-headline-md text-headline-md text-primary">Placeholder</h1>
+<h1 class="font-headline-md text-headline-md text-primary">Lab</h1>
 <p class="text-on-surface-variant text-sm">AI Assistant</p>
 </a>
 <nav class="flex-1 space-y-1" id="main-nav">
@@ -113,10 +23,6 @@
 <a href="guide.html" data-nav="guide.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">menu_book</span><span class="font-body-md text-body-md">Guide</span></a>
 <a href="inventory.html" data-nav="inventory.html" class="nav-link flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">inventory_2</span><span class="font-body-md text-body-md">Inventory</span></a>
 </nav>
-<div class="mt-auto px-4 pt-4 border-t border-outline-variant"><div class="space-y-1">
-<div class="flex items-center px-4 py-3 text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors cursor-pointer active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">help</span><span class="font-body-md text-body-md">Support</span></div>
-<div class="flex items-center px-4 py-3 text-error font-medium hover:bg-error-container/10 transition-colors cursor-pointer active:scale-95 rounded-xl"><span class="material-symbols-outlined mr-3">logout</span><span class="font-body-md text-body-md">Logout</span></div>
-</div></div>
 </aside>
 <!-- Main Content Area -->
 <main class="flex-1 ml-64 flex flex-col min-h-screen relative">
@@ -143,157 +49,7 @@
 </div>
 <!-- Bento Grid of Protocol Cards (live: populated by app.js) -->
 <div id="protocol-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-<!-- Protocol Card 1 -->
-<div class="protocol-card bg-surface-container-low rounded-xl p-6 flex flex-col">
-<div class="flex justify-between items-start mb-4">
-<div class="w-12 h-12 rounded-lg bg-surface-variant flex items-center justify-center">
-<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">dns</span>
-</div>
-<span class="font-data-label text-xs text-secondary bg-secondary-container/20 px-2 py-1 rounded">READY</span>
-</div>
-<h3 class="font-headline-md text-headline-md mb-2">DNA Extraction</h3>
-<p class="text-on-surface-variant text-sm mb-6 flex-1">Rapid silica-based membrane purification of genomic DNA from whole blood or tissue samples.</p>
-<div class="grid grid-cols-2 gap-4 mb-6">
-<div class="bg-surface-container-high p-3 rounded-lg">
-<p class="text-[10px] text-on-surface-variant uppercase font-bold mb-1">Duration</p>
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-sm">schedule</span>
-<span class="font-data-value text-data-value">45m</span>
-</div>
-</div>
-<div class="bg-surface-container-high p-3 rounded-lg">
-<p class="text-[10px] text-on-surface-variant uppercase font-bold mb-1">Steps</p>
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-sm">format_list_numbered</span>
-<span class="font-data-value text-data-value">12</span>
-</div>
-</div>
-</div>
-<div class="mb-6">
-<p class="text-[10px] text-on-surface-variant uppercase font-bold mb-2">Required Reagents</p>
-<div class="flex flex-wrap gap-2">
-<span class="text-[12px] bg-surface-variant px-2 py-1 rounded border border-outline-variant">Lysis Buffer AL</span>
-<span class="text-[12px] bg-surface-variant px-2 py-1 rounded border border-outline-variant">Proteinase K</span>
-<span class="text-[12px] bg-surface-variant px-2 py-1 rounded border border-outline-variant">Ethanol (96%)</span>
-</div>
-</div>
-<button class="w-full bg-primary text-on-primary py-3 rounded-lg font-bold hover:bg-primary/90 transition-all active:opacity-80 flex items-center justify-center gap-2">
-<span class="material-symbols-outlined">play_arrow</span>
-                        Load Protocol
-                    </button>
-</div>
-<!-- Protocol Card 2 -->
-<div class="protocol-card bg-surface-container-low rounded-xl p-6 flex flex-col">
-<div class="flex justify-between items-start mb-4">
-<div class="w-12 h-12 rounded-lg bg-surface-variant flex items-center justify-center">
-<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">rebase_edit</span>
-</div>
-<span class="font-data-label text-xs text-tertiary bg-tertiary-container/20 px-2 py-1 rounded">LOW REAGENTS</span>
-</div>
-<h3 class="font-headline-md text-headline-md mb-2">PCR Setup</h3>
-<p class="text-on-surface-variant text-sm mb-6 flex-1">Standard 96-well plate preparation for quantitative real-time PCR amplification.</p>
-<div class="grid grid-cols-2 gap-4 mb-6">
-<div class="bg-surface-container-high p-3 rounded-lg">
-<p class="text-[10px] text-on-surface-variant uppercase font-bold mb-1">Duration</p>
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-sm">schedule</span>
-<span class="font-data-value text-data-value">25m</span>
-</div>
-</div>
-<div class="bg-surface-container-high p-3 rounded-lg">
-<p class="text-[10px] text-on-surface-variant uppercase font-bold mb-1">Steps</p>
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-sm">format_list_numbered</span>
-<span class="font-data-value text-data-value">08</span>
-</div>
-</div>
-</div>
-<div class="mb-6">
-<p class="text-[10px] text-on-surface-variant uppercase font-bold mb-2">Required Reagents</p>
-<div class="flex flex-wrap gap-2">
-<span class="text-[12px] bg-surface-variant px-2 py-1 rounded border border-outline-variant">Taq Polymerase</span>
-<span class="text-[12px] bg-surface-variant px-2 py-1 rounded border border-outline-variant text-error">dNTP Mix (Low)</span>
-</div>
-</div>
-<button class="w-full bg-primary text-on-primary py-3 rounded-lg font-bold hover:bg-primary/90 transition-all active:opacity-80 flex items-center justify-center gap-2">
-<span class="material-symbols-outlined">play_arrow</span>
-                        Load Protocol
-                    </button>
-</div>
-<!-- Protocol Card 3 -->
-<div class="protocol-card bg-surface-container-low rounded-xl p-6 flex flex-col">
-<div class="flex justify-between items-start mb-4">
-<div class="w-12 h-12 rounded-lg bg-surface-variant flex items-center justify-center">
-<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">layers</span>
-</div>
-<span class="font-data-label text-xs text-secondary bg-secondary-container/20 px-2 py-1 rounded">READY</span>
-</div>
-<h3 class="font-headline-md text-headline-md mb-2">Gel Electrophoresis</h3>
-<p class="text-on-surface-variant text-sm mb-6 flex-1">Preparation and running of 1.5% agarose gels for DNA fragment analysis and visualization.</p>
-<div class="grid grid-cols-2 gap-4 mb-6">
-<div class="bg-surface-container-high p-3 rounded-lg">
-<p class="text-[10px] text-on-surface-variant uppercase font-bold mb-1">Duration</p>
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-sm">schedule</span>
-<span class="font-data-value text-data-value">90m</span>
-</div>
-</div>
-<div class="bg-surface-container-high p-3 rounded-lg">
-<p class="text-[10px] text-on-surface-variant uppercase font-bold mb-1">Steps</p>
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-sm">format_list_numbered</span>
-<span class="font-data-value text-data-value">15</span>
-</div>
-</div>
-</div>
-<div class="mb-6">
-<p class="text-[10px] text-on-surface-variant uppercase font-bold mb-2">Required Reagents</p>
-<div class="flex flex-wrap gap-2">
-<span class="text-[12px] bg-surface-variant px-2 py-1 rounded border border-outline-variant">Agarose</span>
-<span class="text-[12px] bg-surface-variant px-2 py-1 rounded border border-outline-variant">1x TAE Buffer</span>
-<span class="text-[12px] bg-surface-variant px-2 py-1 rounded border border-outline-variant">SYBR Safe</span>
-</div>
-</div>
-<button class="w-full bg-primary text-on-primary py-3 rounded-lg font-bold hover:bg-primary/90 transition-all active:opacity-80 flex items-center justify-center gap-2">
-<span class="material-symbols-outlined">play_arrow</span>
-                        Load Protocol
-                    </button>
-</div>
-<!-- Protocol Card 4 (Asymmetric Large Card) -->
-<div class="protocol-card bg-surface-container-low rounded-xl p-6 flex flex-col">
-<div class="flex justify-between items-start mb-4"><div class="w-12 h-12 rounded-lg bg-surface-variant flex items-center justify-center"><span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">biotech</span></div><span class="font-data-label text-xs text-secondary bg-secondary-container/20 px-2 py-1 rounded">READY</span></div><h3 class="font-headline-md text-headline-md mb-2">Bacterial Transformation</h3><p class="text-on-surface-variant text-sm mb-6 flex-1">Heat-shock transformation of chemically competent E. coli cells with plasmid DNA for protein expression.</p><div class="grid grid-cols-2 gap-4 mb-6"><div class="bg-surface-container-high p-3 rounded-lg"><p class="text-[10px] text-on-surface-variant uppercase font-bold mb-1">Duration</p><div class="flex items-center gap-2"><span class="material-symbols-outlined text-sm">schedule</span><span class="font-data-value text-data-value">120m</span></div></div><div class="bg-surface-container-high p-3 rounded-lg"><p class="text-[10px] text-on-surface-variant uppercase font-bold mb-1">Steps</p><div class="flex items-center gap-2"><span class="material-symbols-outlined text-sm">format_list_numbered</span><span class="font-data-value text-data-value">22</span></div></div></div><div class="mb-6"><p class="text-[10px] text-on-surface-variant uppercase font-bold mb-2">Required Reagents</p><div class="flex flex-wrap gap-2"><span class="text-[12px] bg-surface-variant px-2 py-1 rounded border border-outline-variant">Competent Cells</span><span class="text-[12px] bg-surface-variant px-2 py-1 rounded border border-outline-variant">LB Broth</span><span class="text-[12px] bg-surface-variant px-2 py-1 rounded border border-outline-variant">Ampicillin</span></div></div><button class="w-full bg-primary text-on-primary py-3 rounded-lg font-bold hover:bg-primary/90 transition-all active:opacity-80 flex items-center justify-center gap-2"><span class="material-symbols-outlined">play_arrow</span>Load Protocol</button>
-</div>
-<!-- Protocol Card 5 -->
-<div class="protocol-card bg-surface-container-low rounded-xl p-6 flex flex-col">
-<div class="flex justify-between items-start mb-4">
-<div class="w-12 h-12 rounded-lg bg-surface-variant flex items-center justify-center">
-<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">science</span>
-</div>
-<span class="font-data-label text-xs text-on-surface-variant bg-surface-variant px-2 py-1 rounded">ARCHIVED</span>
-</div>
-<h3 class="font-headline-md text-headline-md mb-2">BCA Protein Assay</h3>
-<p class="text-on-surface-variant text-sm mb-6 flex-1">Colorimetric detection and quantitation of total protein using bicinchoninic acid.</p>
-<div class="grid grid-cols-2 gap-4 mb-6">
-<div class="bg-surface-container-high p-3 rounded-lg">
-<p class="text-[10px] text-on-surface-variant uppercase font-bold mb-1">Duration</p>
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-sm">schedule</span>
-<span class="font-data-value text-data-value">60m</span>
-</div>
-</div>
-<div class="bg-surface-container-high p-3 rounded-lg">
-<p class="text-[10px] text-on-surface-variant uppercase font-bold mb-1">Steps</p>
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-sm">format_list_numbered</span>
-<span class="font-data-value text-data-value">10</span>
-</div>
-</div>
-</div>
-<button class="w-full border border-outline text-on-surface py-3 rounded-lg font-bold hover:bg-surface-variant transition-all active:opacity-80 flex items-center justify-center gap-2">
-<span class="material-symbols-outlined">history</span>
-                        View Details
-                    </button>
-</div>
+<div class="text-on-surface-variant text-sm">Loading protocols…</div>
 </div>
 </section>
 <!-- BottomNavBar (Voice Interaction Area) -->
@@ -348,15 +104,6 @@
                 button.style.transform = 'scale(1)';
             });
         });
-
-        // Atmospheric interaction: Waveform intensity shift on "voice"
-        setInterval(() => {
-            const bars = document.querySelectorAll('.waveform-bar');
-            bars.forEach(bar => {
-                const randomHeight = Math.floor(Math.random() * 20) + 8;
-                bar.style.height = `${randomHeight}px`;
-            });
-        }, 150);
     </script>
 
 

@@ -1,0 +1,34 @@
+/* shared.css — chrome shared by every FrontendTest page (sidebar nav + voice dock
+ * + live transcript). Previously copy-pasted into all 5 per-page stylesheets. */
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
+}
+
+/* Active nav link highlight (set by app.js wireNav()). */
+.nav-active {
+  background-color: #2352C8;
+  color: #E8EDF7;
+  font-weight: 600;
+}
+/* Keep the current (active) page its highlight color on hover. */
+.nav-link.nav-active:hover {
+  background-color: #2352C8;
+  color: #E8EDF7;
+}
+
+/* Live transcript lines in the voice dock. */
+.transcript-line { padding: 2px 0; }
+.transcript-interim { opacity: 0.6; font-style: italic; }
+.transcript-final { opacity: 1; }
+
+/* Voice "listening" pulse ring. */
+#voice-pulse.voice-pulse-on {
+  opacity: 0.5;
+  animation: voice-ping 1.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes voice-ping {
+  0% { transform: scale(1); opacity: 0.6; }
+  75%, 100% { transform: scale(1.8); opacity: 0; }
+}

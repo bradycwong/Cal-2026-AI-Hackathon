@@ -15,6 +15,19 @@
 
   const API = "";
   const $ = (id) => document.getElementById(id);
+  const INVENTORY_UNITS = [
+    "mL",
+    "uL",
+    "L",
+    "g",
+    "mg",
+    "ug",
+    "bottles",
+    "plates",
+    "aliquots",
+    "doses",
+    "reactions",
+  ];
 
   function escapeHtml(s) {
     return String(s == null ? "" : s)
@@ -180,6 +193,24 @@
     return data;
   }
 
+  function populateInventoryUnits() {
+    const options = $("additem-unit-options");
+    if (!options || options.dataset.populated) return;
+    options.innerHTML = INVENTORY_UNITS.map(
+      (unit) => `<option value="${escapeHtml(unit)}"></option>`
+    ).join("");
+    options.dataset.populated = "1";
+  }
+
+  function formatInventoryAmount(item) {
+    const { amount, unit } = item || {};
+    const cleanAmount = String(amount || "").trim();
+    const cleanUnit = String(unit || "").trim();
+    if (cleanAmount && cleanUnit) return `${cleanAmount} ${cleanUnit}`;
+    if (cleanAmount) return cleanAmount;
+    return String((item && item.quantity_approx) || "").trim() || "—";
+  }
+
   // <input type=date> only accepts YYYY-MM-DD; ignore anything else (e.g. "N/A").
   const asDateInputValue = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v : "");
 
@@ -196,6 +227,7 @@
   }
 
   function clearAddItemForm() {
+    populateInventoryUnits();
     ["additem-name", "additem-amount", "additem-unit", "additem-location", "additem-date", "additem-expiration"].forEach(
       (id) => {
         const el = $(id);
@@ -331,6 +363,7 @@
   function wireAddItemModal() {
     const open = $("add-item");
     if (!open) return;
+    populateInventoryUnits();
     open.addEventListener("click", openAddItemModal);
     ["additem-cancel", "additem-cancel-2"].forEach((id) => {
       const b = $(id);
@@ -352,6 +385,57 @@
         const delBtn = e.target.closest(".inv-delete");
         if (editBtn) openEditItemModal(parseInt(editBtn.dataset.index, 10));
         else if (delBtn) handleDeleteItem(parseInt(delBtn.dataset.index, 10));
+      });
+  }
+
+  // --- manual log entry modal (notebook "Manual Entry") ---------------------
+  function openLogModal() {
+    const m = $("log-modal");
+    if (!m) return;
+    const res = $("log-result");
+    if (res) res.textContent = "";
+    m.classList.remove("hidden");
+    const t = $("log-text");
+    if (t) t.focus();
+  }
+  function closeLogModal() {
+    const m = $("log-modal");
+    if (m) m.classList.add("hidden");
+  }
+  async function submitLogForm(e) {
+    if (e) e.preventDefault();
+    const textEl = $("log-text");
+    const sampleEl = $("log-sample");
+    const result = $("log-result");
+    const text = ((textEl && textEl.value) || "").trim();
+    if (!text) {
+      if (result) result.textContent = "Enter an observation to log.";
+      return;
+    }
+    if (result) result.textContent = "Saving...";
+    try {
+      await postLog(text, (sampleEl && sampleEl.value) || null, null);
+      if (textEl) textEl.value = "";
+      if (sampleEl) sampleEl.value = "";
+      await refreshNotebookFeed();
+      if (result) result.textContent = "";
+      closeLogModal();
+    } catch (err) {
+      if (result) result.textContent = "Could not save: " + err.message;
+    }
+  }
+  function wireLogModal() {
+    const open = $("log-add");
+    if (!open) return;
+    open.addEventListener("click", openLogModal);
+    const cancel = $("log-cancel");
+    if (cancel) cancel.addEventListener("click", closeLogModal);
+    const form = $("log-form");
+    if (form) form.addEventListener("submit", submitLogForm);
+    const modal = $("log-modal");
+    if (modal)
+      modal.addEventListener("click", (e) => {
+        if (e.target === modal) closeLogModal();
       });
   }
 
@@ -443,7 +527,7 @@
         const depletedCls = isZero ? "inv-depleted" : "";
         const amtCls = isZero ? "text-error font-bold" : "text-on-surface";
         const unitCls = isZero ? "text-error" : "text-on-surface-variant";
-        const amtText = amtRaw === "" ? "—" : escapeHtml(amtRaw);
+        const amtText = amtRaw === "" ? escapeHtml(formatInventoryAmount(it)) : escapeHtml(amtRaw);
         const unitText = amtRaw !== "" && unit
           ? ` <span class="text-sm ${unitCls}">${escapeHtml(unit)}</span>`
           : "";
@@ -594,6 +678,20 @@
     const panel = $("step-panel");
     if (panel && idx >= 0) panel.classList.remove("hidden");
 
+    // Live step counters (Guide): mirror the tracker so "STEP x / N" and the
+    // "Protocol Phase 0x / 0N" header track the loaded protocol instead of fake data.
+    const total = Array.isArray(step.all_steps) ? step.all_steps.length : 0;
+    const human = idx >= 0 ? idx + 1 : 0;
+    const counter = $("step-counter");
+    if (counter) counter.textContent = total ? `STEP ${human} / ${total}` : "STEP —";
+    const phase = $("step-phase");
+    if (phase)
+      phase.textContent = total
+        ? `Protocol Phase ${String(human).padStart(2, "0")} / ${String(total).padStart(2, "0")}`
+        : "Protocol Phase —";
+    const confirmBtn = $("confirm-step");
+    if (confirmBtn) confirmBtn.disabled = idx < 0;
+
     const tracker = $("step-tracker");
     if (tracker && Array.isArray(step.all_steps)) {
       tracker.innerHTML = step.all_steps
@@ -723,6 +821,14 @@
     // Reset the step tracker / active-protocol label back to the empty state.
     const cur = $("step-current");
     if (cur) cur.textContent = "No protocol loaded.";
+    const pname = $("protocol-name");
+    if (pname) pname.textContent = "No protocol loaded";
+    const counter = $("step-counter");
+    if (counter) counter.textContent = "STEP —";
+    const phase = $("step-phase");
+    if (phase) phase.textContent = "Protocol Phase —";
+    const confirmBtn = $("confirm-step");
+    if (confirmBtn) confirmBtn.disabled = true;
     const prev = $("step-prev");
     if (prev) prev.textContent = "";
     const nxt = $("step-next");
@@ -757,6 +863,30 @@
   function wireDemoReset() {
     const btn = $("demo-reset") || document.querySelector('[data-action="demo-reset"]');
     if (btn) btn.addEventListener("click", handleDemoReset);
+  }
+
+  // --- typed/click command channel ------------------------------------------
+  // Posts a transcript through the SAME spine as voice (/api/ingest -> route ->
+  // handle_command -> broadcast over /ws/events), so on-screen buttons and
+  // spoken commands behave identically. Events arrive via WS; ignore the body.
+  async function ingestCommand(transcript) {
+    await fetch(API + "/api/ingest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transcript }),
+    });
+  }
+
+  // Guide "Confirm Action": click == saying "next step". Disabled until a step
+  // is active (renderStep toggles it), so it never fires with no protocol loaded.
+  function wireGuideConfirm() {
+    const btn = $("confirm-step");
+    if (!btn || btn.dataset.wired) return;
+    btn.dataset.wired = "1";
+    btn.addEventListener("click", () => {
+      if (btn.disabled) return;
+      ingestCommand("next step").catch(() => {});
+    });
   }
 
   // --- in-memory log mirror so WS deltas can re-render the feed --------------
@@ -1103,37 +1233,86 @@
     if (!micStream && getVoiceActiveStored()) startMic();
   }
 
+  // --- hydration error surface ----------------------------------------------
+  // hydrate() previously swallowed every section error, so a broken API contract
+  // looked like an empty panel. Each section now runs through hydrateSection():
+  // the failure is logged and summarised in a dismissible page-level banner.
+  const hydrateFailures = new Set();
+  function showHydrateError(section) {
+    hydrateFailures.add(section);
+    let bar = $("hydrate-error");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "hydrate-error";
+      bar.setAttribute("role", "alert");
+      bar.className =
+        "fixed top-0 inset-x-0 z-[100] bg-error-container text-on-error-container text-sm px-4 py-2 flex items-center justify-between gap-4 shadow-lg";
+      const msg = document.createElement("span");
+      msg.id = "hydrate-error-msg";
+      const close = document.createElement("button");
+      close.type = "button";
+      close.setAttribute("aria-label", "Dismiss");
+      close.className = "font-bold opacity-80 hover:opacity-100 shrink-0";
+      close.textContent = "✕";
+      close.addEventListener("click", () => bar.remove());
+      bar.appendChild(msg);
+      bar.appendChild(close);
+      document.body.appendChild(bar);
+    }
+    const m = $("hydrate-error-msg");
+    if (m)
+      m.textContent = `Couldn't load: ${Array.from(hydrateFailures).join(
+        ", "
+      )}. The backend may be unavailable — showing what loaded.`;
+  }
+  function clearHydrateError() {
+    hydrateFailures.clear();
+    const bar = $("hydrate-error");
+    if (bar) bar.remove();
+  }
+  async function hydrateSection(name, run) {
+    try {
+      await run();
+    } catch (err) {
+      console.warn(`[hydrate] ${name} failed:`, err);
+      showHydrateError(name);
+    }
+  }
+
   // --- bootstrap ------------------------------------------------------------
   async function hydrate() {
     wireNav();
-    try {
+    clearHydrateError(); // start each (re)hydrate clean; a fixed section clears its error
+    await hydrateSection("protocols", async () => {
       if ($("protocol-cards")) renderProtocolCards(await fetchProtocols());
-    } catch (_) {}
-    try {
+    });
+    await hydrateSection("inventory", async () => {
       if ($("inventory-rows")) renderInventory(await fetchInventory());
-    } catch (_) {}
-    try {
+    });
+    await hydrateSection("log", async () => {
       if ($("log-rows")) {
         logCache = await fetchLog();
         renderLog(logCache);
       }
-    } catch (_) {}
-    try {
+    });
+    await hydrateSection("notebooks", async () => {
       if ($("notebook-list") || $("notebook-title")) {
         renderNotebooks(await fetchNotebooks());
         wireNotebookNew();
       }
-    } catch (_) {}
-    try {
+    });
+    await hydrateSection("protocol state", async () => {
       if ($("step-tracker") || $("step-current")) {
         const st = await fetchState();
         renderStep(st.step);
       }
-    } catch (_) {}
+    });
     renderTimers();
     wireImportModal();
     wireAddItemModal();
+    wireLogModal();
     wireDemoReset();
+    wireGuideConfirm();
     wireVoice();
   }
 
@@ -1148,6 +1327,7 @@
     importProtocol,
     handleProtocolImport,
     postLog,
+    ingestCommand,
     renderProtocolCards,
     renderInventory,
     renderLog,
