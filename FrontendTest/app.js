@@ -1370,7 +1370,6 @@
                 <td class="py-3 pr-3 font-data-label text-on-surface">${escapeHtml(row.total_display)}</td>
                 <td class="py-3 pr-3">
                   <div class="${prepVerdictClass(row.verdict)} font-bold">${escapeHtml(prepVerdictLabel(row))}</div>
-<<<<<<< Updated upstream
                   <div class="text-xs text-on-surface-variant">${escapeHtml(row.match_name || "No inventory match")}</div>
                   ${singleDisplay}
                   ${multiBottle ? `
@@ -1378,26 +1377,14 @@
                     <div class="text-[10px] uppercase text-on-surface-variant mb-1 tracking-wide">Use order — drag to reorder</div>
                     <div class="priority-list" data-reagent="${escapeHtml(row.reagent)}">${priorityRows}</div>
                   </div>` : ""}
-=======
-                  <div class="text-xs text-on-surface-variant flex items-center gap-1">${
-                    row.match_name
-                      ? `<span class="material-symbols-outlined" style="font-size:13px" aria-hidden="true">location_on</span>${escapeHtml(row.location || "Location not set")}`
-                      : escapeHtml("No inventory match")
-                  }</div>
->>>>>>> Stashed changes
                 </td>
               </tr>`;
             }).join("")}
           </tbody>
         </table>
       </div>
-      <div class="mt-4 pt-4 border-t border-outline-variant flex items-center justify-between gap-3">
-        <p class="text-xs text-on-surface-variant">Deduct used amounts from inventory after the run.</p>
-        <button id="prep-deduct" type="button"
-          class="flex items-center gap-1.5 bg-secondary text-on-secondary px-4 py-2 rounded-lg font-bold text-sm hover:bg-secondary/90 transition-all">
-          <span class="material-symbols-outlined text-base">remove_circle</span>
-          Deduct from Inventory
-        </button>
+      <div class="mt-4 pt-4 border-t border-outline-variant">
+        <p class="text-xs text-on-surface-variant">Reagents will be automatically deducted from inventory when the protocol finishes.</p>
       </div>
     `;
 
@@ -1408,57 +1395,24 @@
       const reagentName = listEl.dataset.reagent;
       _wirePriorityDrag(listEl, reagentName);
     });
-
-    // Wire the manual deduct button.
-    const deductBtn = $("prep-deduct");
-    if (deductBtn) {
-      deductBtn.addEventListener("click", () => handleDeductReagents());
-    }
   }
 
-  async function handleDeductReagents() {
-    const deductBtn = $("prep-deduct");
-    if (deductBtn) { deductBtn.disabled = true; deductBtn.innerHTML = '<span class="material-symbols-outlined text-base">hourglass_empty</span> Computing…'; }
-    try {
-      const samples = _lastPrepSamples || Number($("prep-samples")?.value || 1);
-      const plan = await fetchScaleWithPriority({
-        sample_count: samples,
-        overage_percent: 0,
-        priority_order: _getPriorityOrder(),
-      });
+  // sessionStorage key for the one-time deduct guard. Persists across page
+  // navigations within the same tab so coming back to dashboard and returning
+  // to guide.html does NOT re-trigger deduction.
+  const DEDUCT_DONE_KEY = "deduct-done-for-run";
 
-      const deductions = plan.deductions || [];
-      if (!deductions.length) {
-        alert("No inventory items to deduct (all reagents missing or have non-volume units).");
-        return;
-      }
-
-      const lines = deductions.map(
-        (d) => `• ${d.name}: −${d.deduct_ul} uL  →  ${d.new_amount > 0 ? d.new_amount + " " + d.new_unit + " remaining" : "EMPTY — will be removed"}`
-      );
-      const ok = confirm(
-        `Deduct reagents from inventory?\n\n${lines.join("\n")}\n\nThis cannot be undone.`
-      );
-      if (!ok) return;
-
-      await consumeReagents(deductions);
-      await handlePrepCompute();
-    } catch (err) {
-      alert(`Deduction failed: ${err.message || err}`);
-    } finally {
-      if (deductBtn) {
-        deductBtn.disabled = false;
-        deductBtn.innerHTML = '<span class="material-symbols-outlined text-base">remove_circle</span> Deduct from Inventory';
-      }
-    }
-  }
-
-  // Called automatically when a protocol finishes. Skips silently if there is
-  // nothing to deduct. The _deductTriggeredForRun guard prevents re-firing on
-  // subsequent WS renders of the same finished state.
+  // Called automatically when a protocol finishes. Silently deducts inventory
+  // and shows a toast notification per item. Uses sessionStorage so the guard
+  // survives navigation (e.g. guide → dashboard → guide).
   async function autoDeductOnComplete() {
+    try {
+      if (sessionStorage.getItem(DEDUCT_DONE_KEY) === "1") return;
+      sessionStorage.setItem(DEDUCT_DONE_KEY, "1");
+    } catch (e) { /* private mode — fall back to in-memory guard */ }
     if (_deductTriggeredForRun) return;
     _deductTriggeredForRun = true;
+
     try {
       const samples = _lastPrepSamples || 1;
       const plan = await fetchScaleWithPriority({
@@ -1469,16 +1423,17 @@
       const deductions = plan.deductions || [];
       if (!deductions.length) return;
 
-      const lines = deductions.map(
-        (d) => `• ${d.name}: −${d.deduct_ul} uL  →  ${d.new_amount > 0 ? d.new_amount + " " + d.new_unit + " remaining" : "EMPTY — will be removed"}`
-      );
-      const ok = confirm(
-        `Protocol complete! Deduct reagents from inventory?\n\n${lines.join("\n")}\n\nThis cannot be undone. Click Cancel to skip.`
-      );
-      if (!ok) return;
       await consumeReagents(deductions);
+
+      // Show one toast per deducted item.
+      for (const d of deductions) {
+        const remaining = d.new_amount > 0
+          ? `${d.new_amount} ${d.new_unit} remaining`
+          : "removed from inventory";
+        showToast(`${d.name} — ${remaining}`);
+        await new Promise((r) => setTimeout(r, 350));
+      }
     } catch (err) {
-      // Non-blocking: auto-deduct failure doesn't interrupt the protocol flow.
       console.warn("Auto-deduct failed:", err);
     }
   }
@@ -2433,7 +2388,8 @@
         if (p.loaded) {
           // A load (incl. voice) changes recency: refresh the dashboard panel.
           refreshRecent();
-          _deductTriggeredForRun = false; // new protocol — allow one auto-deduct
+          _deductTriggeredForRun = false;
+          try { sessionStorage.removeItem(DEDUCT_DONE_KEY); } catch (e) {}
           openPrepModal(p.protocol_name);
         } else if (prepModalOpen()) handlePrepCompute();
         return;

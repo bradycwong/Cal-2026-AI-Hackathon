@@ -722,12 +722,28 @@ def _llm_available() -> bool:
     return True
 
 
+def _humanize_vol(ul: float) -> str:
+    if ul >= 1_000_000:
+        return f"{ul / 1_000_000:g} L"
+    if ul >= 1000:
+        return f"{ul / 1000:g} mL"
+    return f"{ul:g} uL"
+
+
 def _step_context(protocol) -> str:
     rows: list[str] = []
     for step in protocol.steps:
         params = ""
         if step.parameters:
-            pairs = [f"{key}={value}" for key, value in sorted(step.parameters.items())]
+            pairs = []
+            for key, value in sorted(step.parameters.items()):
+                if key == "volume_ul":
+                    try:
+                        pairs.append(f"volume={_humanize_vol(float(value))}")
+                    except (TypeError, ValueError):
+                        pairs.append(f"{key}={value}")
+                else:
+                    pairs.append(f"{key}={value}")
             params = " Parameters: " + ", ".join(pairs)
         rows.append(f"Step {step.id}: {step.text}{params}")
     return "\n".join(rows)

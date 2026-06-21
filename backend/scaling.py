@@ -243,6 +243,7 @@ def build_prep_table(
                 "match_name": None,
                 "match_count": 0,
                 "sources": [],
+                "location": None,
                 "available": None,
                 "available_unit": None,
                 "available_display": None,
@@ -296,6 +297,9 @@ def build_prep_table(
             if len(group) == 1
             else f"{anchor.name} (+{len(group) - 1} more, pooled)"
         )
+        # location: set for single-bottle matches so the prep table can show
+        # where to grab the reagent without digging into source_details.
+        row["location"] = anchor.location or "" if len(group) == 1 else ""
         row["status"] = _worst_status(
             [(item.status or "ok").strip().lower() for item in group]
         )
