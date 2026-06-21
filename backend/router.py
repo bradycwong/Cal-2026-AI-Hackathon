@@ -523,15 +523,22 @@ def deterministic_route(transcript: str) -> Command:
     if re.search(r"\bskip\b", t):
         return Command(intent="skip_step")
 
-    # Question-phrased "next step" requests -> ask (read-only, cursor stays put).
-    # "What IS the next step" asks for information; it must NOT advance the step
-    # counter. This check runs before the next_step regex so "next step" inside
-    # a question doesn't get swallowed by the nav pattern below.
+    # Question / info-request about the next step -> ask (read-only, no cursor move).
+    # The next_step regex below matches "next step" anywhere as a substring, so
+    # "show me the next step" / "what is the next step" / "explain the next step"
+    # would all incorrectly advance the cursor without this guard. Rule: if the
+    # phrase contains "next step" AND is introduced by a question or request verb,
+    # it is informational — answer from state, never navigate.
+    _REQUEST_PREFIX = (
+        r"(?:what(?:\s+(?:is|are|will|would|does|do|was))?|"  # what is/are/will...
+        r"show(?:\s+me)?|tell\s+me(?:\s+about)?|"             # show me, tell me
+        r"explain|describe|read(?:\s+me)?|say|"               # explain, describe, read, say
+        r"walk\s+me\s+through|summarize|summarise)"
+    )
     if re.search(
-        r"\bwhat\s+(?:is|are|will|would|does|do)\s+(?:the\s+)?next\s+step\b"
-        r"|\btell\s+me\s+(?:about\s+)?(?:the\s+)?next\s+step\b"
-        r"|\bdescribe\s+(?:the\s+)?next\s+step\b"
-        r"|\bwhat\s+(?:is|are)\s+(?:the\s+)?(?:step\s+)?(?:after|following)\s+this\b",
+        rf"\b{_REQUEST_PREFIX}\b.{{0,40}}\bnext\s+step\b"
+        r"|\bwhat\s+(?:is|are)\s+(?:the\s+)?(?:step\s+)?(?:after|following)\s+this\b"
+        r"|\bnext\s+step\s+(?:is|would\s+be|will\s+be)\b",
         t,
     ):
         return Command(intent="ask", question=raw)
