@@ -261,3 +261,22 @@ def test_app_handles_protocol_completion():
     # Both action buttons must be disabled when the protocol is finished.
     assert "confirmBtn.disabled = idx < 0 || finished" in js
     assert "skipBtn.disabled = idx < 0 || finished" in js
+
+
+def test_dashboard_has_reagent_prep_panel_hooks():
+    html = (FT / "dashboard.html").read_text(encoding="utf-8")
+    for token in ("prep-samples", "prep-overage", "prep-compute", "prep-table"):
+        assert token in html, f"dashboard.html missing {token}"
+
+
+def test_app_wires_reagent_prep_client():
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    for token in (
+        "/api/scale",
+        "fetchScale",
+        "renderPrepTable",
+        "handlePrepCompute",
+        "prep-compute",
+        "prep-table",
+    ):
+        assert token in js, f"app.js missing {token}"

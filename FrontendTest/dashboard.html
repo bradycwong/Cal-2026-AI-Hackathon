@@ -44,6 +44,28 @@
 <div class="text-on-surface-variant text-sm col-span-3">Loading protocols…</div>
 </div>
 </div>
+<section class="glass-panel rounded-lg overflow-hidden border border-outline-variant">
+<div class="bg-primary/5 p-4 border-b border-outline-variant flex flex-col gap-1">
+<h3 class="text-sm font-bold text-primary uppercase tracking-widest">Reagent Prep</h3>
+<p class="text-xs text-on-surface-variant">Scale protocol reagents from structured step parameters.</p>
+</div>
+<div class="p-4 space-y-4">
+<div class="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end">
+<label class="block">
+<span class="text-xs font-bold uppercase text-on-surface-variant">Samples</span>
+<input id="prep-samples" type="number" min="1" value="12" class="mt-1 w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface" />
+</label>
+<label class="block">
+<span class="text-xs font-bold uppercase text-on-surface-variant">Overage %</span>
+<input id="prep-overage" type="number" min="0" value="10" class="mt-1 w-full bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface" />
+</label>
+<button id="prep-compute" type="button" class="bg-primary text-on-primary px-4 py-2 rounded-lg font-bold hover:bg-primary/90 transition-all">Compute</button>
+</div>
+<div id="prep-table" class="text-sm text-on-surface-variant" aria-live="polite">
+      Load a protocol to calculate scaled reagents.
+    </div>
+</div>
+</section>
 </section>
 <!-- Right Panel: AI Status & Alerts (Col 9-12) -->
 <aside class="col-span-4 space-y-gutter">
