@@ -45,15 +45,20 @@ No API key? The router automatically uses a **deterministic fallback** that
 covers the five demo lines, so the typed demo always works. Set
 `ANTHROPIC_API_KEY` (and keep `ROUTER_MODE=auto`) to route via Claude.
 
-## The 5 typed demo lines
+## Typed demo lines
 
-Type each into the command box at the bottom:
+Type these into the command box at the bottom:
 
-1. `Load DNA extraction protocol.`        → BIG current-step panel shows Step 1
-2. `Log: added 200 microliters lysis buffer to sample A.` → structured log row
-3. `Start a 10-minute incubation timer.`  → countdown card, chime on expiry
-4. `Where's the proteinase K?`            → inventory card (Freezer 2, shelf B)
-5. `What's next?`                         → step panel advances
+1. `Load DNA extraction protocol.` -> BIG current-step panel shows Step 1
+2. `What's next?` -> step panel advances
+3. `Go back.` -> step panel returns to the previous step without starting a duplicate auto-timer
+4. `Repeat that.` -> current step is re-announced without moving the cursor
+5. `Log: added 200 microliters lysis buffer to sample A.` -> structured log row
+6. `Scratch that.` -> last log row is removed
+7. `Log: added 250 uL lysis buffer.` then `Change that to added 300 uL lysis buffer.` -> last row updates in place
+8. `Start a 10-minute incubation timer.` -> countdown card, chime on expiry
+9. `Where's the proteinase K?` -> inventory card
+10. `How much lysis buffer in step 1?` -> protocol answer in the clarification panel
 
 Clarification path (never fails silently): `Load a protocol.` → clarification
 area asks "Which protocol?" (listing the loaded protocols) instead of guessing.
@@ -100,4 +105,4 @@ Log persistence: the log feed is written to SQLite (`backend/data/lab.db`, set
 Protocols + inventory stay file-driven; the rest of session state is in-memory.
 
 Deferred swappable organs (NOT yet): VAD-gated streaming (cost), TTS,
-open-ended Q&A, upload/library pages.
+upload/library pages.
