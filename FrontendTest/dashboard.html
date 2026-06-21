@@ -128,7 +128,7 @@
 <div>
 <div class="flex justify-between items-end mb-6">
 <div>
-<h3 class="text-headline-lg font-headline-lg text-on-surface">Dashboard</h3>
+<h3 class="text-headline-lg font-headline-lg text-on-surface">Recently Used Protocols</h3>
 </div>
 <a href="protocols.html" class="text-primary text-sm font-semibold flex items-center hover:underline">
                         View Full Library <span class="material-symbols-outlined ml-1 text-sm">arrow_forward</span>
@@ -156,7 +156,7 @@
 <span class="material-symbols-outlined text-6xl">biotech</span>
 </div>
 <div class="mb-4">
-<span class="inline-block px-2 py-1 bg-surface-container-highest text-[10px] font-bold text-on-surface-variant rounded uppercase mb-3">Amplification</span>
+<span class="inline-block px-2 py-1 bg-primary-container text-[10px] font-bold text-on-primary-container rounded uppercase mb-3">Amplification</span>
 <h4 class="text-headline-md font-headline-md text-on-surface leading-tight">PCR Setup</h4>
 <p class="text-on-surface-variant text-xs mt-2 font-medium">Est. Duration: 20 min</p>
 </div>
@@ -171,13 +171,71 @@
 <span class="material-symbols-outlined text-6xl">layers</span>
 </div>
 <div class="mb-4">
-<span class="inline-block px-2 py-1 bg-surface-container-highest text-[10px] font-bold text-on-surface-variant rounded uppercase mb-3">Analysis</span>
+<span class="inline-block px-2 py-1 bg-primary-container text-[10px] font-bold text-on-primary-container rounded uppercase mb-3">Analysis</span>
 <h4 class="text-headline-md font-headline-md text-on-surface leading-tight">Gel Electrophoresis</h4>
 <p class="text-on-surface-variant text-xs mt-2 font-medium">Est. Duration: 60 min</p>
 </div>
 <button class="w-full py-3 border border-primary text-primary font-bold rounded flex items-center justify-center space-x-2 active:scale-95 transition-all hover:bg-primary hover:text-on-primary">
 <span class="">Start Now</span>
 <span class="material-symbols-outlined text-sm">play_arrow</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Recently Opened Notebooks -->
+<div>
+<div class="flex justify-between items-end mb-6">
+<div>
+<h3 class="text-headline-lg font-headline-lg text-on-surface">Notebooks</h3>
+</div>
+<a href="notebook.html" class="text-primary text-sm font-semibold flex items-center hover:underline">
+                        View All Notebooks <span class="material-symbols-outlined ml-1 text-sm">arrow_forward</span>
+</a>
+</div>
+<div class="grid grid-cols-3 gap-stack-gap">
+<!-- Notebook Card: CRISPR Knockout -->
+<div class="glass-panel p-6 rounded-lg group hover:border-primary transition-all duration-300 relative overflow-hidden">
+<div class="absolute top-0 right-0 p-2 opacity-10">
+<span class="material-symbols-outlined text-6xl">menu_book</span>
+</div>
+<div class="mb-4">
+<span class="inline-block px-2 py-1 bg-primary-container text-[10px] font-bold text-on-primary-container rounded uppercase mb-3">Gene Editing</span>
+<h4 class="text-headline-md font-headline-md text-on-surface leading-tight">CRISPR Knockout — Line 7</h4>
+<p class="text-on-surface-variant text-xs mt-2 font-medium">Last opened: 2 hours ago</p>
+</div>
+<button class="w-full py-3 border border-primary text-primary font-bold rounded flex items-center justify-center space-x-2 active:scale-95 transition-all hover:bg-primary hover:text-on-primary">
+<span class="">Open</span>
+<span class="material-symbols-outlined text-sm">arrow_forward</span>
+</button>
+</div>
+<!-- Notebook Card: Protein Expression -->
+<div class="glass-panel p-6 rounded-lg group hover:border-primary transition-all duration-300 relative overflow-hidden">
+<div class="absolute top-0 right-0 p-2 opacity-10">
+<span class="material-symbols-outlined text-6xl">science</span>
+</div>
+<div class="mb-4">
+<span class="inline-block px-2 py-1 bg-primary-container text-[10px] font-bold text-on-primary-container rounded uppercase mb-3">Proteomics</span>
+<h4 class="text-headline-md font-headline-md text-on-surface leading-tight">Protein Expression Assay</h4>
+<p class="text-on-surface-variant text-xs mt-2 font-medium">Last opened: Yesterday</p>
+</div>
+<button class="w-full py-3 border border-primary text-primary font-bold rounded flex items-center justify-center space-x-2 active:scale-95 transition-all hover:bg-primary hover:text-on-primary">
+<span class="">Open</span>
+<span class="material-symbols-outlined text-sm">arrow_forward</span>
+</button>
+</div>
+<!-- Notebook Card: qPCR Standard Curve -->
+<div class="glass-panel p-6 rounded-lg group hover:border-primary transition-all duration-300 relative overflow-hidden">
+<div class="absolute top-0 right-0 p-2 opacity-10">
+<span class="material-symbols-outlined text-6xl">analytics</span>
+</div>
+<div class="mb-4">
+<span class="inline-block px-2 py-1 bg-primary-container text-[10px] font-bold text-on-primary-container rounded uppercase mb-3">Quantification</span>
+<h4 class="text-headline-md font-headline-md text-on-surface leading-tight">qPCR Standard Curve</h4>
+<p class="text-on-surface-variant text-xs mt-2 font-medium">Last opened: 3 days ago</p>
+</div>
+<button class="w-full py-3 border border-primary text-primary font-bold rounded flex items-center justify-center space-x-2 active:scale-95 transition-all hover:bg-primary hover:text-on-primary">
+<span class="">Open</span>
+<span class="material-symbols-outlined text-sm">arrow_forward</span>
 </button>
 </div>
 </div>
@@ -259,10 +317,6 @@
 <button id="voice-mute" type="button" disabled title="Mute" class="material-symbols-outlined text-on-surface-variant hover:text-primary transition-colors disabled:opacity-30">mic</button>
 </div>
 </div>
-<!-- Mini Footer Info -->
-<div class="fixed bottom-2 right-80 text-[10px] text-on-surface-variant opacity-40 font-data-label">
-        Placeholder AI v2.4.0 | System Status: Optimal | Protocol Ver: 9.2.1
-    </div>
 <script>
         // Micro-interaction: Animated Waveform
         const bars = document.querySelectorAll('.waveform-bar');
