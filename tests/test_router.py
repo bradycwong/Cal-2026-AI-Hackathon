@@ -93,6 +93,12 @@ def test_next_step():
     assert route("Next step").intent == "next_step"
 
 
+def test_skip_routes_to_skip_step():
+    assert route("Skip this step").intent == "skip_step"
+    assert route("skip").intent == "skip_step"
+    assert route("skip ahead").intent == "skip_step"
+
+
 def test_unknown_has_clarify():
     cmd = deterministic_route("blah blah nonsense")
     assert cmd.intent == "unknown"

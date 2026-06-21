@@ -30,9 +30,11 @@ ROUTER_MODE = os.getenv("ROUTER_MODE", "auto").lower()
 
 SYSTEM_PROMPT = (
     "You convert a single spoken lab command into ONE structured Command. "
-    "Choose exactly one intent from: load_protocol, next_step, prev_step, "
-    "repeat_step, log_entry, undo_log, correct_log, start_timer, stop_timer, "
-    "find_inventory, ask, unknown. "
+    "Choose exactly one intent from: load_protocol, next_step, skip_step, "
+    "prev_step, repeat_step, log_entry, undo_log, correct_log, start_timer, "
+    "stop_timer, find_inventory, ask, unknown. "
+    "Map 'skip', 'skip this step', 'skip step', or 'skip ahead' to skip_step "
+    "(advances WITHOUT marking the step done). "
     "Map 'stop timer', 'cancel the timer', 'stop the alarm', or 'stop beeping' "
     "to stop_timer. "
     "Map 'go back' or 'previous step' to prev_step. "
@@ -50,7 +52,8 @@ SYSTEM_PROMPT = (
     "a string with no unit, e.g. '5'), unit (the unit alone, e.g. 'g', 'mL', "
     "'uL'), and location (where it's stored, e.g. 'shelf 4', 'Fridge 1'). For "
     "add_inventory the item NAME is required: if no name is clearly stated, return "
-    "intent='unknown' with a clarify_prompt asking for the reagent name. Leave any "
+    "intent='unknown' with a clarify_prompt asking for the reagent name. Treat "
+    "'inv' as a synonym for 'inventory'. Leave any "
     "other missing field null (do NOT guess a quantity, unit, or location that was "
     "not said). "
     "If the intent is clear but a required parameter is missing or ambiguous, do "
@@ -210,10 +213,11 @@ def deterministic_route(transcript: str) -> Command:
         return Command(intent="unknown", clarify_prompt="I didn't catch that. Could you repeat?")
 
     # add_inventory - "add 5g of EDTA on shelf 4 to the inventory". Must precede
-    # log_entry/find so the "inventory" verb wins; requires the word "inventory".
+    # log_entry/find so the "inventory" verb wins; requires the word "inventory"
+    # (or its common shorthand "inv").
     m = re.match(
         r"^\s*(?:add|create|register|put|store|stock)\s+(.*?)\s+"
-        r"(?:to|into|in|on)\s+(?:the\s+|my\s+|our\s+)?inventory\b.*$",
+        r"(?:to|into|in|on)\s+(?:the\s+|my\s+|our\s+)?(?:inventory|inv)\b.*$",
         raw,
         flags=re.IGNORECASE,
     )
@@ -300,6 +304,11 @@ def deterministic_route(transcript: str) -> Command:
         t,
     ):
         return Command(intent="repeat_step")
+
+    # skip_step — "skip", "skip this step". Advances but logs the step Skipped
+    # (not Completed). Must precede next_step so it isn't swallowed by "advance".
+    if re.search(r"\bskip\b", t):
+        return Command(intent="skip_step")
 
     # next_step — "what's next", "next step", "next"
     if re.search(r"\b(what'?s next|next step|move on|advance)\b", t) or t in {"next", "next."}:

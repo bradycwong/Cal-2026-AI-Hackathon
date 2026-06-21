@@ -51,6 +51,26 @@ def test_next_step_advances():
     assert _kind(events, "step_change")["current_step"]["id"] == 2
 
 
+def test_skip_step_advances_marks_skipped_and_logs():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    events = handle_command(Command(intent="skip_step"), state)
+    # Cursor advanced to step 2...
+    assert _kind(events, "step_change")["current_step"]["id"] == 2
+    # ...the left step (index 0) is marked skipped (tracker renders it yellow)...
+    assert 0 in state.skipped_steps
+    # ...and the note says Skipped, not Completed.
+    assert _kind(events, "log_entry")["text"].startswith("Skipped step 1")
+
+
+def test_next_step_does_not_mark_skipped():
+    # Contrast: a plain next_step completes the step, never marks it skipped.
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    handle_command(Command(intent="next_step"), state)
+    assert 0 not in state.skipped_steps
+
+
 def test_next_step_logs_completed_step_to_active_notebook():
     # A spoken/typed "next step" records the step it just left, so progress lands
     # in the notebook automatically.

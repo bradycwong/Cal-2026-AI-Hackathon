@@ -19,6 +19,7 @@ from pydantic import BaseModel
 Intent = Literal[
     "load_protocol",
     "next_step",
+    "skip_step",
     "prev_step",
     "repeat_step",
     "log_entry",

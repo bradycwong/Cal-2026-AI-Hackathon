@@ -160,6 +160,12 @@ def advance_step(state: SessionState, *, completed: bool = True) -> list[dict[st
     return _handle_next_step(Command(intent="next_step"), state, completed=completed)
 
 
+def _handle_skip_step(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    """Skip the current step: advance, but log it 'Skipped' and mark it yellow.
+    Voice/typed equivalent of the UI Skip button (advance_step(completed=False))."""
+    return _handle_next_step(cmd, state, completed=False)
+
+
 def _handle_prev_step(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
     if not state.active_protocol:
         return [clarify_event("No protocol is loaded. Say 'load DNA extraction protocol' first.")]
@@ -309,6 +315,7 @@ def _handle_unknown(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
 _DISPATCH = {
     "load_protocol": _handle_load_protocol,
     "next_step": _handle_next_step,
+    "skip_step": _handle_skip_step,
     "prev_step": _handle_prev_step,
     "repeat_step": _handle_repeat_step,
     "log_entry": _handle_log_entry,
