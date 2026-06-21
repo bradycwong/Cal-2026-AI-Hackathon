@@ -12,12 +12,8 @@
   <header class="topbar">
     <h1>Lab</h1>
     <div class="chips">
-      <label class="wake-set" for="wake-input" title="Wake word the assistant listens for">
-        wake:
-        <input id="wake-input" class="wake-input" type="text" spellcheck="false"
-               aria-label="Wake word the assistant listens for" />
-      </label>
       <button id="mic-btn" class="mic-btn" type="button" aria-pressed="false">Start session</button>
+      <button id="mute-btn" class="mute-btn" type="button" aria-pressed="false" disabled>Mute</button>
       <span id="chip-mic" class="chip chip-idle" role="status" aria-live="polite">mic off</span>
       <span id="chip-conn" class="chip chip-idle" role="status" aria-live="polite">disconnected</span>
       <span id="chip-state" class="chip" role="status" aria-live="polite">idle</span>
@@ -37,7 +33,7 @@
     </section>
 
     <section class="panel" role="region" aria-labelledby="title-transcript">
-      <h2 class="panel-title" id="title-transcript">Transcript <span class="panel-hint">say "Hey Lab, …"</span></h2>
+      <h2 class="panel-title" id="title-transcript">Transcript <span class="panel-hint">say "mute" or use the button</span></h2>
       <div class="transcript" id="transcript"></div>
     </section>
 

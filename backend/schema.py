@@ -58,7 +58,7 @@ def make_event(type: EventType, payload: dict[str, Any]) -> dict[str, Any]:
 
 
 # --- command_result kinds ---------------------------------------------------
-# kind in { step_change, log_entry, inventory_result, clarify }
+# kind in { step_change, log_entry, inventory_result, clarify, voice_state }
 
 
 def command_result(kind: str, **fields: Any) -> dict[str, Any]:
@@ -109,6 +109,10 @@ def inventory_result_event(
 def clarify_event(message: str) -> dict[str, Any]:
     """Never-fail-silently: anything ambiguous renders the clarification area."""
     return command_result("clarify", message=message)
+
+
+def voice_state_event(muted: bool, label: str) -> dict[str, Any]:
+    return command_result("voice_state", muted=muted, label=label)
 
 
 def timer_update_event(

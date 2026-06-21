@@ -1,0 +1,1303 @@
+# More User Control Implementation Plan
+
+> For Devin: execute this plan task by task. Do not add `goto_step` or "jump to step N"; the user explicitly excluded it. Keep the existing ingestion spine intact: `transcript -> route() -> handle_command() -> broadcast()`.
+
+**Goal:** Add backward navigation, repeat current step, undo/correct last log entry, protocol question answering, and small logging-discoverability fixes to Lab without changing the locked outer event contract.
+
+**Architecture:** Extend the single `Command` schema with new intents and one read-only `question` field. Keep all state mutation in `backend/handlers.py` and `backend/state.py`; keep all LLM/vendor code in `backend/router.py`. The frontend continues dispatching on the same four outer event types and only adds new `command_result.payload.kind` cases.
+
+**Tech Stack:** FastAPI, Pydantic v2, SQLite, Anthropic SDK, vanilla HTML/CSS/JS, pytest.
+
+## Global Constraints
+
+- Do not change the single ingest spine in `backend/main.py`: `route(text)` then `handle_command(cmd, state)` then broadcast returned events.
+- Do not create new outer event types. Allowed outer types remain `transcript_update`, `command_result`, `timer_update`, and `error`.
+- New UI outputs must be `command_result` kinds only: `log_removed`, `log_update`, and `ask_result`.
+- The LLM must never mutate state. `ask` is read-only and only returns an answer string.
+- Keep provider-specific code in `backend/router.py`.
+- Keep API keys server-side. Do not reference vendor keys in `frontend/`.
+- Use ASCII text in code and docs: write `uL`, not the micro sign.
+- Do not implement `goto_step`, step-number jumps, protocol upload, TTS, or any new app page.
+- Make one commit after each task once that task's tests pass.
+
+## Current Repo Snapshot
+
+Use this as the current baseline before edits:
+
+- `backend/schema.py` defines `Intent` with six values: `load_protocol`, `next_step`, `log_entry`, `start_timer`, `find_inventory`, `unknown`.
+- `backend/schema.py` already has builders for `step_change`, `log_entry`, `inventory_result`, `clarify`, `voice_state`, timer updates, transcript updates, and errors.
+- `backend/state.py` has `SessionState.append_log()` only; log rows are dicts with `id`, `text`, `timestamp`, `sample_id`, `step_ref`.
+- `backend/db.py` has `NoteStore.add_note()`, `all_notes()`, and `close()`.
+- `backend/handlers.py` dispatches through `_DISPATCH`. `_step_change_events(state)` always starts an auto-timer for timed steps when `AUTO_TIMERS` is true.
+- `backend/router.py` owns `route()`, `_llm_route()`, `_llm_available()`, `deterministic_route()`, and `normalize_ascii()`.
+- `frontend/app.js` dispatches only inside `onCommandResult(p)` by `p.kind`.
+- `frontend/index.html` already contains an empty `<datalist id="demo-lines"></datalist>`, but the composer input is not wired to it.
+- Existing tests use `fresh_state()`, direct `Command(...)` construction, and `ROUTER_MODE=deterministic`.
+
+## Task 0: Baseline Guardrail
+
+**Files:**
+- Read: repository working tree
+- Modify: none
+
+**Steps:**
+
+- [ ] **Step 1: Inspect current changes**
+
+Run:
+
+```bash
+git status --short
+```
+
+Expected: note any existing user changes. Do not reset, checkout, or delete unrelated changes.
+
+- [ ] **Step 2: Run the current test suite**
+
+Run:
+
+```bash
+python -m pytest tests/ -q
+```
+
+Expected: all current tests pass before this feature work. If they fail, capture the exact failing test names and fix only if the failure is clearly caused by this plan's target files.
+
+- [ ] **Step 3: Commit only if you changed files while fixing baseline**
+
+If no files changed, skip the commit. If a baseline fix was required:
+
+```bash
+git add <changed-files>
+git commit -m "test: restore baseline"
+```
+
+## Task 1: Extend the Command Schema and Deterministic Router
+
+**Files:**
+- Modify: `backend/schema.py`
+- Modify: `backend/router.py`
+- Modify: `tests/test_router.py`
+
+**Interfaces:**
+- Produces `Command.intent` values: `prev_step`, `repeat_step`, `undo_log`, `correct_log`, `ask`.
+- Produces `Command.question: Optional[str]` for `ask`.
+- Keeps `Command.log_text` as the replacement text for `correct_log`.
+- Keeps `deterministic_route(transcript: str) -> Command` network-free and non-throwing.
+
+**Steps:**
+
+- [ ] **Step 1: Add failing router tests**
+
+Append these tests to `tests/test_router.py`:
+
+```python
+def test_prev_step_routes():
+    assert route("Go back").intent == "prev_step"
+    assert route("Previous step").intent == "prev_step"
+
+
+def test_repeat_step_routes():
+    assert route("Repeat that").intent == "repeat_step"
+    assert route("What step am I on?").intent == "repeat_step"
+
+
+def test_undo_log_routes():
+    assert route("Scratch that").intent == "undo_log"
+    assert route("Delete the last note").intent == "undo_log"
+
+
+def test_correct_log_routes_replacement_text():
+    cmd = route("Change that to added 300 uL lysis buffer")
+    assert cmd.intent == "correct_log"
+    assert cmd.log_text == "added 300 uL lysis buffer"
+
+
+def test_ask_routes_as_last_resort_question():
+    cmd = route("How much lysis buffer in step 1?")
+    assert cmd.intent == "ask"
+    assert cmd.question == "How much lysis buffer in step 1?"
+
+
+def test_broadened_log_phrasing_routes_to_log_entry():
+    cmd = route("Make a note that the pellet looks white")
+    assert cmd.intent == "log_entry"
+    assert cmd.log_text == "the pellet looks white"
+
+    cmd = route("Record: added 200 microliters to sample B")
+    assert cmd.intent == "log_entry"
+    assert cmd.sample_id == "B"
+    assert "200 uL" in cmd.log_text
+
+    cmd = route("Write down the supernatant is cloudy")
+    assert cmd.intent == "log_entry"
+    assert cmd.log_text == "the supernatant is cloudy"
+
+
+def test_existing_next_step_still_wins_over_ask():
+    assert route("What's next?").intent == "next_step"
+```
+
+- [ ] **Step 2: Run the new router tests and verify failure**
+
+Run:
+
+```bash
+python -m pytest tests/test_router.py -q
+```
+
+Expected: failures because the new intents and `question` field do not exist yet.
+
+- [ ] **Step 3: Extend `Intent` and `Command`**
+
+In `backend/schema.py`, replace the `Intent` literal with:
+
+```python
+Intent = Literal[
+    "load_protocol",
+    "next_step",
+    "prev_step",
+    "repeat_step",
+    "log_entry",
+    "undo_log",
+    "correct_log",
+    "start_timer",
+    "find_inventory",
+    "ask",
+    "unknown",
+]
+```
+
+Add this field to `Command` after `reagent_name`:
+
+```python
+question: Optional[str] = None      # ask
+```
+
+- [ ] **Step 4: Update the router system prompt**
+
+In `backend/router.py`, update `SYSTEM_PROMPT` so the intent list includes all new intents and so the prompt includes these routing rules:
+
+```python
+SYSTEM_PROMPT = (
+    "You convert a single spoken lab command into ONE structured Command. "
+    "Choose exactly one intent from: load_protocol, next_step, prev_step, "
+    "repeat_step, log_entry, undo_log, correct_log, start_timer, "
+    "find_inventory, ask, unknown. "
+    "Map 'go back' or 'previous step' to prev_step. "
+    "Map 'repeat that', 'say that again', or 'what step am I on' to repeat_step. "
+    "Map 'scratch that', 'delete that', or 'undo the last note' to undo_log. "
+    "Map 'change the last note to X' or 'correct that to X' to correct_log "
+    "with log_text set to X. "
+    "Map open protocol questions to ask with question set to the user's words. "
+    "Map natural note phrasings such as 'make a note that X', 'record X', "
+    "'write down X', 'note down X', and 'remark X' to log_entry with log_text "
+    "set to X. "
+    "If the intent is clear but a required parameter is missing or ambiguous, do "
+    "NOT guess: leave that field null (or return intent='unknown') and put a "
+    "one-line question in clarify_prompt. Never invent a protocol name, reagent, "
+    "duration, sample id, note text, or question that was not said. "
+    "Use ASCII units: write 'uL' (not the micro sign) and 'degrees C'."
+)
+```
+
+- [ ] **Step 5: Update deterministic log parsing**
+
+In `deterministic_route()`, replace the current log regex block with this block. Keep it before timer/find/navigation parsing.
+
+```python
+    # log_entry - "log: ...", "note: ...", "record ...", "make a note that ..."
+    m = re.match(
+        r"^\s*(?:"
+        r"log|note|record|remark|write down|note down|"
+        r"(?:make|add|take|jot)\s+(?:a\s+)?note"
+        r")\b[:,]?\s*(?:that\s+)?(.*)$",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        body = m.group(1).strip()
+        if not body:
+            return Command(intent="log_entry", clarify_prompt="What would you like to log?")
+        sample = _parse_sample_id(body)
+        return Command(intent="log_entry", log_text=body, sample_id=sample)
+```
+
+- [ ] **Step 6: Insert amend parsing after log parsing**
+
+Add this block immediately after the log parsing block:
+
+```python
+    # undo/correct log - these start with amend verbs, so they do not collide with log_entry.
+    if re.search(
+        r"\b(scratch that|delete (that|the last|my last)( note| entry)?|"
+        r"undo (that|the last)( note| entry)?)\b",
+        t,
+    ):
+        return Command(intent="undo_log")
+
+    m = re.match(
+        r"^\s*(?:correct|change|make)\s+(?:that|the last (?:note|entry))\s+to\s+(.+)$",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        replacement = normalize_ascii(m.group(1).strip().rstrip("."))
+        if not replacement:
+            return Command(
+                intent="correct_log",
+                clarify_prompt="What should I change the last note to?",
+            )
+        return Command(intent="correct_log", log_text=replacement)
+```
+
+- [ ] **Step 7: Insert navigation parsing before existing `next_step` parsing**
+
+Place this block immediately before the current `next_step` check:
+
+```python
+    # backward/repeat navigation - must run before the generic next_step check.
+    if re.search(r"\b(go back|previous step|back a step|step back|previous)\b", t):
+        return Command(intent="prev_step")
+
+    if re.search(
+        r"\b(repeat( that| the step| this)?|say that again|"
+        r"what step (am i|are we) on|current step|read (it|that) again)\b",
+        t,
+    ):
+        return Command(intent="repeat_step")
+```
+
+- [ ] **Step 8: Insert ask parsing just before the final unknown return**
+
+Place this block after load-protocol parsing and before the final `unknown` command:
+
+```python
+    # ask - last-resort question catch. Earlier command patterns win first.
+    if re.match(r"^\s*(how|what|why|which|when|does|is|are|can)\b", t):
+        return Command(intent="ask", question=raw.rstrip("?.") + ("?" if raw.endswith("?") else ""))
+```
+
+If this changes `"How much lysis buffer in step 1?"` to drop the question mark, adjust to preserve the exact normalized raw string:
+
+```python
+        return Command(intent="ask", question=raw)
+```
+
+The test in Step 1 expects the exact text with `?`, so the simplest correct line is:
+
+```python
+        return Command(intent="ask", question=raw)
+```
+
+- [ ] **Step 9: Run router tests**
+
+Run:
+
+```bash
+python -m pytest tests/test_router.py -q
+```
+
+Expected: all router tests pass.
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add backend/schema.py backend/router.py tests/test_router.py
+git commit -m "feat: route control commands"
+```
+
+## Task 2: Add Persistent Log Delete and Update
+
+**Files:**
+- Modify: `backend/db.py`
+- Modify: `backend/state.py`
+- Modify: `tests/test_persistence.py`
+
+**Interfaces:**
+- Produces `NoteStore.delete_note(id: int) -> None`.
+- Produces `NoteStore.update_text(id: int, text: str) -> None`.
+- Produces `SessionState.pop_log() -> Optional[dict[str, Any]]`.
+- Produces `SessionState.update_last_log(text: str) -> Optional[dict[str, Any]]`.
+- Keeps `_log_seq` monotonic; undo must not decrement it.
+
+**Steps:**
+
+- [ ] **Step 1: Add failing persistence tests**
+
+Append these tests to `tests/test_persistence.py`:
+
+```python
+def test_undo_log_persists_delete(tmp_path):
+    db = str(tmp_path / "lab.db")
+
+    s1 = SessionState(db_path=db)
+    s1.load_files()
+    handle_command(Command(intent="log_entry", log_text="first note", sample_id=None), s1)
+    removed = s1.pop_log()
+    assert removed["text"] == "first note"
+    assert s1.log == []
+
+    s2 = SessionState(db_path=db)
+    s2.load_files()
+    assert s2.log == []
+
+    handle_command(Command(intent="log_entry", log_text="second note", sample_id=None), s2)
+    assert s2.log[-1]["id"] > removed["id"]
+
+
+def test_correct_log_persists_update(tmp_path):
+    db = str(tmp_path / "lab.db")
+
+    s1 = SessionState(db_path=db)
+    s1.load_files()
+    handle_command(Command(intent="log_entry", log_text="original note", sample_id="A"), s1)
+    updated = s1.update_last_log("corrected note")
+    assert updated["text"] == "corrected note"
+    assert updated["sample_id"] == "A"
+
+    s2 = SessionState(db_path=db)
+    s2.load_files()
+    assert len(s2.log) == 1
+    assert s2.log[0]["text"] == "corrected note"
+    assert s2.log[0]["sample_id"] == "A"
+```
+
+- [ ] **Step 2: Run persistence tests and verify failure**
+
+Run:
+
+```bash
+python -m pytest tests/test_persistence.py -q
+```
+
+Expected: failures because `pop_log()` and `update_last_log()` do not exist yet.
+
+- [ ] **Step 3: Add delete/update methods to `NoteStore`**
+
+In `backend/db.py`, add these methods after `all_notes()`:
+
+```python
+    def delete_note(self, id: int) -> None:
+        self._conn.execute("DELETE FROM notes WHERE id = ?", (id,))
+        self._conn.commit()
+
+    def update_text(self, id: int, text: str) -> None:
+        self._conn.execute("UPDATE notes SET text = ? WHERE id = ?", (text, id))
+        self._conn.commit()
+```
+
+- [ ] **Step 4: Add log mutation methods to `SessionState`**
+
+In `backend/state.py`, add these methods after `append_log()`:
+
+```python
+    def pop_log(self) -> Optional[dict[str, Any]]:
+        if not self.log:
+            return None
+        entry = self.log.pop()
+        if self.notes is not None:
+            self.notes.delete_note(int(entry["id"]))
+        return entry
+
+    def update_last_log(self, text: str) -> Optional[dict[str, Any]]:
+        if not self.log:
+            return None
+        entry = self.log[-1]
+        entry["text"] = text
+        if self.notes is not None:
+            self.notes.update_text(int(entry["id"]), text)
+        return entry
+```
+
+- [ ] **Step 5: Run persistence tests**
+
+Run:
+
+```bash
+python -m pytest tests/test_persistence.py -q
+```
+
+Expected: all persistence tests pass.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add backend/db.py backend/state.py tests/test_persistence.py
+git commit -m "feat: mutate persisted notes"
+```
+
+## Task 3: Add Back and Repeat Handlers Without Timer Duplication
+
+**Files:**
+- Modify: `backend/handlers.py`
+- Modify: `tests/test_handlers.py`
+
+**Interfaces:**
+- Consumes `Command(intent="prev_step")`.
+- Consumes `Command(intent="repeat_step")`.
+- Produces `step_change` events using the existing event builder.
+- `_step_change_events(state, auto_timer: bool = True)` starts timed-step auto-timers only when `auto_timer` is true.
+
+**Steps:**
+
+- [ ] **Step 1: Add failing handler tests**
+
+Append these tests to `tests/test_handlers.py`:
+
+```python
+def test_prev_step_goes_back():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    handle_command(Command(intent="next_step"), state)
+
+    events = handle_command(Command(intent="prev_step"), state)
+
+    assert len(events) == 1
+    assert events[0]["payload"]["kind"] == "step_change"
+    assert events[0]["payload"]["current_step"]["id"] == 1
+    assert state.current_step_index == 0
+
+
+def test_prev_step_at_first_step_clarifies():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+
+    events = handle_command(Command(intent="prev_step"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert "first step" in events[0]["payload"]["message"]
+    assert state.current_step_index == 0
+
+
+def test_prev_step_without_protocol_clarifies():
+    state = fresh_state()
+
+    events = handle_command(Command(intent="prev_step"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+
+
+def test_repeat_step_reemits_current_step_without_advancing():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+
+    events = handle_command(Command(intent="repeat_step"), state)
+
+    assert len(events) == 1
+    assert events[0]["payload"]["kind"] == "step_change"
+    assert events[0]["payload"]["current_step"]["id"] == 1
+    assert state.current_step_index == 0
+
+
+def test_repeat_step_without_protocol_clarifies():
+    state = fresh_state()
+
+    events = handle_command(Command(intent="repeat_step"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+
+
+def test_prev_onto_timed_step_does_not_start_duplicate_timer(monkeypatch):
+    monkeypatch.setattr(handlers, "AUTO_TIMERS", True)
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    handle_command(Command(intent="next_step"), state)
+    handle_command(Command(intent="next_step"), state)
+    timer_count = len(state.timers)
+
+    events = handle_command(Command(intent="prev_step"), state)
+
+    assert events[0]["payload"]["kind"] == "step_change"
+    assert events[0]["payload"]["current_step"]["id"] == 2
+    assert all(e["type"] != "timer_update" for e in events)
+    assert len(state.timers) == timer_count
+```
+
+- [ ] **Step 2: Run handler tests and verify failure**
+
+Run:
+
+```bash
+python -m pytest tests/test_handlers.py -q
+```
+
+Expected: failures because the new intents are not registered yet.
+
+- [ ] **Step 3: Parameterize `_step_change_events`**
+
+In `backend/handlers.py`, change the signature and timer condition:
+
+```python
+def _step_change_events(state: SessionState, auto_timer: bool = True) -> list[dict[str, Any]]:
+    """step_change for the new cursor, plus an auto-timer if requested and timed."""
+```
+
+Change:
+
+```python
+    if AUTO_TIMERS and cur and cur.duration_s:
+```
+
+to:
+
+```python
+    if auto_timer and AUTO_TIMERS and cur and cur.duration_s:
+```
+
+- [ ] **Step 4: Add navigation handlers**
+
+Add these functions after `_handle_next_step()`:
+
+```python
+def _handle_prev_step(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    if not state.active_protocol:
+        return [clarify_event("No protocol is loaded. Say 'load DNA extraction protocol' first.")]
+    if state.current_step_index <= 0:
+        return [clarify_event(f"You're on the first step of {state.active_protocol.name}.")]
+    state.current_step_index -= 1
+    return _step_change_events(state, auto_timer=False)
+
+
+def _handle_repeat_step(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    if not state.active_protocol:
+        return [clarify_event("No protocol is loaded. Say 'load DNA extraction protocol' first.")]
+    return _step_change_events(state, auto_timer=False)
+```
+
+- [ ] **Step 5: Register the handlers**
+
+Add these entries to `_DISPATCH`:
+
+```python
+    "prev_step": _handle_prev_step,
+    "repeat_step": _handle_repeat_step,
+```
+
+- [ ] **Step 6: Run handler tests**
+
+Run:
+
+```bash
+python -m pytest tests/test_handlers.py -q
+```
+
+Expected: all handler tests pass.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add backend/handlers.py tests/test_handlers.py
+git commit -m "feat: navigate protocol steps backward"
+```
+
+## Task 4: Add Undo and Correct Log Handlers
+
+**Files:**
+- Modify: `backend/schema.py`
+- Modify: `backend/handlers.py`
+- Modify: `tests/test_handlers.py`
+
+**Interfaces:**
+- Consumes `SessionState.pop_log()`.
+- Consumes `SessionState.update_last_log(text: str)`.
+- Produces `log_removed_event(id: int) -> dict`.
+- Produces `log_update_event(id: int, text: str) -> dict`.
+
+**Steps:**
+
+- [ ] **Step 1: Add failing handler tests**
+
+Append these tests to `tests/test_handlers.py`:
+
+```python
+def test_undo_log_removes_last_entry():
+    state = fresh_state()
+    handle_command(Command(intent="log_entry", log_text="first", sample_id=None), state)
+    entry_id = state.log[-1]["id"]
+
+    events = handle_command(Command(intent="undo_log"), state)
+
+    assert state.log == []
+    assert events[0]["payload"] == {"kind": "log_removed", "id": entry_id}
+
+
+def test_undo_log_on_empty_log_clarifies():
+    state = fresh_state()
+
+    events = handle_command(Command(intent="undo_log"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert "nothing to undo" in events[0]["payload"]["message"].lower()
+
+
+def test_correct_log_updates_last_entry():
+    state = fresh_state()
+    handle_command(Command(intent="log_entry", log_text="original", sample_id="A"), state)
+    entry_id = state.log[-1]["id"]
+
+    events = handle_command(Command(intent="correct_log", log_text="corrected"), state)
+
+    assert state.log[-1]["text"] == "corrected"
+    assert events[0]["payload"] == {"kind": "log_update", "id": entry_id, "text": "corrected"}
+
+
+def test_correct_log_without_replacement_clarifies():
+    state = fresh_state()
+    handle_command(Command(intent="log_entry", log_text="original", sample_id=None), state)
+
+    events = handle_command(Command(intent="correct_log"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert "change the last note" in events[0]["payload"]["message"].lower()
+
+
+def test_correct_log_on_empty_log_clarifies():
+    state = fresh_state()
+
+    events = handle_command(Command(intent="correct_log", log_text="replacement"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert "nothing to correct" in events[0]["payload"]["message"].lower()
+```
+
+- [ ] **Step 2: Run the new tests and verify failure**
+
+Run:
+
+```bash
+python -m pytest tests/test_handlers.py -q
+```
+
+Expected: failures because event builders and handlers do not exist yet.
+
+- [ ] **Step 3: Add event builders**
+
+In `backend/schema.py`, add these functions after `log_entry_event()`:
+
+```python
+def log_removed_event(id: int) -> dict[str, Any]:
+    return command_result("log_removed", id=id)
+
+
+def log_update_event(id: int, text: str) -> dict[str, Any]:
+    return command_result("log_update", id=id, text=text)
+```
+
+Update the comment above `command_result` kinds so it includes `log_removed` and `log_update`.
+
+- [ ] **Step 4: Import the event builders**
+
+In `backend/handlers.py`, add these imports from `.schema`:
+
+```python
+    log_removed_event,
+    log_update_event,
+```
+
+- [ ] **Step 5: Add amend handlers**
+
+Add these functions after `_handle_log_entry()`:
+
+```python
+def _handle_undo_log(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    entry = state.pop_log()
+    if entry is None:
+        return [clarify_event("There's nothing to undo.")]
+    return [log_removed_event(int(entry["id"]))]
+
+
+def _handle_correct_log(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    if not cmd.log_text:
+        return [clarify_event("What should I change the last note to?")]
+    entry = state.update_last_log(cmd.log_text)
+    if entry is None:
+        return [clarify_event("There's nothing to correct.")]
+    return [log_update_event(int(entry["id"]), str(entry["text"]))]
+```
+
+- [ ] **Step 6: Register the handlers**
+
+Add these entries to `_DISPATCH`:
+
+```python
+    "undo_log": _handle_undo_log,
+    "correct_log": _handle_correct_log,
+```
+
+- [ ] **Step 7: Run handler and persistence tests**
+
+Run:
+
+```bash
+python -m pytest tests/test_handlers.py tests/test_persistence.py -q
+```
+
+Expected: all selected tests pass.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add backend/schema.py backend/handlers.py tests/test_handlers.py
+git commit -m "feat: amend lab notes"
+```
+
+## Task 5: Add Protocol Q&A
+
+**Files:**
+- Modify: `backend/schema.py`
+- Modify: `backend/router.py`
+- Modify: `backend/handlers.py`
+- Modify: `tests/test_handlers.py`
+- Modify: `tests/test_router.py`
+
+**Interfaces:**
+- Produces `ask_result_event(question: str, answer: str) -> dict`.
+- Produces `router.answer_question(question: str, protocol: Protocol) -> str`.
+- Handler must call `router.answer_question(...)` through the router module, not a directly imported function, so tests can monkeypatch it.
+
+**Steps:**
+
+- [ ] **Step 1: Add failing handler tests**
+
+Append these tests to `tests/test_handlers.py`:
+
+```python
+def test_ask_without_question_clarifies():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+
+    events = handle_command(Command(intent="ask"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert "what would you like to ask" in events[0]["payload"]["message"].lower()
+
+
+def test_ask_without_protocol_clarifies():
+    state = fresh_state()
+
+    events = handle_command(Command(intent="ask", question="How much lysis buffer?"), state)
+
+    assert events[0]["payload"]["kind"] == "clarify"
+    assert "load a protocol first" in events[0]["payload"]["message"].lower()
+
+
+def test_ask_returns_answer(monkeypatch):
+    from backend import router
+
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    monkeypatch.setattr(router, "answer_question", lambda q, p: "Use 200 uL.")
+
+    events = handle_command(Command(intent="ask", question="How much lysis buffer?"), state)
+
+    assert events[0]["payload"] == {
+        "kind": "ask_result",
+        "question": "How much lysis buffer?",
+        "answer": "Use 200 uL.",
+    }
+```
+
+- [ ] **Step 2: Add failing router fallback test**
+
+Append this test to `tests/test_router.py`:
+
+```python
+def test_answer_question_fallback_matches_protocol_step(monkeypatch):
+    from backend import router
+    from backend.state import SessionState
+
+    monkeypatch.setattr(router, "_llm_available", lambda: False)
+    state = SessionState()
+    state.load_files()
+    protocol = state.find_protocol("DNA Extraction")
+
+    answer = router.answer_question("How much lysis buffer in step 1?", protocol)
+
+    assert "Step 1:" in answer
+    assert "lysis buffer" in answer.lower()
+```
+
+- [ ] **Step 3: Run selected tests and verify failure**
+
+Run:
+
+```bash
+python -m pytest tests/test_handlers.py::test_ask_returns_answer tests/test_router.py::test_answer_question_fallback_matches_protocol_step -q
+```
+
+Expected: failures because `ask_result_event` and `answer_question` do not exist yet.
+
+- [ ] **Step 4: Add the ask event builder**
+
+In `backend/schema.py`, add this function after `log_update_event()`:
+
+```python
+def ask_result_event(question: str, answer: str) -> dict[str, Any]:
+    return command_result("ask_result", question=question, answer=answer)
+```
+
+Update the command_result kinds comment so it includes `ask_result`.
+
+- [ ] **Step 5: Add read-only Q&A to `router.py`**
+
+Add these helper functions near the bottom of `backend/router.py`, before `route()`:
+
+```python
+def _step_context(protocol) -> str:
+    rows: list[str] = []
+    for step in protocol.steps:
+        params = ""
+        if step.parameters:
+            pairs = [f"{key}={value}" for key, value in sorted(step.parameters.items())]
+            params = " Parameters: " + ", ".join(pairs)
+        rows.append(f"Step {step.id}: {step.text}{params}")
+    return "\n".join(rows)
+
+
+def _question_tokens(text: str) -> set[str]:
+    stop = {
+        "a", "an", "and", "are", "can", "does", "how", "i", "in", "is", "it",
+        "much", "of", "on", "or", "step", "the", "to", "what", "when",
+        "where", "which", "why",
+    }
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", normalize_ascii(text).lower())
+        if token not in stop and len(token) > 1
+    }
+
+
+def _fallback_answer_question(question: str, protocol) -> str:
+    q_tokens = _question_tokens(question)
+    best_step = None
+    best_score = 0
+    for step in protocol.steps:
+        haystack = step.text
+        if step.parameters:
+            haystack += " " + " ".join(str(v) for v in step.parameters.values())
+        score = len(q_tokens & _question_tokens(haystack))
+        if score > best_score:
+            best_score = score
+            best_step = step
+    if best_step and best_score > 0:
+        return f"Step {best_step.id}: {best_step.text}"
+    return "I can only answer detailed questions when the AI model is connected."
+
+
+def answer_question(question: str, protocol) -> str:
+    """Answer a read-only protocol question.
+
+    This is a second model call, but it is gated behind an explicit `ask` command.
+    With no key, missing SDK, or provider error, it falls back to deterministic
+    step matching and stays free.
+    """
+    clean_question = normalize_ascii(question)
+    if not _llm_available():
+        return _fallback_answer_question(clean_question, protocol)
+    try:
+        import anthropic
+
+        client = anthropic.Anthropic()
+        resp = client.messages.create(
+            model=LAB_MODEL,
+            max_tokens=160,
+            system=(
+                "Answer ONLY from the protocol steps below in 1-2 sentences. "
+                "If the answer is not in the steps, say you do not see it.\n\n"
+                f"{_step_context(protocol)}"
+            ),
+            messages=[{"role": "user", "content": clean_question}],
+        )
+        parts: list[str] = []
+        for block in getattr(resp, "content", []):
+            text = getattr(block, "text", None)
+            if text:
+                parts.append(text)
+        answer = normalize_ascii(" ".join(parts))
+        return answer or _fallback_answer_question(clean_question, protocol)
+    except Exception:
+        return _fallback_answer_question(clean_question, protocol)
+```
+
+- [ ] **Step 6: Wire the handler through the router module**
+
+In `backend/handlers.py`, add:
+
+```python
+from . import router
+```
+
+Add `ask_result_event` to the `.schema` imports:
+
+```python
+    ask_result_event,
+```
+
+Add this function after `_handle_find_inventory()`:
+
+```python
+def _handle_ask(cmd: Command, state: SessionState) -> list[dict[str, Any]]:
+    if not cmd.question:
+        return [clarify_event("What would you like to ask about the protocol?")]
+    if not state.active_protocol:
+        return [clarify_event("Load a protocol first, then ask about it.")]
+    answer = router.answer_question(cmd.question, state.active_protocol)
+    return [ask_result_event(cmd.question, answer)]
+```
+
+Add this entry to `_DISPATCH`:
+
+```python
+    "ask": _handle_ask,
+```
+
+- [ ] **Step 7: Run Q&A tests**
+
+Run:
+
+```bash
+python -m pytest tests/test_handlers.py::test_ask_without_question_clarifies tests/test_handlers.py::test_ask_without_protocol_clarifies tests/test_handlers.py::test_ask_returns_answer tests/test_router.py::test_answer_question_fallback_matches_protocol_step -q
+```
+
+Expected: all selected Q&A tests pass without network access.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add backend/schema.py backend/router.py backend/handlers.py tests/test_handlers.py tests/test_router.py
+git commit -m "feat: answer protocol questions"
+```
+
+## Task 6: Add Frontend Handling and Logging Discoverability
+
+**Files:**
+- Modify: `frontend/index.html`
+- Modify: `frontend/app.js`
+- Add or modify: `tests/test_frontend_static.py`
+
+**Interfaces:**
+- Consumes `command_result.kind == "log_removed"`.
+- Consumes `command_result.kind == "log_update"`.
+- Consumes `command_result.kind == "ask_result"`.
+- Adds log list rows with `data-log-id`.
+- Uses the existing clarification panel as an informational answer area for Q&A.
+
+**Steps:**
+
+- [ ] **Step 1: Add static frontend tests**
+
+Create `tests/test_frontend_static.py` with:
+
+```python
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_composer_is_wired_to_demo_datalist():
+    html = (ROOT / "frontend" / "index.html").read_text()
+    assert 'list="demo-lines"' in html
+    assert 'id="demo-lines"' in html
+
+
+def test_log_has_empty_state_seed():
+    html = (ROOT / "frontend" / "index.html").read_text()
+    assert "log-empty" in html
+    assert "No entries yet" in html
+
+
+def test_app_handles_new_command_result_kinds():
+    js = (ROOT / "frontend" / "app.js").read_text()
+    assert 'case "log_removed"' in js
+    assert 'case "log_update"' in js
+    assert 'case "ask_result"' in js
+    assert "dataset.logId" in js
+    assert "ensureLogEmptyState" in js
+    assert "DEMO_LINES" in js
+```
+
+- [ ] **Step 2: Run static tests and verify failure**
+
+Run:
+
+```bash
+python -m pytest tests/test_frontend_static.py -q
+```
+
+Expected: failures because the UI is not wired yet.
+
+- [ ] **Step 3: Seed the log empty state and wire datalist in HTML**
+
+In `frontend/index.html`, replace:
+
+```html
+      <ul class="log" id="log"></ul>
+```
+
+with:
+
+```html
+      <ul class="log" id="log"><li class="muted log-empty">No entries yet - say "log: added 200 uL to sample A," or type it below.</li></ul>
+```
+
+Replace the composer input with:
+
+```html
+    <input id="composer-input" type="text" list="demo-lines" placeholder="Type a command - e.g. 'Load DNA extraction protocol'" />
+```
+
+- [ ] **Step 4: Add demo line data in `app.js`**
+
+Add this near the top of `frontend/app.js` after `const els = { ... };`:
+
+```javascript
+const DEMO_LINES = [
+  "Load DNA extraction protocol",
+  "What's next",
+  "Go back",
+  "Repeat that",
+  "log: added 200 uL lysis buffer to sample A",
+  "Scratch that",
+  "Change that to added 300 uL lysis buffer",
+  "Start a 10-minute timer",
+  "Where's the proteinase K?",
+  "How much lysis buffer in step 1?"
+];
+```
+
+Add this helper after the `DEMO_LINES` constant:
+
+```javascript
+function populateDemoLines() {
+  const list = $("demo-lines");
+  if (!list) return;
+  list.innerHTML = "";
+  DEMO_LINES.forEach((line) => {
+    const option = document.createElement("option");
+    option.value = line;
+    list.appendChild(option);
+  });
+}
+```
+
+Call `populateDemoLines();` before `connect();` at the bottom of the file.
+
+- [ ] **Step 5: Add log empty-state helpers**
+
+Add these helpers before `onLogEntry(p)`:
+
+```javascript
+function removeLogEmptyState() {
+  const empty = els.log.querySelector(".log-empty");
+  if (empty) empty.remove();
+}
+
+function ensureLogEmptyState() {
+  if (els.log.querySelector("li:not(.log-empty)")) return;
+  if (els.log.querySelector(".log-empty")) return;
+  const li = document.createElement("li");
+  li.className = "muted log-empty";
+  li.textContent = 'No entries yet - say "log: added 200 uL to sample A," or type it below.';
+  els.log.appendChild(li);
+}
+```
+
+- [ ] **Step 6: Tag log rows and remove the empty state**
+
+In `onLogEntry(p)`, after `const li = document.createElement("li");`, add:
+
+```javascript
+  removeLogEmptyState();
+  li.dataset.logId = String(p.id);
+```
+
+- [ ] **Step 7: Add command-result cases**
+
+In `onCommandResult(p)`, add these cases after `case "log_entry":`:
+
+```javascript
+    case "log_removed":
+      return onLogRemoved(p);
+    case "log_update":
+      return onLogUpdate(p);
+    case "ask_result":
+      return onAskResult(p);
+```
+
+- [ ] **Step 8: Add the new render functions**
+
+Add these functions after `onLogEntry(p)`:
+
+```javascript
+function onLogRemoved(p) {
+  const li = els.log.querySelector(`[data-log-id="${CSS.escape(String(p.id))}"]`);
+  if (li) li.remove();
+  ensureLogEmptyState();
+  clearClarify();
+  announce("Removed last note");
+  setState("done", "chip-ok");
+}
+
+function onLogUpdate(p) {
+  const li = els.log.querySelector(`[data-log-id="${CSS.escape(String(p.id))}"]`);
+  const text = li ? li.querySelector(".log-text") : null;
+  if (text) text.textContent = p.text;
+  clearClarify();
+  announce(`Updated note: ${p.text}`);
+  setState("done", "chip-ok");
+}
+
+function onAskResult(p) {
+  els.clarify.innerHTML = `<div class="clarify-msg">${escapeHtml(p.answer)}</div>`;
+  els.clarifyPanel.classList.add("active");
+  announce(p.answer);
+  setState("done", "chip-ok");
+}
+```
+
+If target browser support for `CSS.escape` is a concern, avoid it because ids are numeric:
+
+```javascript
+  const li = els.log.querySelector(`[data-log-id="${String(p.id)}"]`);
+```
+
+Use the numeric-id version if you want zero dependency on `CSS.escape`.
+
+- [ ] **Step 9: Prevent hydrate from showing the empty state when persisted logs exist**
+
+The Step 6 change makes hydrate safe because `hydrate()` calls `onLogEntry(row)`. No extra hydration branch is needed.
+
+- [ ] **Step 10: Run static tests**
+
+Run:
+
+```bash
+python -m pytest tests/test_frontend_static.py -q
+```
+
+Expected: all static frontend tests pass.
+
+- [ ] **Step 11: Commit**
+
+```bash
+git add frontend/index.html frontend/app.js tests/test_frontend_static.py
+git commit -m "feat: render note amendments and answers"
+```
+
+## Task 7: README and Full Verification
+
+**Files:**
+- Modify: `README.md`
+- Read: all changed files
+
+**Steps:**
+
+- [ ] **Step 1: Update the README command list**
+
+In `README.md`, update the "5 typed demo lines" section so it is no longer only five lines. Use this text:
+
+```markdown
+## Typed demo lines
+
+Type these into the command box at the bottom:
+
+1. `Load DNA extraction protocol.` -> BIG current-step panel shows Step 1
+2. `What's next?` -> step panel advances
+3. `Go back.` -> step panel returns to the previous step without starting a duplicate auto-timer
+4. `Repeat that.` -> current step is re-announced without moving the cursor
+5. `Log: added 200 microliters lysis buffer to sample A.` -> structured log row
+6. `Scratch that.` -> last log row is removed
+7. `Log: added 250 uL lysis buffer.` then `Change that to added 300 uL lysis buffer.` -> last row updates in place
+8. `Start a 10-minute incubation timer.` -> countdown card, chime on expiry
+9. `Where's the proteinase K?` -> inventory card
+10. `How much lysis buffer in step 1?` -> protocol answer in the clarification panel
+```
+
+Also remove `open-ended Q&A` from the final deferred list, because this task implements it.
+
+- [ ] **Step 2: Run the full test suite**
+
+Run:
+
+```bash
+python -m pytest tests/ -q
+```
+
+Expected: all tests pass.
+
+- [ ] **Step 3: Run a key-safety grep**
+
+Run:
+
+```bash
+rg "ANTHROPIC_API_KEY|DEEPGRAM_API_KEY|LAB_MODEL" frontend
+```
+
+Expected: no matches.
+
+- [ ] **Step 4: Run local typed smoke test**
+
+Start the app:
+
+```bash
+uvicorn backend.main:app --reload
+```
+
+Open `http://127.0.0.1:8000` and type this sequence:
+
+```text
+Load DNA extraction protocol
+What's next
+Go back
+Repeat that
+log: added 200 uL lysis buffer to sample A
+Scratch that
+log: added 250 uL lysis buffer
+Change that to added 300 uL lysis buffer
+How much lysis buffer in step 1?
+```
+
+Expected UI behavior:
+
+- Step 1 loads.
+- `What's next` moves to Step 2 and creates the incubation timer if auto-timers are enabled.
+- `Go back` returns to Step 1 and does not create a new timer card.
+- `Repeat that` re-announces Step 1 and does not move the cursor.
+- The first log row appears.
+- `Scratch that` removes the first log row and restores the log empty-state hint.
+- The second log row appears, then updates in place to `added 300 uL lysis buffer`.
+- The protocol answer appears in the clarification panel with the state chip set to `done`.
+
+- [ ] **Step 5: Verify refresh persistence**
+
+Refresh the page after the correction. Expected: the corrected log row reloads from SQLite and the scratched note does not reappear.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add README.md
+git commit -m "docs: update control demo"
+```
+
+## Final Acceptance Criteria
+
+- `python -m pytest tests/ -q` passes.
+- No vendor key names appear in `frontend/`.
+- `prev_step` and `repeat_step` do not start duplicate auto-timers.
+- `undo_log` deletes the last in-memory and persisted log row.
+- `correct_log` updates the last in-memory and persisted log row.
+- `ask` works without network through deterministic fallback and uses Anthropic only when explicitly asked and a key is available.
+- The frontend handles `log_removed`, `log_update`, and `ask_result` without adding outer event types.
+- The Log panel has a visible empty-state hint on fresh load and after undoing the final note.
+- The composer input is wired to the `demo-lines` datalist.
+- `README.md` reflects the new typed demo commands and no longer lists open-ended Q&A as deferred.
+
+## Risk Notes for Devin
+
+- Import `router` as a module in `backend/handlers.py`. Do not use `from .router import answer_question`; the handler test monkeypatches `backend.router.answer_question`.
+- Keep `undo_log` and `correct_log` parsing before generic `ask`, but after `log_entry`. This avoids treating "change that to ..." as a protocol question.
+- Keep `ask` parsing last. "What's next?" must remain `next_step`, and "Where's the proteinase K?" must remain `find_inventory`.
+- Do not decrement `_log_seq` after undo. SQLite `AUTOINCREMENT` does not reuse deleted ids, and in-memory behavior should stay monotonic.
+- `repeat_step` intentionally emits the same `step_change` again; that causes the existing screen-reader live region to announce the current step.
+- For `ask_result`, using the existing clarification panel is intentional, but the state chip must be `done`, not `needs input`.

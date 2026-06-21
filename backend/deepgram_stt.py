@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-from typing import Awaitable, Callable
+from typing import Any, Awaitable, Callable
 from urllib.parse import urlencode
 
 import websockets
@@ -36,6 +36,7 @@ KEYWORDS = [
 ]
 
 OnText = Callable[[str], Awaitable[None]]
+OnControl = Callable[[dict[str, Any]], Awaitable[None]]
 
 # Connect resilience: Deepgram's socket can blip on open. Retry a few times with
 # linear backoff before giving up so a transient hiccup doesn't kill the session.
@@ -83,7 +84,11 @@ def _build_url() -> str:
 
 
 async def run_deepgram_session(
-    browser_ws: WebSocket, *, on_interim: OnText, on_final: OnText
+    browser_ws: WebSocket,
+    *,
+    on_interim: OnText,
+    on_final: OnText,
+    on_control: OnControl | None = None,
 ) -> None:
     """Bridge one browser audio socket to one Deepgram live session."""
     key = os.getenv("DEEPGRAM_API_KEY")
@@ -107,12 +112,7 @@ async def run_deepgram_session(
                     if (data := msg.get("bytes")) is not None:
                         await dg.send(data)
                     elif (text := msg.get("text")) is not None:
-                        # control messages from the browser, e.g. {"type":"stop"}
-                        try:
-                            ctrl = json.loads(text)
-                        except json.JSONDecodeError:
-                            continue
-                        if ctrl.get("type") == "stop":
+                        if await handle_browser_control_message(text, on_control):
                             break
             except (WebSocketDisconnect, RuntimeError):
                 pass
@@ -180,6 +180,28 @@ async def _connect_with_retry(url: str, headers: dict[str, str]):
             if attempt < CONNECT_ATTEMPTS:
                 await asyncio.sleep(0.4 * attempt)
     raise RuntimeError(f"could not connect to Deepgram after {CONNECT_ATTEMPTS} attempts") from last_exc
+
+
+async def handle_browser_control_message(
+    text: str, on_control: OnControl | None = None
+) -> bool:
+    """Handle one browser text control message.
+
+    Returns True when the audio stream should stop. Other controls are forwarded
+    to the caller through ``on_control``.
+    """
+    try:
+        ctrl = json.loads(text)
+    except json.JSONDecodeError:
+        return False
+    if not isinstance(ctrl, dict):
+        return False
+    if ctrl.get("type") == "stop":
+        return True
+    if ctrl.get("type") == "set_muted" and isinstance(ctrl.get("muted"), bool):
+        if on_control is not None:
+            await on_control({"type": "set_muted", "muted": ctrl["muted"]})
+    return False
 
 
 async def _flush(segments: list[str], last_final: list[str], on_final: OnText) -> None:

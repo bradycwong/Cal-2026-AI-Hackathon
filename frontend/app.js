@@ -19,8 +19,8 @@ const els = {
   form: $("composer"),
   input: $("composer-input"),
   micBtn: $("mic-btn"),
+  muteBtn: $("mute-btn"),
   mic: $("chip-mic"),
-  wakeInput: $("wake-input"),
   transcriptHint: document.querySelector(".panel-hint"),
   srStatus: $("sr-status"),
   alertBanner: $("alert-banner"),
@@ -80,12 +80,16 @@ function dispatch(evt) {
 }
 
 let interimEl = null;
+function clearInterimTranscript() {
+  if (interimEl) {
+    interimEl.remove();
+    interimEl = null;
+  }
+}
+
 function onTranscript(p) {
   if (p.is_final) {
-    if (interimEl) {
-      interimEl.remove();
-      interimEl = null;
-    }
+    clearInterimTranscript();
     const div = document.createElement("div");
     div.className = "line final";
     div.textContent = p.text;
@@ -115,6 +119,8 @@ function onCommandResult(p) {
       return onInventory(p);
     case "clarify":
       return onClarify(p);
+    case "voice_state":
+      return onVoiceState(p);
     default:
       console.warn("unknown command_result kind", p);
   }
@@ -176,6 +182,18 @@ function onClarify(p) {
   els.clarify.innerHTML = `<div class="clarify-msg">${escapeHtml(p.message)}</div>`;
   els.clarifyPanel.classList.add("active");
   setState("needs input", "chip-warn");
+}
+
+function onVoiceState(p) {
+  voiceMuted = !!p.muted;
+  if (voiceMuted) clearInterimTranscript();
+  setMuteUI(!!micStream);
+  if (micStream) {
+    els.mic.textContent = voiceMuted ? "muted" : "listening";
+    els.mic.className = "chip " + (voiceMuted ? "chip-warn" : "chip-ok");
+    setState(voiceMuted ? "muted" : "listening", "chip-warn");
+  }
+  announce(voiceMuted ? "Voice muted" : "Voice listening");
 }
 
 function clearClarify() {
@@ -251,6 +269,7 @@ let recorder = null;
 let audioWS = null;
 let manualStop = false;        // distinguish a user Stop from an unexpected drop
 let reconnects = 0;
+let voiceMuted = false;
 const MAX_RECONNECTS = 3;
 
 function pickMime() {
@@ -259,11 +278,20 @@ function pickMime() {
 }
 
 function setMicUI(active) {
-  els.mic.textContent = active ? "listening" : "mic off";
-  els.mic.className = "chip " + (active ? "chip-ok" : "chip-idle");
+  els.mic.textContent = active ? (voiceMuted ? "muted" : "listening") : "mic off";
+  els.mic.className = "chip " + (active ? (voiceMuted ? "chip-warn" : "chip-ok") : "chip-idle");
   els.micBtn.textContent = active ? "Stop session" : "Start session";
   els.micBtn.classList.toggle("active", active);
   els.micBtn.setAttribute("aria-pressed", active ? "true" : "false");
+  setMuteUI(active);
+}
+
+function setMuteUI(active) {
+  if (!els.muteBtn) return;
+  els.muteBtn.disabled = !active;
+  els.muteBtn.textContent = voiceMuted ? "Unmute" : "Mute";
+  els.muteBtn.classList.toggle("active", active && voiceMuted);
+  els.muteBtn.setAttribute("aria-pressed", active && voiceMuted ? "true" : "false");
 }
 
 async function startMic() {
@@ -302,6 +330,7 @@ function openAudioSocket(mimeType) {
   audioWS.binaryType = "arraybuffer";
   audioWS.onopen = () => {
     reconnects = 0;
+    voiceMuted = false;
     recorder = new MediaRecorder(micStream, mimeType ? { mimeType } : undefined);
     recorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0 && audioWS && audioWS.readyState === WebSocket.OPEN) {
@@ -350,6 +379,8 @@ function finalizeStop() {
   micStream = null;
   audioWS = null;
   reconnects = 0;
+  voiceMuted = false;
+  clearInterimTranscript();
   setMicUI(false);
   setState("idle", "");
 }
@@ -359,44 +390,17 @@ els.micBtn.addEventListener("click", () => {
   else startMic();
 });
 
-// --- runtime-settable wake word --------------------------------------------
-function applyWake(word) {
-  const w = (word || "lab").trim();
-  if (els.wakeInput && document.activeElement !== els.wakeInput) els.wakeInput.value = w;
-  if (els.transcriptHint) els.transcriptHint.textContent = `say "Hey ${w}, …"`;
+function sendMuteControl(muted) {
+  if (!audioWS || audioWS.readyState !== WebSocket.OPEN) return;
+  audioWS.send(JSON.stringify({ type: "set_muted", muted }));
 }
 
-async function loadWake() {
-  try {
-    const r = await fetch("/api/config");
-    const d = await r.json();
-    applyWake(d.wake && d.wake.word);
-  } catch (_) { /* defaults stay */ }
-}
-
-async function saveWake() {
-  const word = (els.wakeInput.value || "").trim();
-  if (!word) return loadWake();
-  try {
-    const r = await fetch("/api/config", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ word }),
-    });
-    const d = await r.json();
-    applyWake(d.wake && d.wake.word);
-  } catch (err) {
-    onError({ message: "Could not update wake word: " + err });
-  }
-}
-
-if (els.wakeInput) {
-  els.wakeInput.addEventListener("change", saveWake);
-  els.wakeInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") { e.preventDefault(); els.wakeInput.blur(); }
+if (els.muteBtn) {
+  els.muteBtn.addEventListener("click", () => {
+    if (!micStream) return;
+    sendMuteControl(!voiceMuted);
   });
 }
-loadWake();
 
 // --- hydrate from persisted/in-memory state on (re)load --------------------
 async function hydrate() {

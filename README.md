@@ -26,10 +26,10 @@ as webm/opus to `/ws/audio`; the server proxies it to Deepgram nova-2 (key stays
 server-side), shows interim words live, and routes finished utterances through the
 same spine. Requires `DEEPGRAM_API_KEY` in `.env`.
 
-**Wake word.** Voice is gated by "Hey Lab" so background talk doesn't fire
-commands: say `"Hey Lab, what's next?"`, or just `"Hey Lab"` then your command
-within ~8 s. The typed box never needs a wake word. Disable with
-`LAB_WAKE_REQUIRED=false`.
+**Mute/unmute.** After Start, every finished utterance is routed as a command.
+Say `mute` or click **Mute** to stop transcript updates and command routing.
+The mic stays open so you can say `unmute` or click **Unmute** to resume. Typed
+commands always work.
 
 ## Run
 
@@ -79,7 +79,7 @@ pytest -q          # router harness + handler shape checks
 backend/
   main.py        FastAPI: /api/ingest, /api/state, WS /ws/events + /ws/audio, static, timer loop, ingest() spine
   deepgram_stt.py server-side Deepgram live STT proxy (key never reaches browser)
-  wake.py        "Hey Lab" wake gate: which spoken utterances become commands
+  voice_control.py always-listening mute/unmute gate for spoken utterances
   schema.py      Command (flat-5 + unknown) + locked event-envelope builders
   router.py      route(transcript)->Command: LLM primary + deterministic fallback; ASCII normalize
   handlers.py    handle_command(): deterministic dispatch; missing param -> clarify
@@ -90,7 +90,7 @@ frontend/
   index.html     panels + typed command box (permanent fallback)
   app.js         WS client; dispatch on the 4 event types
   styles.css
-tests/           test_router.py, test_handlers.py, test_wake.py, test_persistence.py
+tests/           router, handler, STT, voice-control, and persistence checks
 ```
 
 Log persistence: the log feed is written to SQLite (`backend/data/lab.db`, set

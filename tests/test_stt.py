@@ -7,7 +7,7 @@ and dedup into a single utterance routed through ingest().
 
 import asyncio
 
-from backend.deepgram_stt import _flush, interpret_message
+from backend.deepgram_stt import _flush, handle_browser_control_message, interpret_message
 
 
 def _results(text, *, is_final=False, speech_final=False):
@@ -73,3 +73,31 @@ def test_flush_noop_on_empty():
 
 async def _collect(sink, text):
     sink.append(text)
+
+
+def test_set_muted_control_invokes_callback_without_stopping():
+    controls = []
+
+    should_stop = _run(
+        handle_browser_control_message(
+            '{"type":"set_muted","muted":true}',
+            lambda ctrl: _collect(controls, ctrl),
+        )
+    )
+
+    assert should_stop is False
+    assert controls == [{"type": "set_muted", "muted": True}]
+
+
+def test_stop_control_stops_without_invoking_callback():
+    controls = []
+
+    should_stop = _run(
+        handle_browser_control_message(
+            '{"type":"stop"}',
+            lambda ctrl: _collect(controls, ctrl),
+        )
+    )
+
+    assert should_stop is True
+    assert controls == []
