@@ -52,6 +52,9 @@ class InventoryItem:
     name: str
     location: str
     quantity_approx: str
+    # In-memory stable identity for edit/delete; assigned per session, NOT
+    # persisted to the CSV (the UI always re-fetches fresh ids on hydrate).
+    id: int = 0
     notes: str = ""
     code: str = ""
     category: str = "General"
@@ -278,6 +281,7 @@ class SessionState:
         self.timers: list[Timer] = []
         self._log_seq = 0
         self._timer_seq = 0
+        self._inventory_seq = 0
         self.notes = NoteStore(db_path) if db_path else None
         # Multi-notebook log. DB-backed: the NoteStore owns notebooks + the
         # active pointer. In-memory (tests): mirror that with plain dicts/lists,
@@ -302,6 +306,8 @@ class SessionState:
         inv_path = self.data_dir / "inventory.csv"
         if inv_path.exists():
             self.inventory = load_inventory_file(inv_path)
+            for item in self.inventory:
+                item.id = self._next_inventory_id()
         if self.notes is not None:
             self.active_notebook_id = int(self.notes.get_active_notebook_id())
             self.log = self.notes.all_notes(self.active_notebook_id)
@@ -340,6 +346,7 @@ class SessionState:
         """Read-only view of inventory for ``GET /api/inventory``."""
         return [
             {
+                "id": item.id,
                 "name": item.name,
                 "code": item.code,
                 "location": item.location,
@@ -354,6 +361,18 @@ class SessionState:
             }
             for item in self.inventory
         ]
+
+    def _next_inventory_id(self) -> int:
+        """Monotonic per-session id so edit/delete target an item by identity
+        rather than list position (positions shift as items are added/removed)."""
+        self._inventory_seq += 1
+        return self._inventory_seq
+
+    def _inventory_index_by_id(self, item_id: int) -> int:
+        for i, item in enumerate(self.inventory):
+            if item.id == item_id:
+                return i
+        raise IndexError(f"no inventory item with id {item_id}")
 
     # --- mutating writers (upload protocol / add inventory item) -----------
     def add_inventory_item(
@@ -396,6 +415,7 @@ class SessionState:
             amount=amount,
             unit=unit,
         )
+        item.id = self._next_inventory_id()
         self.inventory.append(item)
         inv_path = self.data_dir / "inventory.csv"
         if not _inventory_file_has_current_columns(inv_path):
@@ -422,7 +442,7 @@ class SessionState:
 
     def update_inventory_item(
         self,
-        index: int,
+        item_id: int,
         name: Optional[str] = None,
         location: Optional[str] = None,
         amount: Optional[str] = None,
@@ -430,13 +450,13 @@ class SessionState:
         date: Optional[str] = None,
         expiration: Optional[str] = None,
     ) -> InventoryItem:
-        """Edit fields of the item at ``index`` and persist the whole CSV.
+        """Edit fields of the item with ``item_id`` and persist the whole CSV.
 
-        Only non-None fields are changed, so partial updates are safe.
+        Keyed by stable id (not list position), so a concurrent add/delete that
+        reorders the list can't make an edit land on the wrong row. Only
+        non-None fields are changed, so partial updates are safe.
         """
-        if index < 0 or index >= len(self.inventory):
-            raise IndexError("inventory index out of range")
-        item = self.inventory[index]
+        item = self.inventory[self._inventory_index_by_id(item_id)]
         if name is not None:
             new_name = name.strip()
             if not new_name:
@@ -457,11 +477,9 @@ class SessionState:
         self._write_inventory()
         return item
 
-    def delete_inventory_item(self, index: int) -> InventoryItem:
-        """Remove the item at ``index`` and persist the whole CSV."""
-        if index < 0 or index >= len(self.inventory):
-            raise IndexError("inventory index out of range")
-        removed = self.inventory.pop(index)
+    def delete_inventory_item(self, item_id: int) -> InventoryItem:
+        """Remove the item with ``item_id`` (by stable id) and persist the CSV."""
+        removed = self.inventory.pop(self._inventory_index_by_id(item_id))
         self._write_inventory()
         return removed
 

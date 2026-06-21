@@ -66,8 +66,10 @@ def test_add_inventory_item_blank_expiration_is_na(client):
 
 
 def test_edit_inventory_item(client):
-    client.post("/api/inventory", json={"name": "Agarose", "amount": "10", "unit": "g"})
-    r = client.put("/api/inventory/0", json={"name": "Agarose LE", "amount": "0", "unit": "g"})
+    iid = client.post(
+        "/api/inventory", json={"name": "Agarose", "amount": "10", "unit": "g"}
+    ).json()["item"]["id"]
+    r = client.put(f"/api/inventory/{iid}", json={"name": "Agarose LE", "amount": "0", "unit": "g"})
     assert r.status_code == 200
     body = r.json()
     assert body["item"]["name"] == "Agarose LE"
@@ -79,28 +81,46 @@ def test_edit_inventory_item(client):
 
 
 def test_edit_inventory_blank_name_422(client):
-    client.post("/api/inventory", json={"name": "Agarose"})
-    r = client.put("/api/inventory/0", json={"name": "   "})
+    iid = client.post("/api/inventory", json={"name": "Agarose"}).json()["item"]["id"]
+    r = client.put(f"/api/inventory/{iid}", json={"name": "   "})
     assert r.status_code == 422
 
 
-def test_edit_inventory_out_of_range_404(client):
+def test_edit_inventory_unknown_id_404(client):
     r = client.put("/api/inventory/99", json={"name": "Nope"})
     assert r.status_code == 404
 
 
 def test_delete_inventory_item(client):
-    client.post("/api/inventory", json={"name": "Agarose"})
+    aid = client.post("/api/inventory", json={"name": "Agarose"}).json()["item"]["id"]
     client.post("/api/inventory", json={"name": "SYBR Safe"})
-    r = client.delete("/api/inventory/0")
+    r = client.delete(f"/api/inventory/{aid}")
     assert r.status_code == 200
     assert r.json()["removed"] == "Agarose"
     assert [i.name for i in main.state.inventory] == ["SYBR Safe"]
 
 
-def test_delete_inventory_out_of_range_404(client):
+def test_delete_inventory_unknown_id_404(client):
     r = client.delete("/api/inventory/99")
     assert r.status_code == 404
+
+
+def test_inventory_view_exposes_stable_id(client):
+    client.post("/api/inventory", json={"name": "Alpha"})
+    items = client.get("/api/inventory").json()["items"]
+    assert isinstance(items[0]["id"], int) and items[0]["id"] > 0
+
+
+def test_inventory_mutations_key_on_id_not_position(client):
+    # Identity must follow the item, not its row position. Delete the first item
+    # so the second's index shifts from 1 -> 0; editing it by id must still hit it
+    # (an index-based PUT to its old position would 404 or hit the wrong row).
+    alpha = client.post("/api/inventory", json={"name": "Alpha"}).json()["item"]
+    beta = client.post("/api/inventory", json={"name": "Beta"}).json()["item"]
+    client.delete(f"/api/inventory/{alpha['id']}")
+    r = client.put(f"/api/inventory/{beta['id']}", json={"name": "Beta-2"})
+    assert r.status_code == 200
+    assert [i.name for i in main.state.inventory] == ["Beta-2"]
 
 
 def test_upload_protocol(client):

@@ -157,8 +157,8 @@
   }
 
   // --- inventory add / edit / delete ----------------------------------------
-  let inventoryCache = []; // last-rendered items, for edit prefill (index-based)
-  let editingIndex = null; // null = add mode; number = editing that row index
+  let inventoryCache = []; // last-rendered items, for edit prefill (keyed by id)
+  let editingId = null; // null = add mode; number = id of the item being edited
 
   async function refreshInventory() {
     if ($("inventory-rows")) renderInventory(await fetchInventory());
@@ -175,8 +175,8 @@
     return data;
   }
 
-  async function updateInventoryItem(index, payload) {
-    const r = await fetch(`${API}/api/inventory/${index}`, {
+  async function updateInventoryItem(id, payload) {
+    const r = await fetch(`${API}/api/inventory/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -186,8 +186,8 @@
     return data;
   }
 
-  async function deleteInventoryItem(index) {
-    const r = await fetch(`${API}/api/inventory/${index}`, { method: "DELETE" });
+  async function deleteInventoryItem(id) {
+    const r = await fetch(`${API}/api/inventory/${id}`, { method: "DELETE" });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data.detail || `delete failed (${r.status})`);
     return data;
@@ -244,7 +244,7 @@
   function openAddItemModal() {
     const m = $("additem-modal");
     if (!m) return;
-    editingIndex = null;
+    editingId = null;
     setModalMode("add");
     clearAddItemForm();
     // Default "Date Created" to today for convenience.
@@ -255,11 +255,11 @@
     if (name) name.focus();
   }
 
-  function openEditItemModal(index) {
+  function openEditItemModal(id) {
     const m = $("additem-modal");
-    const it = inventoryCache[index];
+    const it = inventoryCache.find((x) => x.id === id);
     if (!m || !it) return;
-    editingIndex = index;
+    editingId = id;
     setModalMode("edit");
     clearAddItemForm();
     const set = (id, val) => {
@@ -330,10 +330,10 @@
       return;
     }
     setMsg("Saving...", "text-on-surface-variant");
-    const isEdit = editingIndex !== null;
+    const isEdit = editingId !== null;
     try {
       if (isEdit) {
-        await updateInventoryItem(editingIndex, { name, amount, unit, location, date, expiration });
+        await updateInventoryItem(editingId, { name, amount, unit, location, date, expiration });
       } else {
         await addInventoryItem({ name, amount, unit, location, date, expiration });
       }
@@ -347,12 +347,12 @@
     }
   }
 
-  async function handleDeleteItem(index) {
-    const it = inventoryCache[index];
+  async function handleDeleteItem(id) {
+    const it = inventoryCache.find((x) => x.id === id);
     const name = it ? it.name : "this item";
     if (!window.confirm(`Delete "${name}" from inventory?`)) return;
     try {
-      await deleteInventoryItem(index);
+      await deleteInventoryItem(id);
       await refreshInventory();
       showToast(`"${name}" was deleted`);
     } catch (e) {
@@ -383,8 +383,8 @@
       rowsHost.addEventListener("click", (e) => {
         const editBtn = e.target.closest(".inv-edit");
         const delBtn = e.target.closest(".inv-delete");
-        if (editBtn) openEditItemModal(parseInt(editBtn.dataset.index, 10));
-        else if (delBtn) handleDeleteItem(parseInt(delBtn.dataset.index, 10));
+        if (editBtn) openEditItemModal(parseInt(editBtn.dataset.id, 10));
+        else if (delBtn) handleDeleteItem(parseInt(delBtn.dataset.id, 10));
       });
   }
 
@@ -547,8 +547,8 @@
         it.expiration || "N/A"
       )}</p></div>
       <div class="col-span-1 flex items-center justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-        <button type="button" class="inv-edit text-on-surface-variant hover:text-primary" data-index="${i}" title="Edit"><span class="material-symbols-outlined text-base">edit</span></button>
-        <button type="button" class="inv-delete text-on-surface-variant hover:text-error" data-index="${i}" title="Delete"><span class="material-symbols-outlined text-base">delete</span></button>
+        <button type="button" class="inv-edit text-on-surface-variant hover:text-primary" data-id="${escapeHtml(String(it.id))}" title="Edit"><span class="material-symbols-outlined text-base">edit</span></button>
+        <button type="button" class="inv-delete text-on-surface-variant hover:text-error" data-id="${escapeHtml(String(it.id))}" title="Delete"><span class="material-symbols-outlined text-base">delete</span></button>
       </div>
     </div>`;
       })
