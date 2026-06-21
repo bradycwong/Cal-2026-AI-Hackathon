@@ -1,17 +1,17 @@
-name,location,quantity_approx,notes
-Proteinase K,Freezer 2 shelf B,~4 doses,10 mg/mL aliquots
-Lysis buffer,Fridge 1 shelf A,~200 mL,
-Ethanol 70%,Cabinet 3,2 bottles,
-EDTA,Fridge 1 shelf B,~50 mL,see also: Ethylenediaminetetraacetic acid
-Nuclease-free water,Fridge 1 shelf C,~500 mL,
-2X master mix,Freezer 1 shelf A,~30 reactions,Taq polymerase mix for PCR
-Forward primer,Freezer 2 shelf A,~20 µM stock,store at -20 C
-Reverse primer,Freezer 2 shelf A,~20 µM stock,store at -20 C
-Template DNA,Freezer 2 shelf C,~10 aliquots,genomic/plasmid template
-Competent cells,Freezer -80 box 4,~12 aliquots,DH5-alpha; keep on ice
-Plasmid DNA,Freezer 2 shelf C,~15 aliquots,
-SOC medium,Fridge 1 shelf D,~100 mL,recovery medium
-LB agar,Fridge 2 shelf A,~20 plates,with antibiotic
-Resuspension buffer,Fridge 1 shelf A,~100 mL,P1; contains RNase A
-Neutralization buffer,Fridge 1 shelf A,~100 mL,N3
-Elution buffer,Cabinet 3,~100 mL,EB; 10 mM Tris-Cl
+name,location,quantity_approx,notes,code,category,date,status
+Proteinase K,Freezer 2 shelf B,~4 doses,10 mg/mL aliquots,PRK-2001-A,Enzyme,2024-02-10,low
+Lysis buffer,Fridge 1 shelf A,~200 mL,,LYS-1002-B,Molecular Reagent,2024-01-15,ok
+Ethanol 70%,Cabinet 3,2 bottles,,ETH-3003-C,Solvent,2024-03-01,ok
+EDTA,Fridge 1 shelf B,~50 mL,see also: Ethylenediaminetetraacetic acid,EDT-1004-B,Buffer,2024-01-20,ok
+Nuclease-free water,Fridge 1 shelf C,~500 mL,,NFW-1005-C,Molecular Reagent,2024-02-01,ok
+2X master mix,Freezer 1 shelf A,~30 reactions,Taq polymerase mix for PCR,MMX-1006-A,Enzyme,2024-02-15,ok
+Forward primer,Freezer 2 shelf A,~20 µM stock,store at -20 C,FWP-2007-A,Oligo,2024-03-05,ok
+Reverse primer,Freezer 2 shelf A,~20 µM stock,store at -20 C,RVP-2008-A,Oligo,2024-03-05,ok
+Template DNA,Freezer 2 shelf C,~10 aliquots,genomic/plasmid template,TPL-2009-C,Nucleic Acid,2024-02-20,ok
+Competent cells,Freezer -80 box 4,~12 aliquots,DH5-alpha; keep on ice,CMP-8010-D,Cells,2024-01-10,critical
+Plasmid DNA,Freezer 2 shelf C,~15 aliquots,,PLM-2011-C,Nucleic Acid,2024-02-22,ok
+SOC medium,Fridge 1 shelf D,~100 mL,recovery medium,SOC-1012-D,Media,2024-03-10,ok
+LB agar,Fridge 2 shelf A,~20 plates,with antibiotic,LBA-1013-A,Media,2024-02-28,expiring
+Resuspension buffer,Fridge 1 shelf A,~100 mL,P1; contains RNase A,RSB-1014-A,Buffer,2024-01-25,ok
+Neutralization buffer,Fridge 1 shelf A,~100 mL,N3,NTB-1015-A,Buffer,2024-01-25,ok
+Elution buffer,Cabinet 3,~100 mL,EB; 10 mM Tris-Cl,ELB-3016-C,Buffer,2024-02-05,ok

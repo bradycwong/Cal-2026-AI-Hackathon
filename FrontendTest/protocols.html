@@ -128,8 +128,8 @@
 </div>
 </div>
 </div>
-<!-- Bento Grid of Protocol Cards -->
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+<!-- Bento Grid of Protocol Cards (live: populated by app.js) -->
+<div id="protocol-cards" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 <!-- Protocol Card 1 -->
 <div class="protocol-card bg-surface-container-low rounded-xl p-6 flex flex-col">
 <div class="flex justify-between items-start mb-4">
@@ -296,6 +296,7 @@
     <span class="text-xs text-on-surface-variant">Voice Assistant</span>
   </div>
 </button></main>
+<script src="app.js" defer></script>
 <script>
         // Simple micro-interaction for protocol cards
         document.querySelectorAll('.protocol-card button').forEach(button => {

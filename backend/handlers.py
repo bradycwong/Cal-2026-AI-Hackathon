@@ -34,11 +34,18 @@ def _step_change_events(state: SessionState, auto_timer: bool = True) -> list[di
     prev = state.step_at(idx - 1)
     cur = state.step_at(idx)
     nxt = state.step_at(idx + 1)
+    proto = state.active_protocol
+    all_steps = [s.as_event() for s in proto.steps] if proto else []
+    current_index = state.current_step_index if proto else None
+    protocol_name = proto.name if proto else None
     events: list[dict[str, Any]] = [
         step_change_event(
             prev_step=prev.as_event() if prev else None,
             current_step=cur.as_event() if cur else None,
             next_step=nxt.as_event() if nxt else None,
+            all_steps=all_steps,
+            current_index=current_index,
+            protocol_name=protocol_name,
         )
     ]
     if auto_timer and cur and cur.duration_s:
@@ -101,7 +108,8 @@ def _handle_log_entry(cmd: Command, state: SessionState) -> list[dict[str, Any]]
     if not cmd.log_text:
         msg = cmd.clarify_prompt or "What would you like to log?"
         return [clarify_event(msg)]
-    entry = state.append_log(cmd.log_text, cmd.sample_id)  # log_text -> note.text
+    category = state.active_protocol.name if state.active_protocol else None
+    entry = state.append_log(cmd.log_text, cmd.sample_id, category)  # log_text -> note.text
     return [log_entry_event(**entry)]
 
 

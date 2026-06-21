@@ -40,6 +40,11 @@ class Protocol:
     name: str
     steps: list[Step]
     aliases: list[str] = field(default_factory=list)
+    description: str = ""
+    category: str = "General"
+    status: str = "READY"
+    est_duration_min: Optional[int] = None
+    reagents: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -48,6 +53,39 @@ class InventoryItem:
     location: str
     quantity_approx: str
     notes: str = ""
+    code: str = ""
+    category: str = "General"
+    date: str = ""
+    status: str = "ok"
+
+
+_PROTOCOL_STATUSES = {"READY", "LOW_REAGENTS", "ARCHIVED"}
+_INVENTORY_STATUSES = {"ok", "low", "critical", "expiring"}
+
+
+def _duration_label(seconds: int) -> str:
+    if seconds <= 0:
+        return "-"
+    minutes = max(1, round(seconds / 60))
+    if minutes < 60:
+        return f"{minutes}m"
+    hours, rem = divmod(minutes, 60)
+    return f"{hours}h" if rem == 0 else f"{hours}h {rem}m"
+
+
+def _derive_reagents(steps: list[Step]) -> list[str]:
+    """Unique, author-ordered reagents pulled from step parameters."""
+    seen: list[str] = []
+    for step in steps:
+        reagent = step.parameters.get("reagent")
+        if reagent and str(reagent) not in seen:
+            seen.append(str(reagent))
+    return seen
+
+
+def _derive_est_duration_min(steps: list[Step]) -> Optional[int]:
+    total = sum(s.duration_s for s in steps if s.duration_s)
+    return max(1, round(total / 60)) if total else None
 
 
 @dataclass
@@ -123,11 +161,25 @@ def parse_protocol_text(text: str) -> Protocol:
                 parameters=s.get("parameters") or {},
             )
         )
+    status = str(p.get("status", "READY")).upper()
+    if status not in _PROTOCOL_STATUSES:
+        status = "READY"
+    reagents = [str(r) for r in (p.get("reagents") or [])] or _derive_reagents(steps)
+    est_duration_min = p.get("est_duration_min")
+    if est_duration_min is None:
+        est_duration_min = _derive_est_duration_min(steps)
+    else:
+        est_duration_min = int(est_duration_min)
     return Protocol(
         id=str(p["id"]),
         name=str(p["name"]),
         steps=steps,
         aliases=[str(a).lower() for a in (p.get("aliases") or [])],
+        description=str(p.get("description", "")),
+        category=str(p.get("category", "General")),
+        status=status,
+        est_duration_min=est_duration_min,
+        reagents=reagents,
     )
 
 
@@ -139,15 +191,27 @@ def load_inventory_file(path: Path) -> list[InventoryItem]:
     items: list[InventoryItem] = []
     with path.open(newline="", encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
+            status = (row.get("status") or "ok").strip().lower()
+            if status not in _INVENTORY_STATUSES:
+                status = "ok"
             items.append(
                 InventoryItem(
                     name=row["name"].strip(),
                     location=row.get("location", "").strip(),
                     quantity_approx=row.get("quantity_approx", "").strip(),
                     notes=row.get("notes", "").strip(),
+                    code=(row.get("code") or "").strip(),
+                    category=(row.get("category") or "General").strip() or "General",
+                    date=(row.get("date") or "").strip(),
+                    status=status,
                 )
             )
     return items
+
+
+_INVENTORY_COLUMNS = [
+    "name", "location", "quantity_approx", "notes", "code", "category", "date", "status",
+]
 
 
 class SessionState:
@@ -177,9 +241,61 @@ class SessionState:
             self.log = self.notes.all_notes()
             self._log_seq = self.log[-1]["id"] if self.log else 0
 
+    # --- snapshot helpers (read-only views for the REST endpoints) ---------
+    def protocol_catalog(self) -> list[dict[str, Any]]:
+        """Read-only summary of every loaded protocol for ``GET /api/protocols``."""
+        catalog: list[dict[str, Any]] = []
+        for proto in self.protocols.values():
+            est_min = proto.est_duration_min
+            duration_s = est_min * 60 if est_min else _derive_est_duration_min(proto.steps)
+            duration_s = (duration_s or 0) if isinstance(duration_s, int) else 0
+            if est_min is None and duration_s:
+                est_min = max(1, round(duration_s / 60))
+            reagents = proto.reagents or _derive_reagents(proto.steps)
+            catalog.append(
+                {
+                    "id": proto.id,
+                    "name": proto.name,
+                    "description": proto.description,
+                    "category": proto.category,
+                    "status": proto.status,
+                    "est_duration_min": est_min,
+                    "duration_s": duration_s,
+                    "duration_label": _duration_label(duration_s),
+                    "step_count": len(proto.steps),
+                    "reagents": reagents,
+                    "aliases": proto.aliases,
+                }
+            )
+        return catalog
+
+    def inventory_view(self) -> list[dict[str, Any]]:
+        """Read-only view of inventory for ``GET /api/inventory``."""
+        return [
+            {
+                "name": item.name,
+                "code": item.code,
+                "location": item.location,
+                "category": item.category,
+                "quantity_approx": item.quantity_approx,
+                "date": item.date,
+                "status": item.status,
+                "notes": item.notes,
+            }
+            for item in self.inventory
+        ]
+
     # --- mutating writers (upload protocol / add inventory item) -----------
     def add_inventory_item(
-        self, name: str, location: str = "", quantity_approx: str = "", notes: str = ""
+        self,
+        name: str,
+        location: str = "",
+        quantity_approx: str = "",
+        notes: str = "",
+        code: str = "",
+        category: str = "General",
+        date: str = "",
+        status: str = "ok",
     ) -> InventoryItem:
         """Append a manually-entered item to memory and persist it to the CSV.
 
@@ -189,11 +305,18 @@ class SessionState:
         name = name.strip()
         if not name:
             raise ValueError("inventory item requires a name")
+        status = (status or "ok").strip().lower()
+        if status not in _INVENTORY_STATUSES:
+            status = "ok"
         item = InventoryItem(
             name=name,
             location=location.strip(),
             quantity_approx=quantity_approx.strip(),
             notes=notes.strip(),
+            code=code.strip(),
+            category=(category or "General").strip() or "General",
+            date=date.strip(),
+            status=status,
         )
         self.inventory.append(item)
         inv_path = self.data_dir / "inventory.csv"
@@ -202,8 +325,11 @@ class SessionState:
         with inv_path.open("a", newline="", encoding="utf-8") as fh:
             writer = csv.writer(fh)
             if write_header:
-                writer.writerow(["name", "location", "quantity_approx", "notes"])
-            writer.writerow([item.name, item.location, item.quantity_approx, item.notes])
+                writer.writerow(_INVENTORY_COLUMNS)
+            writer.writerow([
+                item.name, item.location, item.quantity_approx, item.notes,
+                item.code, item.category, item.date, item.status,
+            ])
         return item
 
     def add_protocol_from_text(self, text: str) -> Protocol:
@@ -249,12 +375,17 @@ class SessionState:
         return None
 
     # --- log ---------------------------------------------------------------
-    def append_log(self, text: str, sample_id: Optional[str]) -> dict[str, Any]:
+    def append_log(
+        self,
+        text: str,
+        sample_id: Optional[str],
+        category: Optional[str] = None,
+    ) -> dict[str, Any]:
         step = self.current_step()
         timestamp = utc_now_iso()
         step_ref = step.id if step else None
         if self.notes is not None:
-            entry = self.notes.add_note(text, timestamp, sample_id, step_ref)
+            entry = self.notes.add_note(text, timestamp, sample_id, step_ref, category)
             self._log_seq = entry["id"]
         else:
             self._log_seq += 1
@@ -264,6 +395,7 @@ class SessionState:
                 "timestamp": timestamp,
                 "sample_id": sample_id,
                 "step_ref": step_ref,
+                "category": category,
             }
         self.log.append(entry)
         return entry

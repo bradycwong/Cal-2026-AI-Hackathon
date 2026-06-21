@@ -86,6 +86,45 @@ def test_re_upload_overwrites_same_id(tmp_path):
     assert state.protocols["gel_electrophoresis"].name == "Gel v2"
 
 
+def test_protocol_catalog_shape():
+    state = SessionState()
+    state.load_files()
+    catalog = state.protocol_catalog()
+    assert catalog
+    assert {
+        "id",
+        "name",
+        "description",
+        "category",
+        "status",
+        "est_duration_min",
+        "duration_s",
+        "duration_label",
+        "step_count",
+        "reagents",
+        "aliases",
+    } <= set(catalog[0])
+    assert catalog[0]["status"] in {"READY", "LOW_REAGENTS", "ARCHIVED"}
+
+
+def test_inventory_view_shape():
+    state = SessionState()
+    state.load_files()
+    items = state.inventory_view()
+    assert items
+    assert {
+        "name",
+        "code",
+        "location",
+        "category",
+        "quantity_approx",
+        "date",
+        "status",
+        "notes",
+    } <= set(items[0])
+    assert items[0]["status"] in {"ok", "low", "critical", "expiring"}
+
+
 @pytest.mark.parametrize(
     "bad",
     [

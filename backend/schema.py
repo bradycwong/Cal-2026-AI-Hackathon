@@ -77,12 +77,18 @@ def step_change_event(
     prev_step: Optional[dict[str, Any]],
     current_step: Optional[dict[str, Any]],
     next_step: Optional[dict[str, Any]],
+    all_steps: Optional[list[dict[str, Any]]] = None,
+    current_index: Optional[int] = None,
+    protocol_name: Optional[str] = None,
 ) -> dict[str, Any]:
     return command_result(
         "step_change",
         prev_step=prev_step,
         current_step=current_step,
         next_step=next_step,
+        all_steps=all_steps if all_steps is not None else [],
+        current_index=current_index,
+        protocol_name=protocol_name,
     )
 
 
@@ -92,6 +98,7 @@ def log_entry_event(
     timestamp: str,
     sample_id: Optional[str],
     step_ref: Optional[int],
+    category: Optional[str] = None,
 ) -> dict[str, Any]:
     return command_result(
         "log_entry",
@@ -100,6 +107,7 @@ def log_entry_event(
         timestamp=timestamp,
         sample_id=sample_id,
         step_ref=step_ref,
+        category=category,
     )
 
 

@@ -37,13 +37,32 @@ class NoteStore:
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
         self._conn.commit()
+        self._migrate()
+
+    def _columns(self) -> set[str]:
+        rows = self._conn.execute("PRAGMA table_info(notes)").fetchall()
+        return {r["name"] for r in rows}
+
+    def _migrate(self) -> None:
+        """Idempotent additive migrations. Each column is independent so older
+        databases gain new fields without dropping data."""
+        cols = self._columns()
+        if "category" not in cols:
+            self._conn.execute("ALTER TABLE notes ADD COLUMN category TEXT")
+        self._conn.commit()
 
     def add_note(
-        self, text: str, timestamp: str, sample_id: Optional[str], step_ref: Optional[int]
+        self,
+        text: str,
+        timestamp: str,
+        sample_id: Optional[str],
+        step_ref: Optional[int],
+        category: Optional[str] = None,
     ) -> dict[str, Any]:
         cur = self._conn.execute(
-            "INSERT INTO notes (text, timestamp, sample_id, step_ref) VALUES (?, ?, ?, ?)",
-            (text, timestamp, sample_id, step_ref),
+            "INSERT INTO notes (text, timestamp, sample_id, step_ref, category) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (text, timestamp, sample_id, step_ref, category),
         )
         self._conn.commit()
         return {
@@ -52,11 +71,13 @@ class NoteStore:
             "timestamp": timestamp,
             "sample_id": sample_id,
             "step_ref": step_ref,
+            "category": category,
         }
 
     def all_notes(self) -> list[dict[str, Any]]:
         rows = self._conn.execute(
-            "SELECT id, text, timestamp, sample_id, step_ref FROM notes ORDER BY id ASC"
+            "SELECT id, text, timestamp, sample_id, step_ref, category "
+            "FROM notes ORDER BY id ASC"
         ).fetchall()
         return [dict(r) for r in rows]
 

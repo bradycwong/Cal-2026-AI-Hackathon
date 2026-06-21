@@ -34,6 +34,17 @@ def test_next_step_advances():
     assert events[0]["payload"]["current_step"]["id"] == 2
 
 
+def test_step_change_carries_tracker_fields():
+    state = fresh_state()
+    handle_command(Command(intent="load_protocol", protocol_name="DNA Extraction"), state)
+    events = handle_command(Command(intent="next_step"), state)
+    payload = events[0]["payload"]
+    assert payload["kind"] == "step_change"
+    assert payload["all_steps"]
+    assert payload["current_index"] == 1
+    assert payload["protocol_name"] == "DNA Extraction"
+
+
 def test_next_step_without_protocol_clarifies():
     state = fresh_state()
     events = handle_command(Command(intent="next_step"), state)
@@ -51,7 +62,7 @@ def test_log_entry_field_translation():
     assert p["text"] == "added 200 uL lysis buffer"  # log_text -> text
     assert p["sample_id"] == "A"
     assert p["step_ref"] == 1
-    assert set(p) == {"kind", "id", "text", "timestamp", "sample_id", "step_ref"}
+    assert set(p) == {"kind", "id", "text", "timestamp", "sample_id", "step_ref", "category"}
 
 
 def test_start_timer_event_shape():

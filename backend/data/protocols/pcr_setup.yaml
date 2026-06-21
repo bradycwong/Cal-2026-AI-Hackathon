@@ -2,6 +2,10 @@ protocol:
   id: pcr_setup
   name: PCR Setup
   version: "1.0"
+  description: "Assemble a 50 uL PCR reaction and run 30 thermocycler cycles."
+  category: Molecular Biology
+  status: READY
+  est_duration_min: 120
   aliases: ["pcr setup protocol", "pcr setup", "pcr", "pcr protocol", "polymerase chain reaction"]
   steps:
     - id: 1

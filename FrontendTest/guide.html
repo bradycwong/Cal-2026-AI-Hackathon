@@ -123,8 +123,8 @@
 <!-- Main Task Card -->
 <div class="bg-surface-container-low border border-outline-variant rounded-xl p-10 flex flex-col items-center justify-center text-center shadow-lg mb-gutter">
 <span class="text-primary font-data-label text-data-label mb-4 tracking-widest uppercase">Protocol Phase 02 / 05</span>
-<h1 class="font-headline-lg text-headline-lg text-on-surface mb-8 max-w-2xl">
-                    Step 1: Add <span class="text-primary font-bold">200 µL</span> lysis buffer to sample A
+<h1 id="step-current" class="font-headline-lg text-headline-lg text-on-surface mb-8 max-w-2xl">
+                    No protocol loaded. Say or click "Load Protocol" to begin.
                 </h1>
 <div class="w-full max-w-md flex flex-col gap-4">
 <button class="bg-primary text-on-primary h-14 rounded-full font-bold text-lg flex items-center justify-center gap-3 active:opacity-80 transition-all hover:scale-[1.02] pulse-glow">
@@ -146,9 +146,7 @@
 <span class="text-on-surface-variant font-data-label text-xs">READY</span>
 </div>
 
-<p class="font-data-value text-data-value text-on-surface leading-relaxed relative z-10">
-                    Log: added <span class="text-secondary">200 microliters</span> lysis buffer to <span class="text-secondary">sample A</span>.
-                </p>
+<p id="live-transcript" class="font-data-value text-data-value text-on-surface leading-relaxed relative z-10"></p>
 </div>
 </section>
 <!-- Right: Sidebar -->
@@ -163,7 +161,7 @@
       <h3 class="font-data-label text-data-label text-primary tracking-widest uppercase">Protocol Status</h3>
       <span class="text-xs font-bold text-primary">STEP 2 / 5</span>
     </div>
-    <div class="flex flex-col gap-2">
+    <div id="step-tracker" class="flex flex-col gap-2">
       <div class="flex items-center gap-3 p-3 bg-surface-container-low rounded-lg border-l-4 border-secondary">
         <span class="material-symbols-outlined text-secondary text-sm">check_circle</span>
         <div class="flex flex-col">
@@ -188,7 +186,9 @@
     </div>
   </div>
 
-  <!-- Countdown Timer -->
+  <!-- Active Timers (live: populated by app.js) -->
+  <div id="timer-list" class="flex flex-col gap-3"></div>
+  <!-- Countdown Timer (mockup) -->
   <div class="bg-surface-container-low border border-outline-variant rounded-xl p-6 flex flex-col items-center">
     <h3 class="font-data-label text-data-label text-on-surface-variant tracking-widest uppercase mb-4">Incubation Timer</h3>
     <div class="relative flex items-center justify-center mb-4">
@@ -212,27 +212,7 @@
 </main>
 <!-- Bottom: Persistent Voice Status Bar -->
 
-<!-- Micro-interaction script -->
-<script>
-        // Simple logic for timer simulation
-        const timerElement = document.querySelector('.font-display-timer');
-        let totalSeconds = 9 * 60 + 42;
-
-        setInterval(() => {
-            if(totalSeconds > 0) {
-                totalSeconds--;
-                const mins = Math.floor(totalSeconds / 60);
-                const secs = totalSeconds % 60;
-                timerElement.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-                
-                // Alert if under 60 seconds
-                if (totalSeconds < 60) {
-                    timerElement.classList.remove('text-on-surface');
-                    timerElement.classList.add('text-tertiary'); // Amber warning
-                }
-            }
-        }, 1000);
-    </script>
+<script src="app.js" defer></script>
 
 
 
