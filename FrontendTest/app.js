@@ -63,6 +63,17 @@
   async function fetchRecent() {
     return (await getJSON("/api/protocols/recent")).recent || [];
   }
+  async function fetchFullProtocol(id) {
+    return (await getJSON("/api/protocols/" + encodeURIComponent(id))).protocol;
+  }
+  async function patchProtocol(id, body) {
+    const r = await fetch(API + "/api/protocols/" + encodeURIComponent(id), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return r.json();
+  }
   async function fetchInventory() {
     return (await getJSON("/api/inventory")).items || [];
   }
@@ -273,6 +284,17 @@
     const data = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(data.detail || `delete failed (${r.status})`);
     return data;
+  }
+
+  // Dismiss one timer (the card's delete button). The backend removes it and
+  // broadcasts timer_removed, which drops the card via onTimerRemoved — so we do
+  // NOT mutate the local `timers` map here (single source of truth = the WS bus).
+  async function stopTimer(id) {
+    const r = await fetch(`${API}/api/timers/${encodeURIComponent(id)}/stop`, { method: "POST" });
+    if (!r.ok) {
+      const data = await r.json().catch(() => ({}));
+      throw new Error(data.detail || `stop failed (${r.status})`);
+    }
   }
 
   function populateInventoryUnits() {
@@ -653,11 +675,16 @@
             ? p.ingredients.map((ing) => pill(`${ing.reagent} · ${ing.display}`)).join("")
             : (p.reagents || []).map((r) => pill(r)).join("");
         const archived = p.status === "ARCHIVED";
-        const button = archived
-          ? `<button class="w-full border border-outline text-on-surface py-3 rounded-lg font-bold flex items-center justify-center gap-2" disabled><span class="material-symbols-outlined">history</span>Archived</button>`
-          : `<button class="protocol-load w-full bg-primary text-on-primary py-3 rounded-lg font-bold hover:bg-primary/90 transition-all active:opacity-80 flex items-center justify-center gap-2" data-protocol-id="${escapeHtml(
+        const loadBtn = archived
+          ? `<button class="flex-1 border border-outline text-on-surface py-3 rounded-lg font-bold flex items-center justify-center gap-2" disabled><span class="material-symbols-outlined">history</span>Archived</button>`
+          : `<button class="protocol-load flex-1 bg-primary text-on-primary py-3 rounded-lg font-bold hover:bg-primary/90 transition-all active:opacity-80 flex items-center justify-center gap-2" data-protocol-id="${escapeHtml(
               p.id
             )}"><span class="material-symbols-outlined">play_arrow</span>Load Protocol</button>`;
+        // Edit sits to the RIGHT of Load and opens the structured editor.
+        const editBtn = `<button class="protocol-edit px-4 rounded-lg border border-outline text-on-surface-variant hover:bg-surface-variant hover:text-on-surface transition-colors active:scale-95 flex items-center justify-center" data-protocol-id="${escapeHtml(
+          p.id
+        )}" title="Edit protocol" aria-label="Edit protocol"><span class="material-symbols-outlined">edit</span></button>`;
+        const button = `<div class="flex gap-2">${loadBtn}${editBtn}</div>`;
         return `<div class="protocol-card bg-surface-container-low rounded-xl p-6 flex flex-col">
   <div class="flex justify-between items-start mb-4">
     <div class="w-12 h-12 rounded-lg bg-surface-variant flex items-center justify-center">
@@ -704,6 +731,9 @@
           alert("Could not remove protocol: " + e.message);
         }
       });
+    });
+    host.querySelectorAll(".protocol-edit").forEach((btn) => {
+      btn.addEventListener("click", () => openEditProtocolModal(btn.dataset.protocolId));
     });
   }
 
@@ -1343,9 +1373,12 @@
     }
     host.innerHTML = Array.from(timers.values())
       .map(
-        (t) => `<div class="timer-card bg-surface-container-low border border-outline-variant rounded-xl p-4 flex flex-col items-center" data-timer-id="${escapeHtml(
+        (t) => `<div class="timer-card relative bg-surface-container-low border border-outline-variant rounded-xl p-4 flex flex-col items-center" data-timer-id="${escapeHtml(
           t.timer_id
         )}">
+      <button type="button" class="timer-dismiss absolute top-2 right-2 w-7 h-7 rounded-lg flex items-center justify-center text-on-surface-variant hover:bg-error/10 hover:text-error transition-colors active:scale-95" data-timer-id="${escapeHtml(
+        t.timer_id
+      )}" title="Delete timer" aria-label="Delete timer"><span class="material-symbols-outlined text-[18px]">delete</span></button>
       <h3 class="font-data-label text-data-label text-on-surface-variant tracking-widest uppercase mb-2">${escapeHtml(
         t.label
       )}</h3>
@@ -1368,6 +1401,27 @@
   function renderTimersClear() {
     timers.clear();
     renderTimers();
+  }
+
+  // Delegated click handler for the per-card delete buttons. Bound ONCE to the
+  // stable #timer-list host because renderTimers() rewrites innerHTML every tick
+  // (a per-card listener would be destroyed each second). The dataset.wired guard
+  // keeps a demo reset — which re-runs hydrate() — from stacking duplicate
+  // listeners (and thus duplicate POSTs).
+  function wireTimerList() {
+    const host = $("timer-list");
+    if (!host || host.dataset.wired) return;
+    host.dataset.wired = "1";
+    host.addEventListener("click", async (e) => {
+      const btn = e.target.closest(".timer-dismiss");
+      if (!btn) return;
+      btn.disabled = true;
+      try {
+        await stopTimer(btn.dataset.timerId);
+      } catch (err) {
+        btn.disabled = false; // card stays put so the user can retry
+      }
+    });
   }
 
   // --- transcript / clarify -------------------------------------------------
@@ -1837,6 +1891,7 @@
     wireDemoReset();
     wireGuideConfirm();
     wireStepActions();
+    wireTimerList();
     // voice.js owns the mic; register clearInterim so a mic-stop also clears the
     // in-progress transcript line, then wire the dock buttons.
     window.LabVoice.setStopHook(clearInterim);

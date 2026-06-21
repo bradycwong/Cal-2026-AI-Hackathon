@@ -50,7 +50,7 @@ from .schema import (
     transcript_update_event,
     voice_state_event,
 )
-from .handlers import advance_step, edit_log_entry, handle_command
+from .handlers import advance_step, edit_log_entry, handle_command, resync_active_protocol
 from .instrumentation import chain_span, setup_tracing
 from .state import ProtocolParseError, SessionState
 from .voice_control import VoiceControl, classify_control
@@ -261,6 +261,61 @@ async def delete_protocol(protocol_id: str) -> dict[str, Any]:
     if not state.remove_protocol(protocol_id):
         raise HTTPException(status_code=404, detail="No such protocol.")
     return {"ok": True, "protocols": state.protocol_catalog()}
+
+
+@app.get("/api/protocols/{protocol_id}")
+async def get_protocol(protocol_id: str) -> dict[str, Any]:
+    """Full protocol incl. step text/duration/params, for prefilling the editor.
+    Declared after ``/recent`` so that static path still matches first."""
+    detail = state.protocol_detail(protocol_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="No such protocol.")
+    return {"ok": True, "protocol": detail}
+
+
+class ProtocolStepEdit(BaseModel):
+    text: str
+    duration_s: int | None = None
+    timer_label: str | None = None
+    parameters: dict[str, Any] = {}
+
+
+class ProtocolEditIn(BaseModel):
+    name: str
+    description: str = ""
+    steps: list[ProtocolStepEdit] = []
+
+
+@app.patch("/api/protocols/{protocol_id}")
+async def edit_protocol(protocol_id: str, body: ProtocolEditIn) -> dict[str, Any]:
+    """Deterministic structured edit of name/description/steps (id frozen, no LLM).
+    reagents + duration re-derive; if this protocol is the active run, the Guide
+    is resynced in place. Malformed input is a controlled {ok: False}, not a 500."""
+    if protocol_id not in state.protocols:
+        raise HTTPException(status_code=404, detail="No such protocol.")
+    steps = [
+        {
+            "text": s.text,
+            "duration_s": s.duration_s,
+            "timer_label": s.timer_label,
+            "parameters": s.parameters,
+        }
+        for s in body.steps
+    ]
+    try:
+        proto = state.update_protocol(protocol_id, body.name, body.description, steps)
+    except ProtocolParseError as exc:
+        await manager.broadcast(
+            [error_event("protocol_update_failed", str(exc), "protocol_edit")]
+        )
+        return {"ok": False, "error": str(exc)}
+    events: list[dict[str, Any]] = []
+    if state.active_protocol is not None and state.active_protocol.id == proto.id:
+        events.extend(resync_active_protocol(state, proto))
+    summary = next(p for p in state.protocol_catalog() if p["id"] == proto.id)
+    events.append(protocol_updated_event(proto.name, proto.id, len(proto.steps)))
+    await manager.broadcast(events)
+    return {"ok": True, "protocol": summary, "events": events}
 
 
 class StepAdvanceIn(BaseModel):

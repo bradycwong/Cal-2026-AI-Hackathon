@@ -52,7 +52,7 @@
 <span class="material-symbols-outlined text-primary">record_voice_over</span>
 <span class="font-bold text-on-surface">Voice Command Reference</span>
 </div>
-<span id="cmd-count" class="text-xs text-on-surface-variant font-data-label uppercase tracking-widest">16 commands</span>
+<span id="cmd-count" class="text-xs text-on-surface-variant font-data-label uppercase tracking-widest">17 commands</span>
 </div>
 <div>
 <table class="w-full text-left border-collapse">
@@ -168,6 +168,13 @@
 </th>
 <td class="px-6 py-4 align-top"><span class="cmd-chip">Stop timer</span><span class="cmd-chip">Cancel the timer</span><span class="cmd-chip">Stop the alarm</span><span class="cmd-chip">Stop beeping</span></td>
 <td class="px-6 py-4 align-top text-on-surface-variant">Stops and clears all timers — running or paused — and silences the alarm.</td>
+</tr>
+<tr class="cmd-row">
+<th scope="row" class="px-6 py-4 align-top font-semibold text-on-surface whitespace-nowrap">
+<span class="flex items-center gap-2"><span class="material-symbols-outlined text-error" style="font-size:18px">delete_sweep</span>Clear done timers</span>
+</th>
+<td class="px-6 py-4 align-top"><span class="cmd-chip">Clear done timers</span><span class="cmd-chip">Delete finished timers</span><span class="cmd-chip">Remove expired timers</span></td>
+<td class="px-6 py-4 align-top text-on-surface-variant">Removes only the finished timers — running and paused ones keep going.</td>
 </tr>
 </tbody>
 
@@ -320,6 +327,7 @@
       show_protocol:  { label: "Jump to run",     arg: null,            build: function () { return "jump to run"; } },
       start_timer:    { label: "Start a timer",   arg: "Duration", ph: "5 minutes", optional: true,             build: function (a) { return a ? "start a " + a + " timer" : "start the timer"; } },
       stop_timer:     { label: "Stop timer",      arg: null,            build: function () { return "stop timer"; } },
+      clear_done_timers: { label: "Clear done timers", arg: null,       build: function () { return "clear done timers"; } },
       log_entry:      { label: "Log a note",      arg: "Note text", ph: "lysate looks cloudy",                 build: function (a) { return "log " + a; } },
       find_inventory: { label: "Find an item",    arg: "Reagent", ph: "ethanol",                               build: function (a) { return "where is " + a; } },
       add_inventory:  { label: "Add an item",     arg: "Reagent (+ amount / location)", ph: "5 g of EDTA on shelf 4", build: function (a) { return "add " + a + " to the inventory"; } },
