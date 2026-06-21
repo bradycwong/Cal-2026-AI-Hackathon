@@ -340,15 +340,22 @@ class SessionState:
         by_id = {p["id"]: p for p in self.protocol_catalog()}
         if not self.recent_protocols:
             cold = list(by_id.values())[:limit]
-            return [{**p, "last_used_at": None} for p in cold]
-        recent: list[dict[str, Any]] = []
-        for pid in reversed(self.recent_protocols):  # newest first
-            meta = by_id.get(pid)
-            if meta is None:
-                continue  # protocol was deleted after use
-            recent.append({**meta, "last_used_at": self.recent_protocols[pid]})
-            if len(recent) >= limit:
-                break
+            recent = [{**p, "last_used_at": None} for p in cold]
+        else:
+            recent = []
+            for pid in reversed(self.recent_protocols):  # newest first
+                meta = by_id.get(pid)
+                if meta is None:
+                    continue  # protocol was deleted after use
+                recent.append({**meta, "last_used_at": self.recent_protocols[pid]})
+                if len(recent) >= limit:
+                    break
+        # Tag the currently-loaded protocol so the dashboard can highlight it, the
+        # same way ``notebooks_view`` flags the active notebook. A loaded protocol
+        # is always the newest "used", so it sits first in this list.
+        active_id = self.active_protocol.id if self.active_protocol else None
+        for p in recent:
+            p["active"] = p["id"] == active_id
         return recent
 
     def protocol_detail(self, protocol_id: str) -> Optional[dict[str, Any]]:

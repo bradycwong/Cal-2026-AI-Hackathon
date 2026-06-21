@@ -113,6 +113,17 @@ def test_protocol_card_renders_ingredient_amounts():
     assert "p.reagents" in js  # name-only fallback preserved
 
 
+def test_import_shows_indeterminate_progress_animation():
+    # The LLM-backed import shows an animated indeterminate bar (no fake %) while
+    # the request is in flight.
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert "setImportLoading" in js
+    assert "import-progress-bar" in js
+    css = (FT / "protocols.css").read_text(encoding="utf-8")
+    assert "import-progress-bar" in css
+    assert "@keyframes" in css
+
+
 def test_app_renders_reproducibility_flag():
     js = (FT / "app.js").read_text(encoding="utf-8")
     assert "renderLogFlag" in js
@@ -266,6 +277,14 @@ def test_dashboard_recent_protocols_is_distinct_from_catalog():
     assert "renderRecentProtocols" in js, "app.js missing renderRecentProtocols"
     assert "/api/protocols/recent" in js, "app.js missing the recent endpoint"
     assert "recent-protocols" in js, "app.js does not target the recent-protocols mount"
+
+
+def test_dashboard_highlights_active_protocol():
+    # The recent-protocols card highlights the currently-loaded protocol the same
+    # way the active-notebook card does (active flag -> border-primary + badge).
+    js = (FT / "app.js").read_text(encoding="utf-8")
+    assert "p.active" in js, "renderRecentProtocols must read the active flag"
+    assert "recent-card--active" in js, "active protocol card needs a distinct marker"
 
 
 # --- cleanup: de-duped shell, real branding, dead controls removed ----------

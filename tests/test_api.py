@@ -289,6 +289,22 @@ def test_recent_excludes_deleted_protocol(client):
     assert [p["id"] for p in recent] == ["dna_extraction"]
 
 
+def test_recent_marks_active_protocol(client):
+    # The currently-loaded protocol is flagged active (newest -> first); the rest
+    # are not. Mirrors the active-notebook flag the dashboard already highlights.
+    client.post("/api/protocols/dna_extraction/load")
+    client.post("/api/protocols/pcr_setup/load")  # pcr_setup is now active
+    recent = _recent(client)
+    assert recent[0]["id"] == "pcr_setup"
+    assert recent[0].get("active") is True
+    assert [p["id"] for p in recent if p.get("active")] == ["pcr_setup"]
+
+
+def test_recent_cold_start_has_no_active_protocol(client):
+    # Nothing loaded -> no active protocol -> every card is flagged active=False.
+    assert all(p.get("active") is False for p in _recent(client))
+
+
 def test_demo_reset_clears_recency(client):
     client.post("/api/protocols/dna_extraction/load")
     assert _recent(client)[0]["last_used_at"] is not None

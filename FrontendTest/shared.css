@@ -68,3 +68,103 @@
   0% { transform: scale(1); opacity: 0.6; }
   75%, 100% { transform: scale(1.8); opacity: 0; }
 }
+
+/* ── Enlarged, accessible "Voice Assistant" dock ──────────────────────────────
+ * The mic is the product's hero interaction; promote the corner bubble to a
+ * confident, room-legible control without moving it or editing the 6 duplicated
+ * HTML docks. Everything below is ID-scoped (extends the block above) and keyed
+ * off classes/attributes that voice.js setVoiceUI() toggles, so the visuals can
+ * never drift from the JS state. The click-through model (lines 35-36) and the
+ * two-child dock DOM are left intact. */
+
+/* Wider box so the transcript and label read comfortably (the markup's
+   max-w-[90vw] still clamps narrow viewports). */
+#voice-dock { width: 360px; }
+
+/* Control bar: a more substantial pill whose border lights green while listening
+   (data-state set by setVoiceUI). Same selector as the click-through rule above,
+   so pointer-events behavior is unchanged. */
+#voice-dock > div:not(#live-transcript) {
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  transition: border-color 0.18s ease;
+}
+#voice-dock[data-state="live"] > div:not(#live-transcript) { border-color: #22c55e; }
+
+/* The mic disc — a 60px tap-to-talk / tap-to-mute target (was 32px). border-radius
+   MUST be 50%: tailwind-config redefines borderRadius.full to 0.75rem, so the
+   markup's `rounded-full` would render a rounded square at this size. The whole
+   disc FILLS with the state color (driven by the mic-off/live/muted class), which
+   reads across a room far better than the old 16px glyph tint. */
+#voice-mute {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  transition: background-color 0.18s ease, transform 0.1s ease;
+}
+#voice-mute.mic-off   { background: #1A2235; } /* idle / session off — neutral */
+#voice-mute.mic-live  { background: #22c55e; } /* listening — green */
+#voice-mute.mic-muted { background: #ef4444; } /* muted — red */
+#voice-mute:active    { transform: scale(0.96); } /* push-to-talk feedback */
+
+/* The pulse ring must be a circle too (same borderRadius.full caveat). */
+#voice-pulse { border-radius: 50%; }
+
+/* Bigger glyph. !important is the one justified override here: the 6 HTML files
+   carry an inline style="font-size:16px" on #voice-mic that a normal rule can't
+   beat. On the saturated live/muted fills the glyph flips to a high-contrast tone
+   (the base voice-mic-* color would be invisible on its own fill). */
+#voice-mic { font-size: 28px !important; }
+#voice-mute.mic-live  #voice-mic { color: #0D1117; } /* dark glyph on green */
+#voice-mute.mic-muted #voice-mic { color: #FFFFFF; } /* light glyph on red  */
+
+/* Status word as a state-tinted pill — a fourth, glanceable, colorblind-safe
+   state cue alongside the disc fill, glyph, and bar border. */
+#voice-status {
+  display: inline-block;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  line-height: 1.4;
+  padding: 2px 8px;
+  border-radius: 9999px;
+}
+#voice-dock[data-state="off"]   #voice-status { background: rgba(138,150,176,0.15); color: #8A96B0; }
+#voice-dock[data-state="live"]  #voice-status { background: rgba(34,197,94,0.18);  color: #B8FF7C; }
+#voice-dock[data-state="muted"] #voice-status { background: rgba(255,107,107,0.18); color: #FF6B6B; }
+
+/* Larger "Voice Assistant" label + the injected affordance line (voice.js adds
+   .voice-hint once per page) that advertises voice as the primary input. */
+#voice-toggle { border-radius: 10px; }
+#voice-toggle > span:nth-child(2) { font-size: 15px; font-weight: 600; margin-top: 2px; }
+.voice-hint { font-size: 13px; line-height: 1.3; color: #8A96B0; margin-top: 1px; }
+
+/* Larger, more readable transcript — SCOPED under #voice-dock so the Guide page's
+   separate in-page #live-transcript panel (governed by guide.css) is untouched.
+   Reserve a min-height only once it has text, so idle pages show no empty box
+   (app.js keeps the .hidden toggle authoritative). It stays click-through. */
+#voice-dock #live-transcript {
+  width: 100%;
+  font-size: 15px;
+  line-height: 1.5;
+  padding: 14px 16px;
+  max-height: 220px;
+  border-radius: 16px;
+}
+#voice-dock #live-transcript:not(.hidden) { min-height: 84px; }
+#voice-dock #live-transcript::-webkit-scrollbar { width: 4px; }
+#voice-dock #live-transcript::-webkit-scrollbar-thumb { background: #253050; border-radius: 10px; }
+
+/* Accessibility: visible keyboard focus (there was none) and a reduced-motion
+   fallback that keeps a static "listening" ring instead of the pulse. */
+#voice-mute:focus-visible,
+#voice-toggle:focus-visible {
+  outline: 2px solid #7BA7F5;
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  #voice-pulse.voice-pulse-on { animation: none; }
+  #voice-mic,
+  #voice-mute,
+  #voice-dock > div:not(#live-transcript) { transition: none; }
+}

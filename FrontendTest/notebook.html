@@ -49,7 +49,16 @@
 <section class="glass-panel p-4 rounded-xl flex flex-col md:flex-row items-center gap-4">
 <div class="relative flex-1 group">
 <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant group-focus-within:text-primary transition-colors">search</span>
-<input aria-label="Search logs" class="w-full bg-surface-container-lowest border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary rounded-lg py-3 pl-12 pr-4 text-on-surface placeholder:text-on-surface-variant outline-none transition-all" placeholder="Search logs..." type="text">
+<input id="log-search" aria-label="Search logs" class="w-full bg-surface-container-lowest border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary rounded-lg py-3 pl-12 pr-4 text-on-surface placeholder:text-on-surface-variant outline-none transition-all" placeholder="Search logs..." type="text">
+</div>
+<div class="flex items-center gap-2 shrink-0">
+<span class="material-symbols-outlined text-on-surface-variant" aria-hidden="true">sort</span>
+<select id="log-sort" aria-label="Sort activity stream" class="bg-surface-container-lowest border border-outline-variant rounded-lg px-3 py-2 text-on-surface outline-none focus:border-primary">
+<option value="date-desc">Newest first</option>
+<option value="date-asc">Oldest first</option>
+<option value="manual-first">Manual first</option>
+<option value="auto-first">Automatic first</option>
+</select>
 </div>
 </section>
 <!-- Log Content - Asymmetric Grid Layout -->

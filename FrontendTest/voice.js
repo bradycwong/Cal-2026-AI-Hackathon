@@ -77,23 +77,37 @@
     const toggle = $("voice-toggle");
     if (toggle) {
       toggle.setAttribute("aria-pressed", active ? "true" : "false");
-      toggle.title = active ? "Stop voice session" : "Start voice session";
+      const toggleLabel = active ? "Stop voice assistant" : "Start voice assistant";
+      toggle.title = toggleLabel;
+      toggle.setAttribute("aria-label", toggleLabel); // icon+text button had no a11y name
     }
-    // The mic glyph IS the mute button now (one icon, color-coded), so update its
-    // state class instead of swapping text — overwriting textContent would wipe
+    // One tone value (gray / red / green) drives the glyph color, the disc fill,
+    // and the dock's data-state (status pill + bar border) so they can never
+    // disagree. The mic glyph IS the mute button (one color-coded icon), so we
+    // update classes instead of swapping text — overwriting textContent would wipe
     // the nested pulse ring / icon spans.
+    const tone = !active ? "off" : voiceMuted ? "muted" : "live";
     const mute = $("voice-mute");
     if (mute) {
-      mute.disabled = !active;
+      mute.disabled = false; // the hero mic is always tappable: start when off, mute when live
       mute.setAttribute("aria-pressed", active && voiceMuted ? "true" : "false");
-      mute.title = active && voiceMuted ? "Unmute" : "Mute";
+      const muteLabel = !active
+        ? "Start voice assistant"
+        : voiceMuted
+        ? "Unmute microphone"
+        : "Mute microphone";
+      mute.title = muteLabel;
+      mute.setAttribute("aria-label", muteLabel);
+      mute.classList.remove("mic-off", "mic-live", "mic-muted");
+      mute.classList.add("mic-" + tone);
     }
     const mic = $("voice-mic");
     if (mic) {
-      const tone = !active ? "off" : voiceMuted ? "muted" : "live"; // gray / red / green
       mic.classList.remove("voice-mic-off", "voice-mic-live", "voice-mic-muted");
       mic.classList.add("voice-mic-" + tone);
     }
+    const dock = $("voice-dock");
+    if (dock) dock.setAttribute("data-state", tone);
     if (!active) setVoiceStatus(voiceErrorMsg || "Voice off", false);
     else setVoiceStatus(voiceMuted ? "Muted" : "Listening", !voiceMuted);
   }
@@ -249,15 +263,29 @@
         if (micStream) stopMic();
         else startMic();
       });
+      // Advertise that voice is the primary input. Injected here (once per page)
+      // so the presentational copy stays out of the 6 duplicated HTML docks.
+      if (!toggle.querySelector(".voice-hint")) {
+        const hint = document.createElement("span");
+        hint.className = "voice-hint";
+        hint.textContent = "Tap or say a command";
+        toggle.appendChild(hint);
+      }
     }
     const mute = $("voice-mute");
     if (mute && !mute.dataset.wired) {
       mute.dataset.wired = "1";
       mute.addEventListener("click", () => {
-        if (!micStream) return;
-        sendMuteControl(!voiceMuted);
+        if (!micStream) {
+          startMic(); // tapping the big mic starts the session when it's off...
+          return;
+        }
+        sendMuteControl(!voiceMuted); // ...and toggles mute once it's live
       });
     }
+    // Decorative ring carries no information — keep it out of the a11y tree.
+    const pulse = $("voice-pulse");
+    if (pulse) pulse.setAttribute("aria-hidden", "true");
     setVoiceUI(!!micStream);
   }
 

@@ -150,6 +150,20 @@
     }
   }
 
+  // Indeterminate progress: the import is an LLM call with no knowable duration,
+  // so we show an animated bar (honest motion) rather than a fabricated percent.
+  // A final setImportResult() call uses textContent, which replaces this markup.
+  function setImportLoading(message) {
+    const result = $("import-result");
+    if (!result) return;
+    result.className = "mb-4 min-h-[1.25rem]";
+    result.innerHTML =
+      `<div class="flex items-center gap-3 text-sm text-on-surface-variant">` +
+      `<div class="relative h-1 flex-1 overflow-hidden rounded-full bg-surface-variant">` +
+      `<div class="import-progress-bar absolute h-full w-2/5 rounded-full bg-primary"></div>` +
+      `</div><span>${escapeHtml(message)}</span></div>`;
+  }
+
   function resetImportForm() {
     ["import-text", "import-name", "import-file"].forEach((id) => {
       const el = $(id);
@@ -168,7 +182,7 @@
       setImportResult("Paste at least one step or drop a PDF.", "text-tertiary");
       return;
     }
-    setImportResult(file ? "Reading PDF..." : "Importing...", "text-on-surface-variant");
+    setImportLoading(file ? "Reading PDF…" : "Importing…");
     try {
       const data = file
         ? await importProtocolFromFile(file, name)
@@ -800,6 +814,20 @@
       });
   }
 
+  // Activity-Stream sort dropdown (Notebook page). Closure state (logCache /
+  // logSortMode / renderLog) lives here, so wire in app.js rather than inline.
+  // dataset.wired keeps the re-run on demo-reset from double-binding.
+  function wireLogSort() {
+    const sel = $("log-sort");
+    if (!sel || sel.dataset.wired) return;
+    sel.dataset.wired = "1";
+    sel.value = logSortMode; // reflect current mode on (re)hydrate
+    sel.addEventListener("change", () => {
+      logSortMode = sel.value;
+      renderLog(logCache);
+    });
+  }
+
   async function patchLog(id, text) {
     const r = await fetch(API + "/api/log/" + id, {
       method: "PATCH",
@@ -914,11 +942,20 @@
     host.innerHTML = recent
       .map((p) => {
         const when = p.last_used_at ? fmtTime(p.last_used_at) : "Not used yet";
-        return `<button type="button" class="recent-card bg-surface-container-low rounded-xl p-5 flex flex-col text-left w-full border border-outline-variant hover:border-primary transition-colors active:scale-[0.99] cursor-pointer" data-protocol-id="${escapeHtml(
+        // Highlight the currently-loaded protocol the same way the active-notebook
+        // card is marked: solid primary border + an "Active" badge.
+        const borderCls = p.active
+          ? "recent-card--active border-primary"
+          : "border-outline-variant hover:border-primary";
+        const badge = p.active
+          ? `<span class="font-data-label text-xs px-2 py-1 rounded bg-primary/10 text-primary">Active</span>`
+          : "";
+        return `<button type="button" class="recent-card bg-surface-container-low rounded-xl p-5 flex flex-col text-left w-full border ${borderCls} transition-colors active:scale-[0.99] cursor-pointer" data-protocol-id="${escapeHtml(
           p.id
         )}" title="Load ${escapeHtml(p.name)}">
-  <div class="flex items-center gap-2 text-on-surface-variant text-xs mb-3">
-    <span class="material-symbols-outlined text-sm">schedule</span><span>${escapeHtml(when)}</span>
+  <div class="flex items-center justify-between gap-2 mb-3">
+    <span class="flex items-center gap-2 text-on-surface-variant text-xs"><span class="material-symbols-outlined text-sm">schedule</span><span>${escapeHtml(when)}</span></span>
+    ${badge}
   </div>
   <h3 class="font-headline-md text-headline-md mb-2">${escapeHtml(p.name)}</h3>
   <p class="text-on-surface-variant text-sm flex-1">${escapeHtml(p.description || "")}</p>
@@ -1121,6 +1158,44 @@
     return "";
   }
 
+  // Order the Activity Stream for #log-rows. Returns a NEW array; never mutates
+  // logCache (stored oldest-first and reused by the WS delta paths). Modes mirror
+  // the #log-sort <select>. Tiebreaker: ISO-8601 timestamp localeCompare, then the
+  // monotonic id, so order stays deterministic when timestamps collide. "automatic"
+  // is the only automatic value; everything else (incl. edited) groups as manual.
+  function sortLog(log, mode) {
+    const isAuto = (e) => (e && e.entry_type === "automatic" ? 1 : 0);
+    const byNewest = (a, b) => {
+      const t = String(b.timestamp || "").localeCompare(String(a.timestamp || ""));
+      return t !== 0 ? t : (b.id || 0) - (a.id || 0);
+    };
+    const arr = [...log];
+    switch (mode) {
+      case "date-asc":
+        return arr.sort((a, b) => -byNewest(a, b));
+      case "manual-first":
+        return arr.sort((a, b) => isAuto(a) - isAuto(b) || byNewest(a, b));
+      case "auto-first":
+        return arr.sort((a, b) => isAuto(b) - isAuto(a) || byNewest(a, b));
+      case "date-desc":
+      default:
+        return arr.sort(byNewest);
+    }
+  }
+
+  // The text-search filter (notebook.html inline script) toggles row.style on the
+  // rendered .log-entry-row nodes; any renderLog() rebuild drops those styles. Re-
+  // apply the active term after a render so sorting and live WS deltas don't
+  // silently clear the filter.
+  function reapplyLogSearch() {
+    const box = $("log-search");
+    const term = ((box && box.value) || "").toLowerCase();
+    if (!term) return;
+    document.querySelectorAll("#log-rows .log-entry-row").forEach((row) => {
+      row.style.display = row.innerText.toLowerCase().includes(term) ? "grid" : "none";
+    });
+  }
+
   function renderLog(log) {
     const host = $("log-rows");
     if (!host) return;
@@ -1128,7 +1203,7 @@
       host.innerHTML = `<div class="p-12 flex flex-col items-center justify-center opacity-30 select-none"><span class="material-symbols-outlined text-6xl mb-4">history_edu</span><p class="font-headline-md">No log entries yet</p></div>`;
       return;
     }
-    const displayLog = [...log].reverse();
+    const displayLog = sortLog(log, logSortMode);
     host.innerHTML = displayLog
       .map((e) => {
         const flagged = e.flag && e.flag.status === "mismatch" ? " flagged" : "";
@@ -1150,6 +1225,7 @@
     </div>`;
       })
       .join("");
+    reapplyLogSearch();
   }
 
   // --- notebooks (multi-notebook log) ---------------------------------------
@@ -1743,6 +1819,9 @@
 
   // --- in-memory log mirror so WS deltas can re-render the feed --------------
   let logCache = [];
+  // Active Activity-Stream order; mirrors the #log-sort <select>. renderLog reads
+  // it on every (re)render so WS deltas and notebook switches keep the chosen order.
+  let logSortMode = "date-desc";
   function applyLogEntry(p) {
     const entry = {
       id: p.id,
@@ -2055,6 +2134,7 @@
     wireAddItemModal();
     wireLogModal();
     wireLogEditModal();
+    wireLogSort();
     wireDemoReset();
     wireGuideConfirm();
     wireStepActions();

@@ -6,3 +6,13 @@
     border-color: #b8c3ff;
     box-shadow: 0 0 15px rgba(123,167,245,0.12);
 }
+
+/* Indeterminate import progress: a segment sweeping the track left-to-right.
+   No determinate %, because an LLM call has no knowable completion fraction. */
+.import-progress-bar {
+    animation: import-progress-slide 1.1s ease-in-out infinite;
+}
+@keyframes import-progress-slide {
+    0%   { left: -40%; }
+    100% { left: 100%; }
+}
