@@ -23,6 +23,11 @@
   color: #E8EDF7;
   font-weight: 600;
 }
+/* Keep the current (active) page its highlight color on hover */
+.nav-link.nav-active:hover {
+  background-color: #2352C8;
+  color: #E8EDF7;
+}
 .transcript-line { padding: 2px 0; }
 .transcript-interim { opacity: 0.6; font-style: italic; }
 .transcript-final { opacity: 1; }
