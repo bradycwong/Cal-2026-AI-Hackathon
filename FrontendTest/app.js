@@ -878,6 +878,33 @@
     ws.onclose = () => setTimeout(connect, 1500);
   }
 
+  // --- voice session persistence across page navigations --------------------
+  // This is a multi-page app: every nav is a full reload that tears down the
+  // mic/recorder/socket. To make the voice assistant feel like it "stays on"
+  // (or muted, or off) as the user moves between pages, we persist the user's
+  // INTENT in sessionStorage and re-arm the mic on the next load. The server
+  // keeps the mute gate sticky and re-broadcasts it on every /ws/audio connect,
+  // so muted is authoritative server-side; we only mirror it locally for a
+  // flicker-free UI before the socket syncs.
+  const VOICE_ACTIVE_KEY = "lab.voice.active";
+  const VOICE_MUTED_KEY = "lab.voice.muted";
+  function storageGet(key) {
+    try {
+      return window.sessionStorage.getItem(key);
+    } catch (_) {
+      return null;
+    }
+  }
+  function storageSet(key, val) {
+    try {
+      window.sessionStorage.setItem(key, val);
+    } catch (_) {}
+  }
+  const setVoiceActiveStored = (on) => storageSet(VOICE_ACTIVE_KEY, on ? "1" : "0");
+  const getVoiceActiveStored = () => storageGet(VOICE_ACTIVE_KEY) === "1";
+  const setVoiceMutedStored = (m) => storageSet(VOICE_MUTED_KEY, m ? "1" : "0");
+  const getVoiceMutedStored = () => storageGet(VOICE_MUTED_KEY) === "1";
+
   // --- voice: arm-once mic -> /ws/audio -> Deepgram (server-proxied) --------
   // Ported from the original frontend so every served page can feed Deepgram.
   let micStream = null;
@@ -885,7 +912,7 @@
   let audioWS = null;
   let manualStop = false;
   let reconnects = 0;
-  let voiceMuted = false;
+  let voiceMuted = getVoiceMutedStored();
   const MAX_RECONNECTS = 3;
 
   function pickMime() {
@@ -920,6 +947,7 @@
 
   function onVoiceState(p) {
     voiceMuted = !!p.muted;
+    setVoiceMutedStored(voiceMuted); // mirror so the next page shows it instantly
     if (micStream) setVoiceUI(true);
   }
 
@@ -927,15 +955,18 @@
     manualStop = false;
     reconnects = 0;
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setVoiceActiveStored(false); // can't run here; don't keep retrying on nav
       setVoiceStatus("Needs https/localhost", false);
       return;
     }
     if (!window.MediaRecorder) {
+      setVoiceActiveStored(false);
       setVoiceStatus("Unsupported browser", false);
       return;
     }
     const mimeType = pickMime();
     if (!mimeType) {
+      setVoiceActiveStored(false);
       setVoiceStatus("No audio codec", false);
       return;
     }
@@ -945,9 +976,12 @@
         audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
       });
     } catch (err) {
+      setVoiceActiveStored(false); // permission gone; stop auto-resuming
       setVoiceStatus("Mic denied", false);
       return;
     }
+    // Mic is live — remember the intent so navigating to another page re-arms it.
+    setVoiceActiveStored(true);
     openAudioSocket(mimeType);
   }
 
@@ -994,6 +1028,7 @@
 
   function stopMic() {
     manualStop = true;
+    setVoiceActiveStored(false); // explicit user stop: stay off across pages
     try {
       if (recorder && recorder.state !== "inactive") recorder.stop();
     } catch (_) {}
@@ -1015,6 +1050,7 @@
     audioWS = null;
     reconnects = 0;
     voiceMuted = false;
+    setVoiceMutedStored(false);
     clearInterim();
     setVoiceUI(false);
   }
@@ -1052,6 +1088,13 @@
       });
     }
     setVoiceUI(!!micStream);
+  }
+
+  // Re-arm the mic after a navigation if the user had voice on when they left
+  // the previous page. The mute gate is restored by the server's voice_state
+  // broadcast on the fresh /ws/audio connect, so a muted session stays muted.
+  function maybeResumeVoice() {
+    if (!micStream && getVoiceActiveStored()) startMic();
   }
 
   // --- bootstrap ------------------------------------------------------------
@@ -1117,9 +1160,11 @@
     document.addEventListener("DOMContentLoaded", () => {
       hydrate();
       connect();
+      maybeResumeVoice();
     });
   } else {
     hydrate();
     connect();
+    maybeResumeVoice();
   }
 })();
